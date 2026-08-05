@@ -31,17 +31,17 @@ Web application layout per plan.md: `backend/src/careerhq/`, `frontend/src/`, wi
 
 **Purpose**: Repository scaffolding and tooling. Nothing runs yet.
 
-- [ ] T001 Create the directory tree from plan.md: `backend/src/careerhq/{api/routes,application,domain,infrastructure}/`, `backend/tests/{unit,integration}/`, `backend/alembic/versions/`, `frontend/src/{app,components,lib}/`
-- [ ] T002 [P] Create `backend/pyproject.toml` pinning FastAPI 0.141, SQLAlchemy 2.0, Alembic 1.19, Pydantic 2.13, pydantic-settings 2.14, Authlib 1.7, psycopg 3.3, redis 8.1, boto3, pyjwt, uvicorn; dev group pytest 9.1, pytest-asyncio, pytest-cov, httpx, ruff 0.16, mypy 2.3
-- [ ] T003 [P] Configure Ruff (format + lint, line length 100) and mypy (strict on `src/careerhq`) in `backend/pyproject.toml`
-- [ ] T004 [P] Configure pytest and coverage in `backend/pyproject.toml`: asyncio mode auto, `--cov=careerhq`, `testpaths = ["tests"]`
-- [ ] T005 [P] Initialize the frontend in `frontend/` with Next.js 16.3 App Router, TypeScript 7.0, Tailwind CSS 4.3 (`@theme` in `src/app/globals.css` — Tailwind 4 has no `tailwind.config.js`)
-- [ ] T006 [P] Initialize shadcn/ui in `frontend/` and add `button`, `avatar`, `dropdown-menu`, `skeleton` into `frontend/src/components/ui/`
-- [ ] T007 [P] Add the proxy rewrite in `frontend/next.config.ts`: `/api/:path*` → `${BACKEND_URL}/api/:path*` (research.md R-003)
-- [ ] T008 [P] Write `backend/Dockerfile` (python:3.12-slim, non-root user, uv or pip install, entrypoint script placeholder)
-- [ ] T009 [P] Write `frontend/Dockerfile` (node:22-alpine, dev target with hot reload, production build target)
-- [ ] T010 [P] Write `.env.example` covering `DATABASE_URL`, `REDIS_URL`, `S3_*`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `SESSION_SECRET`, `SESSION_TTL_DAYS`, `LLM_PROVIDER_MODEL`, `ANTHROPIC_API_KEY`, `EMBEDDING_MODEL` — with comments, no real values
-- [ ] T011 [P] Add `backend/.dockerignore` and `frontend/.dockerignore`
+- [x] T001 Create the directory tree from plan.md: `backend/src/careerhq/{api/routes,application,domain,infrastructure}/`, `backend/tests/{unit,integration}/`, `backend/alembic/versions/`, `frontend/src/{app,components,lib}/`
+- [x] T002 [P] Create `backend/pyproject.toml` pinning FastAPI 0.141, SQLAlchemy 2.0, Alembic 1.19, Pydantic 2.13, pydantic-settings 2.14, Authlib 1.7, psycopg 3.3, redis 8.1, boto3, pyjwt, uvicorn; dev group pytest 9.1, pytest-asyncio, pytest-cov, httpx, ruff 0.16, mypy 2.3
+- [x] T003 [P] Configure Ruff (format + lint, line length 100) and mypy (strict on `src/careerhq`) in `backend/pyproject.toml`
+- [x] T004 [P] Configure pytest and coverage in `backend/pyproject.toml`: asyncio mode auto, `--cov=careerhq`, `testpaths = ["tests"]`
+- [x] T005 [P] Initialize the frontend in `frontend/` with Next.js 16.3 App Router, TypeScript 7.0, Tailwind CSS 4.3 (`@theme` in `src/app/globals.css` — Tailwind 4 has no `tailwind.config.js`)
+- [x] T006 [P] Initialize shadcn/ui in `frontend/` — `components.json`, the `cn` helper in `src/lib/utils.ts`, and `clsx`/`tailwind-merge`/`lucide-react` installed. ⚠️ **The four components (`button`, `avatar`, `dropdown-menu`, `skeleton`) are added in User Story 2 when the shell first consumes them** — adding unused components now would be dead code that lint would flag
+- [x] T007 [P] Add the proxy rewrite in `frontend/next.config.ts`: `/api/:path*` → `${BACKEND_URL}/api/:path*` (research.md R-003)
+- [x] T008 [P] Write `backend/Dockerfile` (python:3.12-slim, non-root user, uv or pip install, entrypoint script placeholder)
+- [x] T009 [P] Write `frontend/Dockerfile` (**node:24-alpine** — matching the local Node version rather than the 22 originally planned, dev target with hot reload, production standalone target)
+- [x] T010 [P] Write `.env.example` covering `DATABASE_URL`, `REDIS_URL`, `S3_*`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `SESSION_SECRET`, `SESSION_TTL_DAYS`, `LLM_PROVIDER_MODEL`, `ANTHROPIC_API_KEY`, `EMBEDDING_MODEL` — with comments, no real values
+- [x] T011 [P] Add `backend/.dockerignore` and `frontend/.dockerignore`
 
 ---
 

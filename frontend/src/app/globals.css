@@ -1,0 +1,45 @@
+@import "tailwindcss";
+
+/*
+ * Tailwind 4 configures the design system in CSS via @theme — there is no
+ * tailwind.config.js. Each custom property here generates the matching utility
+ * classes (e.g. --color-brand-600 produces bg-brand-600, text-brand-600, …).
+ */
+@theme {
+  --color-brand-50: oklch(0.977 0.013 180);
+  --color-brand-100: oklch(0.947 0.03 180);
+  --color-brand-200: oklch(0.895 0.055 180);
+  --color-brand-300: oklch(0.825 0.083 180);
+  --color-brand-400: oklch(0.74 0.098 180);
+  --color-brand-500: oklch(0.66 0.1 180);
+  --color-brand-600: oklch(0.56 0.09 180);
+  --color-brand-700: oklch(0.46 0.075 180);
+  --color-brand-800: oklch(0.38 0.06 180);
+  --color-brand-900: oklch(0.32 0.048 180);
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+:root {
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.21 0.006 285);
+  --muted: oklch(0.55 0.014 285);
+  --border: oklch(0.92 0.004 285);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: oklch(0.16 0.004 285);
+    --foreground: oklch(0.97 0.001 285);
+    --muted: oklch(0.65 0.012 285);
+    --border: oklch(0.28 0.006 285);
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
