@@ -166,7 +166,7 @@ regression.
 
 - [ ] T064 [P] Write `README.md` — what CareerHQ is, prerequisites, the one-command start, the local check commands, and links to the spec artifacts
 - [ ] T065 [P] Correct the embeddings section of `docs/06_Technology_Stack.md` — the interface is configurable with local sentence-transformers as the default, because Anthropic provides no embeddings endpoint (constitution correction)
-- [ ] T066 [P] Fill in the empty `docs/05_Implementation_Plan.md` — point to the `specs/` artifacts as the executable plan and record the six-slice roadmap
+- [x] T066 [P] Fill in the empty `docs/05_Implementation_Plan.md` — point to the `specs/` artifacts as the executable plan and record the six-slice roadmap ✅ **Pulled forward out of the polish phase and completed before implementation** — a roadmap is an orientation document, and orientation is worth more at the start than at the end
 - [ ] T067 [P] Complete the truncated sections of `docs/04_System_Design.md` — Knowledge Platform, deployment, security, and observability
 - [ ] T068 Review cookie and header security: confirm `HttpOnly`, `SameSite=Lax`, `Secure` outside local, and that no secret appears in logs or error responses
 - [ ] T069 Run the whole of [quickstart.md](./quickstart.md) from a fresh clone on a clean Docker state and fix anything that does not match
