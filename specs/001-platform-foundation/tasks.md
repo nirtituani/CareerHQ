@@ -32,7 +32,7 @@ Web application layout per plan.md: `backend/src/careerhq/`, `frontend/src/`, wi
 **Purpose**: Repository scaffolding and tooling. Nothing runs yet.
 
 - [ ] T001 Create the directory tree from plan.md: `backend/src/careerhq/{api/routes,application,domain,infrastructure}/`, `backend/tests/{unit,integration}/`, `backend/alembic/versions/`, `frontend/src/{app,components,lib}/`
-- [ ] T002 [P] Create `backend/pyproject.toml` pinning FastAPI 0.141, SQLAlchemy 2.0, Alembic 1.19, Pydantic 2.13, pydantic-settings 2.14, Authlib 1.7, psycopg 3.3, redis 8.1, boto3, python-jose or pyjwt, uvicorn; dev group pytest 9.1, pytest-asyncio, pytest-cov, httpx, ruff 0.16, mypy 2.3
+- [ ] T002 [P] Create `backend/pyproject.toml` pinning FastAPI 0.141, SQLAlchemy 2.0, Alembic 1.19, Pydantic 2.13, pydantic-settings 2.14, Authlib 1.7, psycopg 3.3, redis 8.1, boto3, pyjwt, uvicorn; dev group pytest 9.1, pytest-asyncio, pytest-cov, httpx, ruff 0.16, mypy 2.3
 - [ ] T003 [P] Configure Ruff (format + lint, line length 100) and mypy (strict on `src/careerhq`) in `backend/pyproject.toml`
 - [ ] T004 [P] Configure pytest and coverage in `backend/pyproject.toml`: asyncio mode auto, `--cov=careerhq`, `testpaths = ["tests"]`
 - [ ] T005 [P] Initialize the frontend in `frontend/` with Next.js 16.3 App Router, TypeScript 7.0, Tailwind CSS 4.3 (`@theme` in `src/app/globals.css` — Tailwind 4 has no `tailwind.config.js`)
@@ -51,7 +51,7 @@ Web application layout per plan.md: `backend/src/careerhq/`, `frontend/src/`, wi
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete.
 
-- [ ] T012 Implement `Settings(BaseSettings)` in `backend/src/careerhq/config.py` — required secrets typed without defaults so a missing value raises at import (research.md R-007, FR-005, FR-006)
+- [ ] T012 Implement `Settings(BaseSettings)` in `backend/src/careerhq/config.py` — required secrets typed without defaults so a missing value raises at import (research.md R-007, FR-005, FR-006). Include the AI configuration seam with no client code behind it: `llm_provider_model` defaulting to `anthropic/claude-opus-5`, optional `anthropic_api_key`, and `embedding_model` defaulting to a local sentence-transformers model (research.md R-008)
 - [ ] T013 [P] Implement structured JSON logging plus an `X-Request-ID` middleware in `backend/src/careerhq/infrastructure/logging.py` — generate an ID when absent, echo it in the response header, bind it to every log record (FR-008)
 - [ ] T014 [P] Implement the async engine, `async_sessionmaker`, and `get_db` dependency in `backend/src/careerhq/infrastructure/database.py`
 - [ ] T015 Implement the app factory in `backend/src/careerhq/main.py` — instantiate FastAPI with `docs_url="/api/docs"`, attach the logging middleware, register routers
@@ -77,19 +77,19 @@ that the API documentation page renders.
 
 - [ ] T018 [P] [US1] Test `GET /api/health` returns 200 with `status: ok` in `backend/tests/integration/test_health.py`
 - [ ] T019 [P] [US1] Test `GET /api/health/ready` returns 200 and names database, cache, and object_storage when all reachable, in `backend/tests/integration/test_health.py`
-- [ ] T020 [P] [US1] Test readiness returns 503 and names the failing dependency when one probe raises, in `backend/tests/integration/test_health.py` (SC-008)
+- [ ] T020 [P] [US1] Test readiness returns 503 and names the failing dependency, **parameterized across all three** (database, cache, object_storage) so each is proven independently, in `backend/tests/integration/test_health.py` (SC-008 says 100% of outage cases, so one case is not enough)
 - [ ] T021 [P] [US1] Test that constructing `Settings` without a required secret raises `ValidationError` naming the field, in `backend/tests/unit/test_config.py` (FR-006)
 
 ### Implementation for User Story 1
 
 - [ ] T022 [P] [US1] Implement the Redis client and `ping()` probe in `backend/src/careerhq/infrastructure/redis.py`
 - [ ] T023 [P] [US1] Implement the S3-compatible client and bucket-head probe in `backend/src/careerhq/infrastructure/storage.py`
-- [ ] T024 [US1] Implement `GET /api/health` and `GET /api/health/ready` in `backend/src/careerhq/api/routes/health.py` — probes run concurrently via `asyncio.gather`, each with a 2 s timeout, per-dependency latency reported, 503 when any fails (contracts/api.md)
+- [ ] T024 [US1] Implement `GET /api/health` and `GET /api/health/ready` in `backend/src/careerhq/api/routes/health.py` — probes run concurrently via `asyncio.gather`, each with a 2 s timeout, per-dependency latency reported, 503 when any fails; report `version` read from the installed package metadata (contracts/api.md)
 - [ ] T025 [US1] Register the health router and set OpenAPI title/version in `backend/src/careerhq/main.py` (FR-007)
 - [ ] T026 [US1] Write migration `backend/alembic/versions/0001_extensions.py` — `CREATE EXTENSION IF NOT EXISTS vector` and `pgcrypto`, with a working downgrade (FR-004)
 - [ ] T027 [US1] Write `backend/entrypoint.sh` running `alembic upgrade head` then `uvicorn`, and wire it as the Dockerfile entrypoint (FR-003)
-- [ ] T028 [US1] Write `docker-compose.yml` with postgres (`pgvector/pgvector:pg17`), redis, minio, backend, frontend — named volumes, `depends_on` with `condition: service_healthy`, and a healthcheck on each service
-- [ ] T029 [US1] Add a MinIO bucket-bootstrap step so the configured bucket exists on first start
+- [ ] T028 [US1] Add a `minio-init` service to `docker-compose.yml` that creates the configured bucket and exits — the readiness probe heads the bucket, so it must exist *before* the backend starts or readiness fails on a first run
+- [ ] T029 [US1] Write the rest of `docker-compose.yml`: postgres (`pgvector/pgvector:pg17`), redis, minio, backend, frontend — named volumes, a healthcheck on each long-running service, and `depends_on` where backend waits on postgres/redis `service_healthy` and on `minio-init` `service_completed_successfully`
 - [ ] T030 [US1] Run the User Story 1 section of [quickstart.md](./quickstart.md) end to end, including the fail-fast and dependency-outage checks
 
 **Checkpoint**: The platform starts with one command and honestly reports its own health. This is
@@ -110,7 +110,7 @@ empty workspace showing your identity, sign out, and confirm the workspace is un
 - [ ] T031 [P] [US2] Test first sign-in creates exactly one user and one profile, in `backend/tests/integration/test_provisioning.py` (FR-010)
 - [ ] T032 [P] [US2] Test a returning user reuses the existing account and creates no second profile, in `backend/tests/integration/test_provisioning.py` (FR-011)
 - [ ] T033 [P] [US2] Test **concurrent** first sign-in for the same Google subject yields exactly one user and one profile, in `backend/tests/integration/test_provisioning.py` (SC-004, research.md R-004)
-- [ ] T034 [P] [US2] Test `GET /api/auth/me` and `GET /api/profile` return 401 with no cookie, an expired cookie, and a tampered cookie, in `backend/tests/integration/test_auth.py` (FR-014)
+- [ ] T034 [P] [US2] Test unauthenticated access is refused, in `backend/tests/integration/test_auth.py` (FR-014, SC-003). Two layers: (a) `GET /api/auth/me` and `GET /api/profile` each return 401 with no cookie, an expired cookie, and a tampered cookie; (b) **enumerate `app.routes`** and assert every route outside an explicit public allowlist (`/api/health*`, `/api/auth/google/*`, `/api/docs`, `/api/openapi.json`) returns 401 unauthenticated — so a future endpoint added without auth fails CI instead of shipping open
 - [ ] T035 [P] [US2] Test user A's session cannot read user B's profile, in `backend/tests/integration/test_isolation.py` (SC-005, FR-015)
 - [ ] T036 [P] [US2] Test logout expires the cookie and is safe to call twice, in `backend/tests/integration/test_auth.py`
 - [ ] T037 [P] [US2] Test the callback with a denied/cancelled consent redirects to login with an error and creates no account, in `backend/tests/integration/test_auth.py`
@@ -122,19 +122,20 @@ empty workspace showing your identity, sign out, and confirm the workspace is un
 - [ ] T040 [P] [US2] Define Pydantic response schemas (`UserOut`, `ProfileOut`) in `backend/src/careerhq/domain/schemas.py` matching contracts/api.md
 - [ ] T041 [US2] Write migration `backend/alembic/versions/0002_users_profiles.py` creating both tables with `UNIQUE(google_sub)` and `UNIQUE(user_id)` declared inline, plus a working downgrade
 - [ ] T042 [P] [US2] Implement JWT encode/decode and cookie set/clear helpers in `backend/src/careerhq/infrastructure/security.py` — HttpOnly, SameSite=Lax, Secure when not local, Max-Age from `SESSION_TTL_DAYS` (FR-016)
-- [ ] T043 [US2] Implement idempotent provisioning in `backend/src/careerhq/application/provision_user.py` — `INSERT ... ON CONFLICT DO NOTHING` then select, user and profile in one transaction (FR-010, FR-011)
-- [ ] T044 [US2] Implement `GET /api/auth/google/login` in `backend/src/careerhq/api/routes/auth.py` — Authlib client, `state` in a short-lived HttpOnly cookie, reject absolute `next` values (contracts/api.md)
-- [ ] T045 [US2] Implement `GET /api/auth/google/callback` in `backend/src/careerhq/api/routes/auth.py` — validate state, exchange code, verify the ID token, call provisioning, issue the session cookie, redirect
-- [ ] T046 [US2] Implement the `get_current_user` dependency in `backend/src/careerhq/api/deps.py` — decode the cookie, load the user, raise 401 on any failure including a `sub` that no longer exists
-- [ ] T047 [US2] Implement `GET /api/auth/me` and `POST /api/auth/logout` in `backend/src/careerhq/api/routes/auth.py`
-- [ ] T048 [US2] Implement `GET /api/profile` in `backend/src/careerhq/api/routes/profile.py` — resolves the profile from the session only; no route accepts a client-supplied ID (FR-015)
-- [ ] T049 [P] [US2] Implement the typed fetch wrapper in `frontend/src/lib/api.ts` — same-origin requests, 401 handling, typed responses
-- [ ] T050 [P] [US2] Build the sign-in page at `frontend/src/app/login/page.tsx` with a "Continue with Google" action and an error state for a declined consent
-- [ ] T051 [US2] Build the authenticated shell in `frontend/src/components/app-shell.tsx` and `frontend/src/components/user-menu.tsx` — navigation plus name/email/avatar and a sign-out action (FR-017)
-- [ ] T052 [US2] Build the empty dashboard at `frontend/src/app/dashboard/page.tsx` stating no data exists yet and what will appear there (FR-018)
-- [ ] T053 [US2] Add the route guard in `frontend/src/middleware.ts` redirecting unauthenticated visitors from protected paths to `/login` (FR-014)
-- [ ] T054 [US2] Add a non-technical API-unreachable state that recovers automatically once the backend is healthy, in `frontend/src/components/api-unavailable.tsx` and the dashboard route (FR-019)
-- [ ] T055 [US2] Run the User Story 2 section of [quickstart.md](./quickstart.md), including the database row-count check and the HttpOnly cookie inspection
+- [ ] T043 [P] [US2] Define the verified-claims seam in `backend/src/careerhq/api/deps.py`: a `get_verified_google_claims` dependency that performs the Authlib token exchange and ID-token verification, returning a typed `GoogleClaims` object. **The callback route must depend on this rather than calling Authlib inline** — overriding it is how T031–T033 and T037 exercise real provisioning, cookie issuance, and redirect logic without a network call to Google (research.md R-009)
+- [ ] T044 [US2] Implement idempotent provisioning in `backend/src/careerhq/application/provision_user.py` — `INSERT ... ON CONFLICT DO NOTHING` then select, user and profile in one transaction (FR-010, FR-011)
+- [ ] T045 [US2] Implement `GET /api/auth/google/login` in `backend/src/careerhq/api/routes/auth.py` — Authlib client, `state` in a short-lived HttpOnly cookie, reject absolute `next` values (contracts/api.md)
+- [ ] T046 [US2] Implement `GET /api/auth/google/callback` in `backend/src/careerhq/api/routes/auth.py` — validate state, resolve claims via the T043 dependency, call provisioning, issue the session cookie, redirect
+- [ ] T047 [US2] Implement the `get_current_user` dependency in `backend/src/careerhq/api/deps.py` — decode the cookie, load the user, raise 401 on any failure including a `sub` that no longer exists
+- [ ] T048 [US2] Implement `GET /api/auth/me` and `POST /api/auth/logout` in `backend/src/careerhq/api/routes/auth.py`
+- [ ] T049 [US2] Implement `GET /api/profile` in `backend/src/careerhq/api/routes/profile.py` — resolves the profile from the session only; no route accepts a client-supplied ID (FR-015)
+- [ ] T050 [P] [US2] Implement the typed fetch wrapper in `frontend/src/lib/api.ts` — same-origin requests, 401 handling, typed responses
+- [ ] T051 [P] [US2] Build the sign-in page at `frontend/src/app/login/page.tsx` with a "Continue with Google" action and an error state for a declined consent
+- [ ] T052 [US2] Build the authenticated shell in `frontend/src/components/app-shell.tsx` and `frontend/src/components/user-menu.tsx` — navigation plus name/email/avatar and a sign-out action (FR-017)
+- [ ] T053 [US2] Build the empty dashboard at `frontend/src/app/dashboard/page.tsx` stating no data exists yet and what will appear there (FR-018)
+- [ ] T054 [US2] Add the route guard in `frontend/src/middleware.ts` redirecting unauthenticated visitors from protected paths to `/login` (FR-014). This checks cookie *presence* only — middleware has no access to the signing secret, so an expired or forged cookie renders the page and is then refused by the API. Authorization lives at the API boundary; the guard is a redirect convenience, not a security control
+- [ ] T055 [US2] Add a non-technical API-unreachable state that recovers automatically once the backend is healthy, in `frontend/src/components/api-unavailable.tsx` and the dashboard route (FR-019)
+- [ ] T056 [US2] Run the User Story 2 section of [quickstart.md](./quickstart.md), including the database row-count check and the HttpOnly cookie inspection
 
 **Checkpoint**: A real person can sign in and reach their own workspace. Stories 1 and 2 both work
 independently.
@@ -148,13 +149,13 @@ independently.
 **Independent Test**: Push a branch containing a deliberate style violation, type error, and
 failing test; confirm the pipeline fails and names each problem; fix and confirm it passes.
 
-- [ ] T056 [P] [US3] Configure Vitest and Testing Library in `frontend/vitest.config.ts` and add a rendering test for the app shell in `frontend/src/components/__tests__/app-shell.test.tsx`
-- [ ] T057 [P] [US3] Add a Playwright smoke test covering the signed-out redirect to login in `frontend/e2e/auth.spec.ts`
-- [ ] T058 [P] [US3] Add `lint`, `test`, and `build` scripts to `frontend/package.json`
-- [ ] T059 [US3] Enforce the coverage floor with `--cov-fail-under=80` in `backend/pyproject.toml` (SC-007)
-- [ ] T060 [US3] Write `.github/workflows/ci.yml` — backend job (ruff format --check, ruff check, mypy, pytest with a Postgres service container) and frontend job (lint, test, build), both on push and pull request (FR-020, FR-021)
-- [ ] T061 [US3] Document the equivalent local commands in `README.md` so developers get identical results to CI (FR-022)
-- [ ] T062 [US3] Verify the pipeline actually fails: push a branch with a deliberate formatting error, an unannotated function, and a failing assertion; confirm each is named; then fix and confirm green
+- [ ] T057 [P] [US3] Configure Vitest and Testing Library in `frontend/vitest.config.ts` and add a rendering test for the app shell in `frontend/src/components/__tests__/app-shell.test.tsx`
+- [ ] T058 [P] [US3] Add a Playwright smoke test covering the signed-out redirect to login in `frontend/e2e/auth.spec.ts`
+- [ ] T059 [P] [US3] Add `lint`, `test`, and `build` scripts to `frontend/package.json`
+- [ ] T060 [US3] Enforce the coverage floor with `--cov-fail-under=80` in `backend/pyproject.toml` (SC-007)
+- [ ] T061 [US3] Write `.github/workflows/ci.yml` — backend job (ruff format --check, ruff check, mypy, pytest with a Postgres service container) and frontend job (lint, test, build), both on push and pull request (FR-020, FR-021)
+- [ ] T062 [US3] Document the equivalent local commands in `README.md` so developers get identical results to CI (FR-022)
+- [ ] T063 [US3] Verify the pipeline actually fails: push a branch with a deliberate formatting error, an unannotated function, and a failing assertion; confirm each is named; then fix and confirm green
 
 **Checkpoint**: All three stories are independently functional and the work is protected from
 regression.
@@ -163,12 +164,12 @@ regression.
 
 ## Phase 6: Polish & Cross-Cutting Concerns
 
-- [ ] T063 [P] Write `README.md` — what CareerHQ is, prerequisites, the one-command start, the local check commands, and links to the spec artifacts
-- [ ] T064 [P] Correct the embeddings section of `docs/06_Technology_Stack.md` — the interface is configurable with local sentence-transformers as the default, because Anthropic provides no embeddings endpoint (constitution correction)
-- [ ] T065 [P] Fill in the empty `docs/05_Implementation_Plan.md` — point to the `specs/` artifacts as the executable plan and record the six-slice roadmap
-- [ ] T066 [P] Complete the truncated sections of `docs/04_System_Design.md` — Knowledge Platform, deployment, security, and observability
-- [ ] T067 Review cookie and header security: confirm `HttpOnly`, `SameSite=Lax`, `Secure` outside local, and that no secret appears in logs or error responses
-- [ ] T068 Run the whole of [quickstart.md](./quickstart.md) from a fresh clone on a clean Docker state and fix anything that does not match
+- [ ] T064 [P] Write `README.md` — what CareerHQ is, prerequisites, the one-command start, the local check commands, and links to the spec artifacts
+- [ ] T065 [P] Correct the embeddings section of `docs/06_Technology_Stack.md` — the interface is configurable with local sentence-transformers as the default, because Anthropic provides no embeddings endpoint (constitution correction)
+- [ ] T066 [P] Fill in the empty `docs/05_Implementation_Plan.md` — point to the `specs/` artifacts as the executable plan and record the six-slice roadmap
+- [ ] T067 [P] Complete the truncated sections of `docs/04_System_Design.md` — Knowledge Platform, deployment, security, and observability
+- [ ] T068 Review cookie and header security: confirm `HttpOnly`, `SameSite=Lax`, `Secure` outside local, and that no secret appears in logs or error responses
+- [ ] T069 Run the whole of [quickstart.md](./quickstart.md) from a fresh clone on a clean Docker state and fix anything that does not match
 
 ---
 
@@ -192,16 +193,17 @@ frontend that consumes it.
 
 ### Critical path
 
-T012 (settings) → T015 (app factory) → T024 (health) → T028 (compose) → T041 (schema) → T043
-(provisioning) → T045 (callback) → T052 (dashboard). Everything else hangs off this spine.
+T012 (settings) → T015 (app factory) → T024 (health) → T029 (compose) → T041 (schema) → T043
+(claims seam) → T044 (provisioning) → T046 (callback) → T053 (dashboard). Everything else hangs
+off this spine.
 
 ### Parallel opportunities
 
 - Phase 1: T002–T011 are all independent files
 - Phase 2: T013, T014, and T017 can run alongside each other after T012
 - US1: all four tests (T018–T021) in parallel; then T022 and T023 in parallel
-- US2: all eight tests (T031–T038) in parallel; then T039, T040, T042, T049, T050 in parallel
-- US3: T056, T057, T058 in parallel
+- US2: all eight tests (T031–T038) in parallel; then T039, T040, T042, T050, T051 in parallel
+- US3: T057, T058, T059 in parallel
 
 ---
 
@@ -220,7 +222,11 @@ Task: "Define User and ProfessionalProfile models in backend/src/careerhq/domain
 Task: "Define response schemas in backend/src/careerhq/domain/schemas.py"
 Task: "Implement JWT and cookie helpers in backend/src/careerhq/infrastructure/security.py"
 Task: "Implement the fetch wrapper in frontend/src/lib/api.ts"
+Task: "Build the sign-in page in frontend/src/app/login/page.tsx"
 ```
+
+Note that T043 (the verified-claims seam) is **not** parallelizable with the tests above — the
+tests override it, so it has to exist first. It is the one task in this phase that gates the rest.
 
 ---
 
@@ -239,8 +245,9 @@ dashboard) → US3 (demo: CI catches a deliberate break) → Polish.
 
 ### Notes
 
-- The Google OAuth client must exist before T055 can be verified. Create it while Phase 1–3 work
-  is underway so it never blocks.
+- The Google OAuth client must exist before T056 can be verified, but not before any earlier task
+  — the T043 claims seam makes the whole backend auth flow testable without it. Create it while
+  Phase 1–3 work is underway so it never lands on the critical path.
 - Commit after each task or logical group; the branch is `001-platform-foundation`.
 - Two migrations rather than one: `0001_extensions` belongs to US1 (environment readiness) and
   `0002_users_profiles` to US2 (identity). This keeps each story independently shippable and

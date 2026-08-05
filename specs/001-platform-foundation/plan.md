@@ -110,7 +110,7 @@ backend/
 │       ├── storage.py               # S3-compatible client + bucket check
 │       ├── security.py              # JWT encode/decode, cookie helpers
 │       └── logging.py               # Structured logs with request correlation
-├── alembic/versions/0001_foundation.py
+├── alembic/versions/         # 0001_extensions.py, 0002_users_profiles.py
 ├── tests/{unit,integration}/
 ├── pyproject.toml                   # deps, ruff, mypy, pytest, coverage config
 └── Dockerfile
@@ -145,8 +145,9 @@ Ordered so each step is verifiable before the next depends on it.
 2. **Backend skeleton + health** — app factory, structured logging with request IDs, both health
    endpoints. Verify: liveness and readiness respond, `/api/docs` renders, stopping Redis turns
    readiness 503 naming `cache`.
-3. **Schema + migration** — models and `0001_foundation` (extensions, both tables, both UNIQUE
-   constraints). Verify: `alembic upgrade head` from empty, then `downgrade base` cleanly.
+3. **Schema + migrations** — `0001_extensions` (pgvector, pgcrypto) ships with step 2 so the
+   environment story stands alone; `0002_users_profiles` (both tables, both UNIQUE constraints)
+   ships with step 4. Verify: `alembic upgrade head` from empty, then `downgrade base` cleanly.
 4. **Auth + provisioning** — Authlib login/callback, JWT cookie issuance, idempotent
    provisioning, `/api/auth/me`, logout, `/api/profile`. Verify: the concurrency test yields one
    user and one profile; unauthenticated requests get 401.
