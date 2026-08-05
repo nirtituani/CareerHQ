@@ -89,11 +89,18 @@ erDiagram
 
 ## Migration notes
 
-Migration `0001_foundation`:
+Two migrations rather than one, so each user story ships independently:
+
+**`0001_extensions`** (User Story 1 — environment readiness):
 1. `CREATE EXTENSION IF NOT EXISTS vector` — enabled now so later knowledge features need no
    environment change (FR-004).
 2. `CREATE EXTENSION IF NOT EXISTS pgcrypto` — for `gen_random_uuid()` on Postgres versions where
    it isn't built in.
+
+**`0002_users_profiles`** (User Story 2 — identity):
 3. Create `users`, then `professional_profiles` (FK order matters).
-4. Both UNIQUE constraints are created with the tables, not added later — they are correctness
+4. Both UNIQUE constraints are declared with the tables, not added later — they are correctness
    constraints, and a window without them is a window where bad rows can land.
+
+Both migrations need a working `downgrade`, verified by running `alembic downgrade base` against a
+populated database.
