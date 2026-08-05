@@ -12,7 +12,9 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-careerhq}
       POSTGRES_DB: ${POSTGRES_DB:-careerhq}
     ports:
-      - "5432:5432"
+      # Host ports are configurable so a port already taken by another project
+      # is a one-line .env change rather than an edit to this file.
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -26,7 +28,7 @@ services:
     image: redis:8-alpine
     command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -42,8 +44,8 @@ services:
       MINIO_ROOT_USER: ${S3_ACCESS_KEY:-minioadmin}
       MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-minioadmin}
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
     volumes:
       - minio_data:/data
     healthcheck:
@@ -85,7 +87,7 @@ services:
       REDIS_URL: redis://redis:6379/0
       S3_ENDPOINT_URL: http://minio:9000
     ports:
-      - "8000:8000"
+      - "${BACKEND_PORT:-8000}:8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -108,7 +110,7 @@ services:
       BACKEND_URL: http://backend:8000
       WATCHPACK_POLLING: "true"
     ports:
-      - "3000:3000"
+      - "${FRONTEND_PORT:-3000}:3000"
     volumes:
       - ./frontend/src:/app/src
       - ./frontend/next.config.ts:/app/next.config.ts

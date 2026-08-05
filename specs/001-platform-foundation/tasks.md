@@ -90,7 +90,7 @@ that the API documentation page renders.
 - [x] T027 [US1] Write `backend/entrypoint.sh` running `alembic upgrade head` then `uvicorn`, and wire it as the Dockerfile entrypoint (FR-003)
 - [x] T028 [US1] Add a `minio-init` service to `docker-compose.yml` that creates the configured bucket and exits — the readiness probe heads the bucket, so it must exist *before* the backend starts or readiness fails on a first run
 - [x] T029 [US1] Write the rest of `docker-compose.yml`: postgres (`pgvector/pgvector:pg17`), redis, minio, backend, frontend — named volumes, a healthcheck on each long-running service, and `depends_on` where backend waits on postgres/redis `service_healthy` and on `minio-init` `service_completed_successfully`
-- [ ] T030 [US1] Run the User Story 1 section of [quickstart.md](./quickstart.md) end to end, including the fail-fast and dependency-outage checks
+- [x] T030 [US1] Run the User Story 1 section of [quickstart.md](./quickstart.md) end to end, including the fail-fast and dependency-outage checks
 
 **Checkpoint**: The platform starts with one command and honestly reports its own health. This is
 the MVP — everything after this builds on a running system.

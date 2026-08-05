@@ -43,6 +43,27 @@ def test_missing_required_value_fails_and_names_the_field(
     assert missing in str(exc_info.value)
 
 
+@pytest.mark.parametrize("empty_value", ["", "   ", "too-short"])
+def test_empty_or_weak_session_secret_is_rejected(
+    monkeypatch: pytest.MonkeyPatch, empty_value: str
+) -> None:
+    """Found during quickstart verification (T030).
+
+    `.env.example` ships SESSION_SECRET present but empty. "Required" alone
+    accepts an empty string, so a developer who copies the example without
+    filling it in would run with an empty token-signing secret — sessions
+    forgeable by anyone. A minimum length turns that into a startup failure.
+    """
+    for key, value in TEST_ENV.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setenv("SESSION_SECRET", empty_value)
+
+    with pytest.raises(ValidationError) as exc_info:
+        Settings(_env_file=None)  # type: ignore[call-arg]
+
+    assert "session_secret" in str(exc_info.value)
+
+
 def test_valid_environment_constructs(monkeypatch: pytest.MonkeyPatch) -> None:
     for key, value in TEST_ENV.items():
         monkeypatch.setenv(key, value)

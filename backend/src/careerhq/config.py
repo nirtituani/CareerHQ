@@ -43,8 +43,12 @@ class Settings(BaseSettings):
     s3_region: str = "us-east-1"
 
     # -- Authentication -----------------------------------------------------
-    # Required: the application cannot sign anything without it.
-    session_secret: SecretStr
+    # Required, and a minimum length is enforced rather than merely required:
+    # .env.example ships this key present but empty, so "required" alone would
+    # accept an empty string and the application would sign session tokens with
+    # nothing. Rejecting it here is the difference between a startup error and
+    # a forgeable session.
+    session_secret: SecretStr = Field(min_length=32)
     session_ttl_days: int = Field(default=7, ge=1, le=90)
 
     # Optional by design. Sign-in cannot work without them, but the platform
