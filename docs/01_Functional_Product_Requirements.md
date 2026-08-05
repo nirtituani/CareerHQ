@@ -90,9 +90,26 @@ The Professional Profile serves as the system's single source of truth.
 
 ---
 
+## Imported Resume
+
+An Imported Resume is an existing CV file the user uploads.
+
+It is **parsed into structured Professional Profile content** and then discarded as a primary
+artifact. The uploaded file is never the source of truth — the structured data extracted from it
+is. Parsing is AI-assisted and always reviewed by the user before the content is accepted.
+
+This is the primary way a Professional Profile is populated in Version 1. Building a profile from
+scratch through a guided editor is future work.
+
+---
+
 ## Resume Profile
 
 A Resume Profile represents a career-oriented presentation of the Professional Profile.
+
+It is referred to in the product interface as a **Master Resume** — for example "Backend Master"
+or "AI Backend Master". The two terms describe the same entity: `Resume Profile` is the domain
+name, "Master Resume" is what the user sees.
 
 Each Resume Profile defines:
 
@@ -195,6 +212,62 @@ Users shall be able to update their Professional Profile over time.
 
 ---
 
+## Resume Import
+
+### Purpose
+
+Populate the Professional Profile from an existing CV, so a user reaches value without manual
+data entry.
+
+### User Story
+
+**US-007**
+
+As a job seeker, I want to upload my existing CV and have CareerHQ understand it, so that I do
+not have to retype my career history before the platform is useful to me.
+
+### Functional Requirements
+
+**FR-024**
+
+The system shall accept an uploaded resume file in PDF or DOCX format.
+
+**FR-025**
+
+The system shall extract structured content from the uploaded file — contact information,
+professional titles, summary, work experience with individual bullets, skills, projects,
+education, certifications, and languages.
+
+**FR-026**
+
+The system shall present the extracted content to the user for review, correction, and approval
+before any of it becomes part of the Professional Profile.
+
+**FR-027**
+
+Extracted content shall be marked with its source and confidence so that user-verified facts
+remain distinguishable from unverified extraction.
+
+**FR-028**
+
+The system shall create an initial Resume Profile from the approved import, so the user has a
+Master Resume to tailor from immediately.
+
+**FR-029**
+
+The uploaded file shall be retained for reference but shall not be the source of truth for any
+downstream capability.
+
+### Acceptance Criteria
+
+- A PDF or DOCX resume is accepted and parsed.
+- Extracted content is displayed for review before it is stored.
+- The user can correct any extracted field.
+- Approving the import produces a populated Professional Profile and one Resume Profile.
+- No downstream feature reads the original file.
+
+---
+
 ## Resume Profiles
 
 ### Purpose
@@ -278,6 +351,30 @@ Approved Resume Versions shall be exportable as PDF.
 **FR-015**
 
 Exported resumes linked to Applications shall become immutable Submitted Resumes.
+
+**FR-030**
+
+Every Resume Version shall record which Resume Profile it was created from and the state of that
+profile at creation time. After creation the Version is an independent document — **lineage is
+recorded, not inherited**. Updating a Resume Profile shall never alter any Version created from it.
+
+**FR-031**
+
+Resume Versions shall progress through the lifecycle `Draft → Ready → Exported → Submitted`.
+Marking a Version as Submitted shall lock it permanently: it cannot be edited, and it can be
+viewed, re-downloaded, or duplicated into a new Version, but never modified in place.
+
+**FR-032**
+
+Content inclusion shall be controlled at the individual item level — each experience bullet,
+skill, and project may be included in or excluded from a given Resume Version without being
+removed from the Professional Profile.
+
+**FR-033**
+
+When a Resume Profile changes after Versions have been created from it, the system may inform the
+user that a newer Master is available for future tailoring. It shall never modify an existing
+Version, and shall never modify a Submitted Resume under any circumstance.
 
 ### Acceptance Criteria
 
@@ -446,9 +543,51 @@ Require explicit user approval before applying AI-generated changes.
 
 Ensure every AI-generated recommendation is reversible.
 
+**AI-011**
+
+Extract structured professional content from an uploaded resume file, returning typed data rather
+than prose, with a confidence indication per extracted item.
+
+**AI-012**
+
+Critique its own proposed output before presenting it to the user. A Reviewer step shall verify
+that every claim in a tailored resume is grounded in existing Professional Profile content, detect
+overstated or unsupported phrasing, and check coverage against the Job Description requirements.
+
+**AI-013**
+
+Produce a Confidence Score for each tailored Resume Version and request revision from the
+generating agent when that score falls below an acceptable threshold.
+
+**AI-014**
+
+Never present output that failed its own Reviewer check without surfacing what failed.
+
 ---
 
 # 8. User Workflows
+
+## Onboarding Workflow
+
+Upload Existing Resume
+
+↓
+
+Parse into Structured Content
+
+↓
+
+User Reviews and Corrects
+
+↓
+
+Professional Profile Populated
+
+↓
+
+Initial Master Resume Created
+
+---
 
 ## Resume Tailoring Workflow
 
@@ -456,7 +595,7 @@ Professional Profile
 
 ↓
 
-Select Resume Profile
+Select Master Resume
 
 ↓
 
@@ -472,11 +611,23 @@ Job Analysis
 
 ↓
 
+Retrieve Resume Guidelines
+
+↓
+
 Professional Profile Matching
 
 ↓
 
 Resume Tailoring
+
+↓
+
+Reviewer — Self-Critique and Grounding Check
+
+↓
+
+Revise if Confidence Below Threshold
 
 ↓
 
@@ -492,15 +643,11 @@ Visual Diff
 
 ↓
 
-User Review
+User Review — Item-Level Approval
 
 ↓
 
-User Approval
-
-↓
-
-Resume Version
+Resume Version (Draft → Ready)
 
 ↓
 
@@ -508,7 +655,7 @@ Export PDF
 
 ↓
 
-Submitted Resume
+Submitted Resume — Locked
 
 ---
 
@@ -580,12 +727,14 @@ The platform shall support modular expansion.
 
 Included in Version 1:
 
-- Professional Profile
-- Resume Profiles
-- Resume Tailoring
+- Resume Import and structured parsing
+- Professional Profile (populated by import, correctable by the user)
+- Resume Profiles / Master Resumes
+- Resume Tailoring with self-critique
 - Resume Match Analysis
-- AI Recommendations
-- Resume Versioning
+- AI Recommendations with item-level approval
+- Reviewer / Evaluation layer with Confidence Scores
+- Resume Versioning with lineage and immutable submissions
 - PDF Export
 - Application Tracking
 - Company Research
@@ -612,7 +761,23 @@ The following capabilities are intentionally excluded from Version 1:
 
 Future releases may include:
 
+**Resume Builder (from scratch)** — a guided, section-by-section editor for composing a resume
+without importing one, with a live preview beside the form. The target experience is the Teal /
+Gloat resume builder: per-item inclusion checkboxes, drag-to-reorder sections, and a completeness
+indicator. Version 1 populates the profile by import instead, because the underlying data model is
+identical and the builder is purely an additional interface over it.
+
+**Resume Designer** — user-controlled presentation: template library, typography (font family,
+sizes, weights, transformations), spacing controls, header/date/location alignment, skills layout,
+bullet and separator glyphs, borders, and section renaming. Version 1 ships a single well-designed
+ATS-safe template. The `ResumeLayout` value object already carries these fields, so this is an
+interface addition rather than a schema change.
+
+Also planned:
+
 - Interview Coach
+- Application Workflow Agent — proactive follow-up prompts, stale-application detection, and
+  deadline awareness
 - Learning Planner
 - Cover Letter Generation
 - LinkedIn Integration

@@ -425,3 +425,127 @@ Advantages
 Trade-offs
 
 - Slightly higher local resource usage.
+
+---
+
+# ADR-012
+
+## Template Lineage Over Live Inheritance
+
+### Status
+
+Accepted
+
+### Context
+
+A user maintains several Master Resumes — one per career direction, such as "Backend Master" and
+"AI Backend Master" — and creates a job-specific version from one of them for every application.
+
+When a Master is later updated, something must happen to the versions created from it. Two models
+were considered.
+
+### Alternatives Considered
+
+**Live inheritance**
+
+Versions remain linked to their Master and receive its updates.
+
+Pros
+
+- A single edit propagates everywhere.
+- Feels conceptually tidy.
+
+Cons
+
+- **Destroys historical truth.** A resume already sent to an employer would silently change.
+- Requires conflict resolution between inherited and locally-edited content.
+- Makes "what exactly did I send to this company" unanswerable.
+- Complex to implement correctly and easy to get subtly wrong.
+
+### Decision
+
+CareerHQ records **lineage without inheritance**.
+
+A Resume Version stores which Resume Profile it was created from and the state of that profile at
+creation time. From that moment it is an independent document. No update to a Resume Profile, or
+to the Professional Profile, ever alters an existing Version.
+
+The system may *inform* the user that a newer Master is available for future tailoring. It never
+modifies existing work, and never touches a Submitted Resume under any circumstance.
+
+### Consequences
+
+Advantages
+
+- Historical truth is preserved exactly: which resume, to which company, when, at what Match
+  Score, with which changes approved, producing which PDF.
+- Enables retrospective analysis — the Career Advisor can examine which versions led to
+  interviews, which is impossible if versions mutate after the fact.
+- Simpler to implement than propagation with conflict resolution.
+- Directly satisfies the Immutable History principle.
+
+Trade-offs
+
+- A correction that applies to many versions must be made in each, or accepted as historical.
+- Slightly more storage, which is negligible for text.
+
+---
+
+# ADR-013
+
+## Structured Parsing Over Document Editing
+
+### Status
+
+Accepted
+
+### Context
+
+Version 1 populates the Professional Profile by importing an existing CV rather than through a
+guided from-scratch builder. This raises a question: is the uploaded document itself the thing the
+system operates on, or is it merely an input?
+
+### Alternatives Considered
+
+**Document-centric import**
+
+Keep the uploaded resume as a document and have the AI rewrite it directly.
+
+Pros
+
+- Much faster to build — no extraction, no review step.
+- Preserves the original formatting automatically.
+
+Cons
+
+- Match scoring cannot compare structured skills against Job Description requirements.
+- The Career Advisor cannot count skill frequency across applications, so its central capability
+  ("Python appeared in 14 of 20 roles") becomes impossible.
+- Item-level approval has no items to operate on.
+- Contradicts ADR-002, which chose structured knowledge over documents.
+- The deferred from-scratch builder would later require a data migration.
+
+### Decision
+
+An uploaded resume is **parsed into structured Professional Profile content**. The extracted data
+is the source of truth; the original file is retained for reference only and is read by no
+downstream capability.
+
+Because extraction is imperfect, the user reviews and corrects the parsed content before it is
+accepted. Extracted items carry their source and confidence so that verified facts remain
+distinguishable from unverified extraction.
+
+### Consequences
+
+Advantages
+
+- Every downstream capability — match scoring, gap analysis, career insights, item-level approval
+  — works on real structure.
+- Import becomes a *seeding* mechanism, so the future from-scratch builder is an additional
+  interface over identical data with no migration.
+- Consistent with ADR-002 and with the Human-in-the-Loop principle applied at ingest.
+
+Trade-offs
+
+- Extraction quality varies by resume format and requires a review step.
+- Original visual formatting is not preserved; CareerHQ renders its own.

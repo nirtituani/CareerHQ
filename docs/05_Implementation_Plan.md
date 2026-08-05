@@ -2,7 +2,7 @@
 
 > **Implementation Plan**
 
-**Version:** 1.0
+**Version:** 2.0
 **Status:** Active
 **Author:** Nir Tituani
 **Last Updated:** August 2026
@@ -31,7 +31,26 @@ describes the *path* to it.
 
 ---
 
-# 2. Method
+# 2. Constraints
+
+Version 2.0 of this plan is written against real constraints that Version 1.0 ignored.
+
+- **One developer.** Every role — specification, engineering, evaluation, product — is the same
+  person. Slices must be sequential and individually finishable.
+- **Four to six weeks.** The original six-slice roadmap was a multi-month plan. It has been
+  re-cut, not merely re-ordered.
+- **An agent must exist early.** The previous ordering built three deterministic slices before any
+  agent appeared. Under a fixed deadline that risks arriving with an impeccable CRUD application
+  and no agent — failing the central goal while having done more work.
+
+The response to those constraints is not to lower quality. It is to **build fewer things and
+finish them**, guided by a principle taken from the original design notes:
+
+> Better two deep agents and a working system than five shallow ones.
+
+---
+
+# 3. Method
 
 Every slice follows the same loop:
 
@@ -46,35 +65,35 @@ constitution while they are still cheap to fix.
 
 ---
 
-# 3. Slicing Principle
+# 4. Slicing Principle
 
 **Vertical slices, not horizontal layers.**
 
 Each slice ships something demonstrable end to end — API, user interface, and tests — rather than
 completing one architectural layer across the whole product. A slice is not finished when its code
-is written; it is finished when it can be demonstrated against the running Docker Compose stack.
-
-The alternative — building the entire data layer, then the entire API, then the entire frontend —
-defers all learning to the end and produces months of work that has never been run together. This
-matters more here than usual, because several architectural decisions (ADR-005 LangGraph, ADR-008
-RAG) are still marked *Proposed* and only survive contact with a working system.
+is written; it is finished when it can be demonstrated against a deployed environment.
 
 ---
 
-# 4. Roadmap
+# 5. Roadmap
 
 | # | Slice | Delivers | Depends on | Status |
 |---|---|---|---|---|
 | 001 | Platform Foundation | Containerized environment, Google sign-in, authenticated shell, CI | — | **In progress** |
-| 002 | Application Tracking | Applications, companies, status lifecycle, JobTracker import, dashboard | 001 | Planned |
-| 003 | Professional Profile | Profile aggregate and value objects, Resume Profiles, profile editor | 001 | Planned |
-| 004 | Resume Tailoring | LangGraph workflow, RAG retrieval, match analysis, approval, PDF export | 002, 003 | Planned |
-| 005 | Company Research | Research agent, web search, citation-preserving snapshots | 002 | Planned |
-| 006 | Career Advisor | Recurring skill-gap detection, learning priorities | 002, 004 | Planned |
+| 002 | Deployment | Public URL, deployed from Docker, redeployed on every merge | 001 | Planned |
+| 003 | Data Foundation | Resume import and parsing, Professional Profile, applications, JobTracker import | 001 | Planned |
+| 004 | **Resume Tailoring Agent** | LangGraph workflow, RAG, self-critique Reviewer, item-level approval, versions, PDF | 003 | Planned |
+| 005 | Evaluation & Benchmark | Test set, metrics, LLM-as-judge, results dashboard | 004 | Planned |
+| 006 | Company Research | Research agent over a web search MCP, citation-preserving snapshots | 003 | Planned |
+| 007 | Career Advisor | Quantified recurring skill gaps and learning priorities over history | 003, 004 | Planned |
+
+Slices 001–005 are the **core**: together they satisfy every project requirement. Slices 006 and
+007 add the most product value per unit of effort and should follow immediately, but the project
+is defensible without them.
 
 ---
 
-## 4.1 Slice 001 — Platform Foundation
+## 5.1 Slice 001 — Platform Foundation
 
 **Delivers**: A developer clones the repository, runs one command, signs in with Google, and lands
 on an authenticated dashboard, with every quality gate green.
@@ -91,112 +110,207 @@ reliably and requests carry an identity.
 
 ---
 
-## 4.2 Slice 002 — Application Tracking
+## 5.2 Slice 002 — Deployment
 
-**Delivers**: The Application and Company aggregates, the status lifecycle with append-only
-history and normalized analytics categories, notes, contacts, salary, and links — plus an import
-that brings existing JobTracker data across.
+**Delivers**: A public URL running the same containers as local development, redeployed
+automatically on every merge to the main branch.
 
-**Why second**: It is the domain already proven in production in
-[JobTracker](https://github.com/nirtituani/job-tracker-web), so the requirements are known rather
-than guessed, and there is real data to import. That makes it the fastest route to a system that
-is genuinely useful rather than merely running.
+**Why this early**: Deployment is a graded requirement and a classic end-of-project disaster —
+OAuth redirect URIs, environment variables, managed database provisioning, and HTTPS all fail in
+unfamiliar ways the first time. Doing it against a nearly-empty application means debugging
+deployment alone rather than deployment tangled with a half-finished agent. Every later slice then
+ships continuously.
+
+Scope is deliberately small: a managed Postgres with pgvector, the backend and frontend services,
+secrets configured, and the Google OAuth client updated for the deployed domain.
+
+---
+
+## 5.3 Slice 003 — Data Foundation
+
+**Delivers**: The user uploads their existing CV; it is parsed into structured Professional Profile
+content; the user reviews and corrects it; an initial Master Resume is created. Alongside it, a
+minimal Application entity holds jobs and their descriptions, seeded by importing real data from
+[JobTracker](https://github.com/nirtituani/job-tracker-web).
+
+**Why third**: The tailoring agent needs a structured profile to tailor and a job description to
+tailor against. This slice produces both, and nothing in it requires an agent loop — it is the
+last purely deterministic work before the flagship.
+
+**Why import rather than a builder**: A guided from-scratch resume builder is roughly forty
+settings and several weeks of interface work that demonstrates none of the project requirements.
+Importing reaches the same structured data in a fraction of the time. The builder is documented as
+future work in [01_Functional_Product_Requirements.md](01_Functional_Product_Requirements.md) §12,
+and because the data model is identical it will be a pure interface addition (ADR-013).
+
+**Why the JobTracker import matters**: It puts roughly twenty real applications in the database on
+day one. That makes the tailoring demo realistic and, more importantly, gives the Career Advisor
+genuine history to analyze rather than waiting for data to accumulate.
 
 **Migration note**: JobTracker's `rejected` boolean must not survive as an independent source of
 truth. Rejection is derived from the normalized status, per
-[03_Domain_Model.md](03_Domain_Model.md) §14. This is a constitutional constraint, not a
-preference.
+[03_Domain_Model.md](03_Domain_Model.md) §14.
 
 ---
 
-## 4.3 Slice 003 — Professional Profile
+## 5.4 Slice 004 — Resume Tailoring Agent
 
-**Delivers**: The ProfessionalProfile aggregate populated with its value objects — work
-experience and bullets, skills, projects, education, certifications, languages — plus Resume
-Profiles and the editor to maintain them.
+**The flagship.** Everything before it exists to make this possible; everything after builds on it.
 
-**Why third**: It is the largest purely deterministic slice, and slice 004 cannot tailor a resume
-that does not exist. Building it before any AI touches it also proves the profile stands on its
-own, which is what Principle I claims.
+**Delivers** a LangGraph workflow implementing the loop:
 
----
+```text
+Analyze Job Description
+  → Retrieve resume guidelines (RAG over pgvector)
+  → Draft tailored content
+  → Reviewer: self-critique, grounding check, confidence score
+  → Revise if below threshold
+  → Present diff for item-level human approval
+  → Frozen Resume Version with recorded lineage
+  → PDF export → Submitted and locked
+```
 
-## 4.4 Slice 004 — Resume Tailoring
+The **Reviewer** is not optional decoration. It verifies that every claim is grounded in existing
+profile content, detects overstated phrasing, checks coverage against the job requirements, and
+returns a confidence score that can send the draft back for revision. It is what makes the system
+trustworthy rather than merely generative, and it is the component the original design notes
+identified as most important.
 
-**Delivers**: The flagship capability. A LangGraph workflow that analyzes a job description,
-retrieves relevant knowledge, proposes tailored content, **pauses for explicit human approval**,
-and only then creates a Resume Version — exported to PDF and frozen as an immutable Submitted
-Resume when linked to an application.
-
-Also introduces the Knowledge Context: document ingestion, chunking, embeddings, and pgvector
+**Also introduces** the Knowledge Context: document ingestion, chunking, embeddings, and pgvector
 retrieval with citations preserved.
-
-**Why fourth**: It depends on both a profile to tailor and applications to learn from. It is also
-where the two *Proposed* ADRs become real, so it deliberately follows slices that de-risk
-everything else first.
 
 **The constraint that matters**: structured facts are retrieved relationally; only semantic
 knowledge goes through vector search ([03_Domain_Model.md](03_Domain_Model.md) §7.5). Embedding
-structured profile data and asking a model to retrieve it yields approximate answers to questions
-the database answers exactly.
+structured profile data and asking a model to retrieve it produces approximate answers to
+questions the database answers exactly.
+
+**Version model**: lineage is recorded, never inherited (ADR-012). A submitted resume is locked
+permanently, which is what allows the Career Advisor to later analyze which versions led to
+interviews.
+
+**Presentation scope**: one well-designed, ATS-safe template. The `ResumeLayout` value object
+carries the fields a designer surface would need, so that remains an interface addition rather
+than a schema change.
 
 ---
 
-## 4.5 Slice 005 — Company Research
+## 5.5 Slice 005 — Evaluation & Benchmark
 
-**Delivers**: On-demand company research with web search, summarized into immutable snapshots that
-preserve their sources and retrieval timestamps.
+**Delivers** a real evaluation harness, not a spreadsheet of impressions:
+
+- A fixed benchmark set of job descriptions paired with profile states
+- **Grounding accuracy** — the proportion of generated claims traceable to existing profile content
+- **Requirement coverage** — how much of a job description's must-have list the tailored resume addresses
+- **Match Score calibration** — do higher scores correspond to better human-rated resumes?
+- **Retrieval quality** — are the guidelines the RAG step returns actually relevant?
+- **LLM-as-judge** scoring of tailored output against a rubric, with a human-rated sample to check the judge
+- **Regression runs** — the same benchmark re-run after prompt or model changes, so improvement is measured rather than assumed
+- A results view showing metrics over time
+
+**Why it is a slice and not a task**: evaluation was deferred in the previous version of this plan,
+which was a mistake on two counts. It is an explicit project requirement, and it is the difference
+between "I built an agent" and "I know how well my agent works" — which is the more interesting
+claim.
+
+**Why here**: there is nothing to evaluate before slice 004 produces output, and everything built
+afterwards can be measured against a harness that already exists.
 
 ---
 
-## 4.6 Slice 006 — Career Advisor
+## 5.6 Slice 006 — Company Research
 
-**Delivers**: Analysis across accumulated application history and interview feedback to surface
-recurring skill gaps and recommend learning priorities, each with supporting evidence.
+**Delivers** on-demand company research — what the company does, its product and customers, its
+market and competitors, publicly visible technologies, and interview-preparation notes — summarized
+into immutable snapshots that preserve their sources and retrieval timestamps.
 
-**Why last**: It is the one capability that is worthless without history. It needs applications,
-match analyses, and feedback to have accumulated first — which is exactly the "intelligence over
-time" premise from [00_Product_Vision.md](00_Product_Vision.md).
+**Implemented over a web search MCP** rather than a hand-rolled search client. This satisfies the
+Tools/MCP project requirement and is the better design regardless: the tool boundary stays clean
+and the provider is replaceable.
 
 ---
 
-# 5. Deferred from the MVP
+## 5.7 Slice 007 — Career Advisor
 
-Kept in the architecture, not built yet:
+**Delivers** quantified analysis across accumulated application history:
+
+- Skill frequency across job descriptions applied to — *"Python appeared in 14 of 20 roles,
+  Kubernetes in 9, Java in 4"*
+- Separation of critical gaps from nice-to-have
+- Role families where match scores run consistently higher
+- A prioritized learning roadmap ordered by frequency and impact
+- Whether identified gaps are narrowing over time
+
+**Why last**: it is the one capability worthless without history. It needs applications, match
+analyses, and submitted versions to have accumulated — which the JobTracker import in slice 003
+provides immediately rather than after months of use.
+
+**Why it matters most for the project**: it is the clearest demonstration that the system reasons
+over accumulated memory instead of answering a single prompt.
+
+---
+
+# 6. Project Requirements Coverage
+
+Where each stated project requirement is satisfied.
+
+| Requirement | Satisfied by |
+|---|---|
+| Project idea with specifications | `docs/00`–`docs/06` plus `specs/` artifacts |
+| Plan with milestones | This document |
+| Agent with backend and frontend | Slice 004 (FastAPI + Next.js) |
+| Agent manages memory | Professional Profile, application history, submitted versions, and interview feedback persisted across sessions; slice 007 reasons over all of it |
+| Tools / MCPs | Knowledge retrieval, resume diff, and PDF export tools in slice 004; web search **MCP** in slice 006 |
+| Agentic workflow matched to the problem | Multi-agent with RAG and self-critique, plus human-in-the-loop approval (ADR-004, ADR-008) |
+| Evaluation, benchmark, metrics | Slice 005 |
+| Team roles | Solo project; all roles held by one person. Spec-Driven Development keeps the specification, evaluation, and engineering responsibilities separated as artifacts even when the person is the same. |
+| Deployed using Docker | Slice 002, then continuously |
+
+---
+
+# 7. Deferred
+
+Kept in the architecture, not built in this version.
 
 | Capability | Why deferred |
 |---|---|
-| Evaluation framework (LLM-as-judge, regression suites, RAG retrieval metrics) | There is nothing to evaluate until slice 004 produces output. The `EvaluationResult` entity stays in the domain model so adding it later is not a schema migration. |
-| Multi-provider routing (OpenAI, Gemini) | LiteLLM makes providers swappable by configuration. Building routing before a second provider is needed is speculative complexity. |
-| Interview coach, learning planner, cover letters, LinkedIn and calendar integration | Out of scope for Version 1 per [01_Functional_Product_Requirements.md](01_Functional_Product_Requirements.md) §11. |
+| Resume Builder from scratch, and the Designer surface | Roughly forty presentation settings and a guided editor, demonstrating none of the project requirements. Import reaches the same structured data far faster, and the data model is identical so the builder is a later interface addition (ADR-013). |
+| Application Workflow Agent | Proactive follow-up prompts, stale-application detection, deadline awareness. Genuinely agentic and cheap on top of the lineage model — the first stretch goal if slices 001–005 land early. |
+| Interview Preparation Agent | Reuses Company Research output; second stretch goal. |
+| Multi-provider routing | LiteLLM makes providers swappable by configuration. Building routing before a second provider is needed is speculative complexity. |
+| Cover letters, LinkedIn, calendar, email integration | Out of scope for Version 1 per [01_Functional_Product_Requirements.md](01_Functional_Product_Requirements.md) §11. |
 
 ---
 
-# 6. Corrections to the Original Design
+# 8. Corrections to the Original Design
 
-Recorded here so the design documents and the implementation do not silently diverge.
+Recorded so the design documents and the implementation do not silently diverge.
 
 | # | Original | Correction | Reason |
 |---|---|---|---|
-| 1 | OpenAI embeddings ([06](06_Technology_Stack.md) §7) | Configurable embeddings interface, local sentence-transformers by default | The chosen primary provider is Anthropic, which has no embeddings endpoint. A local default also keeps the stack runnable with no API key. |
+| 1 | OpenAI embeddings ([06](06_Technology_Stack.md) §7) | Configurable embeddings interface, local sentence-transformers by default | The primary provider is Anthropic, which has no embeddings endpoint. A local default keeps the stack runnable with no API key. |
 | 2 | Single `0001_foundation` migration | `0001_extensions` and `0002_users_profiles` | Keeps the environment slice shippable independently of the identity slice. |
-| 3 | JobTracker `rejected` boolean | Derived from normalized status | Two sources of truth for the same fact drift apart. Already required by [03](03_Domain_Model.md) §14; restated because import code is where it would be violated. |
+| 3 | JobTracker `rejected` boolean | Derived from normalized status | Two sources of truth for one fact drift apart. Already required by [03](03_Domain_Model.md) §14; restated because import code is where it would be violated. |
+| 4 | Evaluation framework deferred out of the MVP | Promoted to slice 005 | It is an explicit project requirement, and the original design notes identified the Reviewer layer as the most important missing component. Deferring it was the most serious error in version 1.0 of this plan. |
+| 5 | Agents scheduled after three deterministic slices | Agent-first ordering | Under a fixed deadline the previous order risked shipping no agent at all. |
+| 6 | Resume version inheritance left unspecified | Template lineage with immutable snapshots (**ADR-012**) | Live inheritance would silently alter already-submitted resumes and make historical analysis impossible. |
+| 7 | Imported CV as a document | Parsed into structured content (**ADR-013**) | Match scoring, gap analysis, and item-level approval all require structure. |
 
 ---
 
-# 7. Definition of Done
+# 9. Definition of Done
 
 A slice is complete when **all** of the following hold:
 
 - Every functional requirement in its specification has passing test coverage
 - Backend test coverage is at or above 80%; Ruff and mypy pass
-- The quickstart script runs clean from a fresh clone against the Docker Compose stack
+- The quickstart runs clean from a fresh clone
+- The slice works on the **deployed** environment, not only locally
 - The capability can be demonstrated end to end to a person, not just to a test runner
-- Design documents and code agree — where they disagree, one of them was updated deliberately
+- Design documents and code agree — where they disagree, one was updated deliberately
 
 ---
 
-# 8. Current Status
+# 10. Current Status
 
 **Active slice**: 001 — Platform Foundation
 **Stage**: Tasked and analyzed; implementation not started
