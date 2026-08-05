@@ -51,12 +51,12 @@ Web application layout per plan.md: `backend/src/careerhq/`, `frontend/src/`, wi
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete.
 
-- [ ] T012 Implement `Settings(BaseSettings)` in `backend/src/careerhq/config.py` — required secrets typed without defaults so a missing value raises at import (research.md R-007, FR-005, FR-006). Include the AI configuration seam with no client code behind it: `llm_provider_model` defaulting to `anthropic/claude-opus-5`, optional `anthropic_api_key`, and `embedding_model` defaulting to a local sentence-transformers model (research.md R-008)
-- [ ] T013 [P] Implement structured JSON logging plus an `X-Request-ID` middleware in `backend/src/careerhq/infrastructure/logging.py` — generate an ID when absent, echo it in the response header, bind it to every log record (FR-008)
-- [ ] T014 [P] Implement the async engine, `async_sessionmaker`, and `get_db` dependency in `backend/src/careerhq/infrastructure/database.py`
-- [ ] T015 Implement the app factory in `backend/src/careerhq/main.py` — instantiate FastAPI with `docs_url="/api/docs"`, attach the logging middleware, register routers
-- [ ] T016 Scaffold Alembic in `backend/alembic.ini` and `backend/alembic/env.py` configured for async SQLAlchemy and reading the URL from `Settings`
-- [ ] T017 [P] Write shared fixtures in `backend/tests/conftest.py`: app instance, `httpx.AsyncClient` over `ASGITransport`, and a database session wrapped in a rolled-back transaction (research.md R-009)
+- [x] T012 Implement `Settings(BaseSettings)` in `backend/src/careerhq/config.py` — required secrets typed without defaults so a missing value raises at import (research.md R-007, FR-005, FR-006). Include the AI configuration seam with no client code behind it: `llm_provider_model` defaulting to `anthropic/claude-opus-5`, optional `anthropic_api_key`, and `embedding_model` defaulting to a local sentence-transformers model (research.md R-008)
+- [x] T013 [P] Implement structured JSON logging plus an `X-Request-ID` middleware in `backend/src/careerhq/infrastructure/logging.py` — generate an ID when absent, echo it in the response header, bind it to every log record (FR-008)
+- [x] T014 [P] Implement the async engine, `async_sessionmaker`, and `get_db` dependency in `backend/src/careerhq/infrastructure/database.py`
+- [x] T015 Implement the app factory in `backend/src/careerhq/main.py` — instantiate FastAPI with `docs_url="/api/docs"`, attach the logging middleware, register routers
+- [x] T016 Scaffold Alembic in `backend/alembic.ini` and `backend/alembic/env.py` configured for async SQLAlchemy and reading the URL from `Settings`
+- [x] T017 [P] Write shared fixtures in `backend/tests/conftest.py`: app instance, `httpx.AsyncClient` over `ASGITransport`, and a database session wrapped in a rolled-back transaction (research.md R-009)
 
 **Checkpoint**: The app imports and starts, but serves nothing yet.
 
@@ -75,21 +75,21 @@ that the API documentation page renders.
 
 > Write these first and confirm they fail before implementing.
 
-- [ ] T018 [P] [US1] Test `GET /api/health` returns 200 with `status: ok` in `backend/tests/integration/test_health.py`
-- [ ] T019 [P] [US1] Test `GET /api/health/ready` returns 200 and names database, cache, and object_storage when all reachable, in `backend/tests/integration/test_health.py`
-- [ ] T020 [P] [US1] Test readiness returns 503 and names the failing dependency, **parameterized across all three** (database, cache, object_storage) so each is proven independently, in `backend/tests/integration/test_health.py` (SC-008 says 100% of outage cases, so one case is not enough)
-- [ ] T021 [P] [US1] Test that constructing `Settings` without a required secret raises `ValidationError` naming the field, in `backend/tests/unit/test_config.py` (FR-006)
+- [x] T018 [P] [US1] Test `GET /api/health` returns 200 with `status: ok` in `backend/tests/integration/test_health.py`
+- [x] T019 [P] [US1] Test `GET /api/health/ready` returns 200 and names database, cache, and object_storage when all reachable, in `backend/tests/integration/test_health.py`
+- [x] T020 [P] [US1] Test readiness returns 503 and names the failing dependency, **parameterized across all three** (database, cache, object_storage) so each is proven independently, in `backend/tests/integration/test_health.py` (SC-008 says 100% of outage cases, so one case is not enough)
+- [x] T021 [P] [US1] Test that constructing `Settings` without a required secret raises `ValidationError` naming the field, in `backend/tests/unit/test_config.py` (FR-006)
 
 ### Implementation for User Story 1
 
-- [ ] T022 [P] [US1] Implement the Redis client and `ping()` probe in `backend/src/careerhq/infrastructure/redis.py`
-- [ ] T023 [P] [US1] Implement the S3-compatible client and bucket-head probe in `backend/src/careerhq/infrastructure/storage.py`
-- [ ] T024 [US1] Implement `GET /api/health` and `GET /api/health/ready` in `backend/src/careerhq/api/routes/health.py` — probes run concurrently via `asyncio.gather`, each with a 2 s timeout, per-dependency latency reported, 503 when any fails; report `version` read from the installed package metadata (contracts/api.md)
-- [ ] T025 [US1] Register the health router and set OpenAPI title/version in `backend/src/careerhq/main.py` (FR-007)
-- [ ] T026 [US1] Write migration `backend/alembic/versions/0001_extensions.py` — `CREATE EXTENSION IF NOT EXISTS vector` and `pgcrypto`, with a working downgrade (FR-004)
-- [ ] T027 [US1] Write `backend/entrypoint.sh` running `alembic upgrade head` then `uvicorn`, and wire it as the Dockerfile entrypoint (FR-003)
-- [ ] T028 [US1] Add a `minio-init` service to `docker-compose.yml` that creates the configured bucket and exits — the readiness probe heads the bucket, so it must exist *before* the backend starts or readiness fails on a first run
-- [ ] T029 [US1] Write the rest of `docker-compose.yml`: postgres (`pgvector/pgvector:pg17`), redis, minio, backend, frontend — named volumes, a healthcheck on each long-running service, and `depends_on` where backend waits on postgres/redis `service_healthy` and on `minio-init` `service_completed_successfully`
+- [x] T022 [P] [US1] Implement the Redis client and `ping()` probe in `backend/src/careerhq/infrastructure/redis.py`
+- [x] T023 [P] [US1] Implement the S3-compatible client and bucket-head probe in `backend/src/careerhq/infrastructure/storage.py`
+- [x] T024 [US1] Implement `GET /api/health` and `GET /api/health/ready` in `backend/src/careerhq/api/routes/health.py` — probes run concurrently via `asyncio.gather`, each with a 2 s timeout, per-dependency latency reported, 503 when any fails; report `version` read from the installed package metadata (contracts/api.md)
+- [x] T025 [US1] Register the health router and set OpenAPI title/version in `backend/src/careerhq/main.py` (FR-007)
+- [x] T026 [US1] Write migration `backend/alembic/versions/0001_extensions.py` — `CREATE EXTENSION IF NOT EXISTS vector` and `pgcrypto`, with a working downgrade (FR-004)
+- [x] T027 [US1] Write `backend/entrypoint.sh` running `alembic upgrade head` then `uvicorn`, and wire it as the Dockerfile entrypoint (FR-003)
+- [x] T028 [US1] Add a `minio-init` service to `docker-compose.yml` that creates the configured bucket and exits — the readiness probe heads the bucket, so it must exist *before* the backend starts or readiness fails on a first run
+- [x] T029 [US1] Write the rest of `docker-compose.yml`: postgres (`pgvector/pgvector:pg17`), redis, minio, backend, frontend — named volumes, a healthcheck on each long-running service, and `depends_on` where backend waits on postgres/redis `service_healthy` and on `minio-init` `service_completed_successfully`
 - [ ] T030 [US1] Run the User Story 1 section of [quickstart.md](./quickstart.md) end to end, including the fail-fast and dependency-outage checks
 
 **Checkpoint**: The platform starts with one command and honestly reports its own health. This is

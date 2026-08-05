@@ -6,28 +6,27 @@ requires-python = ">=3.12"
 
 dependencies = [
     "fastapi>=0.141,<0.142",
-    "uvicorn[standard]>=0.40,<0.41",
+    "uvicorn[standard]>=0.52,<0.53",
     "sqlalchemy[asyncio]>=2.0.51,<2.1",
     "alembic>=1.19,<1.20",
     "psycopg[binary,pool]>=3.3,<3.4",
     "pydantic>=2.13,<2.14",
     "pydantic-settings>=2.14,<2.15",
     "authlib>=1.7,<1.8",
-    "pyjwt>=2.10,<3.0",
+    "pyjwt>=2.13,<3.0",
     "itsdangerous>=2.2,<3.0",
     "redis>=8.1,<8.2",
-    "boto3>=1.40,<2.0",
+    "boto3>=1.43,<2.0",
     "httpx>=0.28,<0.29",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=9.1,<9.2",
-    "pytest-asyncio>=1.3,<2.0",
-    "pytest-cov>=8.0,<9.0",
+    "pytest-asyncio>=1.4,<2.0",
+    "pytest-cov>=7.1,<8.0",
     "ruff>=0.16,<0.17",
     "mypy>=2.3,<2.4",
-    "types-boto3",
 ]
 
 [build-system]
@@ -93,7 +92,9 @@ asyncio_default_fixture_loop_scope = "function"
 addopts = "--cov=careerhq --cov-report=term-missing"
 
 [tool.coverage.run]
-source = ["src/careerhq"]
+# The package name, not the path: a path-based source conflicts with the
+# editable install's import hook and breaks collection.
+source = ["careerhq"]
 omit = ["*/alembic/*"]
 
 [tool.coverage.report]

@@ -15,7 +15,7 @@ RUN apt-get update \
 
 # Dependency layer: copy only the project definition first so that changing
 # application code does not invalidate the (slow) dependency install.
-COPY pyproject.toml ./
+COPY pyproject.toml README.md* ./
 RUN mkdir -p src/careerhq && touch src/careerhq/__init__.py README.md \
     && pip install --no-cache-dir -e ".[dev]"
 
