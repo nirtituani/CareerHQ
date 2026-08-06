@@ -20,6 +20,7 @@ technical plan, and task list under `specs/`.
 
 | Question | Where it is answered |
 |---|---|
+| What is CareerHQ, and what does each part do? | [07_Capabilities.md](07_Capabilities.md) — start here |
 | What must always be true of CareerHQ? | [`.specify/memory/constitution.md`](../.specify/memory/constitution.md) |
 | What are we building, in what order? | This document |
 | What exactly does slice N do? | `specs/00N-<name>/spec.md` |
