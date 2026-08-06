@@ -12,6 +12,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from starlette.middleware.sessions import SessionMiddleware
 
 from careerhq.config import Settings, get_settings
 from careerhq.infrastructure.logging import RequestContextMiddleware, configure_logging
@@ -51,9 +52,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
     app.add_middleware(RequestContextMiddleware)
 
-    from careerhq.api.routes import health
+    # Authlib stores the OAuth `state` parameter here between the redirect to
+    # Google and the callback. It is a signed cookie, not server-side storage,
+    # so nothing needs to be shared between API instances.
+    app.add_middleware(
+        SessionMiddleware,
+        secret_key=settings.session_secret.get_secret_value(),
+        same_site="lax",
+        https_only=settings.is_production,
+        max_age=600,  # the sign-in round trip, not the user's session
+    )
+
+    from careerhq.api.routes import auth, health, profile
 
     app.include_router(health.router, prefix="/api")
+    app.include_router(auth.router, prefix="/api")
+    app.include_router(profile.router, prefix="/api")
 
     return app
 

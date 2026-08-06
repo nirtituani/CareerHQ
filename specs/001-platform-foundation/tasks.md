@@ -107,28 +107,28 @@ empty workspace showing your identity, sign out, and confirm the workspace is un
 
 ### Tests for User Story 2
 
-- [ ] T031 [P] [US2] Test first sign-in creates exactly one user and one profile, in `backend/tests/integration/test_provisioning.py` (FR-010)
-- [ ] T032 [P] [US2] Test a returning user reuses the existing account and creates no second profile, in `backend/tests/integration/test_provisioning.py` (FR-011)
-- [ ] T033 [P] [US2] Test **concurrent** first sign-in for the same Google subject yields exactly one user and one profile, in `backend/tests/integration/test_provisioning.py` (SC-004, research.md R-004)
-- [ ] T034 [P] [US2] Test unauthenticated access is refused, in `backend/tests/integration/test_auth.py` (FR-014, SC-003). Two layers: (a) `GET /api/auth/me` and `GET /api/profile` each return 401 with no cookie, an expired cookie, and a tampered cookie; (b) **enumerate `app.routes`** and assert every route outside an explicit public allowlist (`/api/health*`, `/api/auth/google/*`, `/api/docs`, `/api/openapi.json`) returns 401 unauthenticated — so a future endpoint added without auth fails CI instead of shipping open
-- [ ] T035 [P] [US2] Test user A's session cannot read user B's profile, in `backend/tests/integration/test_isolation.py` (SC-005, FR-015)
-- [ ] T036 [P] [US2] Test logout expires the cookie and is safe to call twice, in `backend/tests/integration/test_auth.py`
-- [ ] T037 [P] [US2] Test the callback with a denied/cancelled consent redirects to login with an error and creates no account, in `backend/tests/integration/test_auth.py`
-- [ ] T038 [P] [US2] Test the callback rejects a missing or mismatched `state` with 400, in `backend/tests/integration/test_auth.py`
+- [x] T031 [P] [US2] Test first sign-in creates exactly one user and one profile, in `backend/tests/integration/test_provisioning.py` (FR-010)
+- [x] T032 [P] [US2] Test a returning user reuses the existing account and creates no second profile, in `backend/tests/integration/test_provisioning.py` (FR-011)
+- [x] T033 [P] [US2] Test **concurrent** first sign-in for the same Google subject yields exactly one user and one profile, in `backend/tests/integration/test_provisioning.py` (SC-004, research.md R-004)
+- [x] T034 [P] [US2] Test unauthenticated access is refused, in `backend/tests/integration/test_auth.py` (FR-014, SC-003). Two layers: (a) `GET /api/auth/me` and `GET /api/profile` each return 401 with no cookie, an expired cookie, and a tampered cookie; (b) **enumerate `app.routes`** and assert every route outside an explicit public allowlist (`/api/health*`, `/api/auth/google/*`, `/api/docs`, `/api/openapi.json`) returns 401 unauthenticated — so a future endpoint added without auth fails CI instead of shipping open
+- [x] T035 [P] [US2] Test user A's session cannot read user B's profile, in `backend/tests/integration/test_isolation.py` (SC-005, FR-015)
+- [x] T036 [P] [US2] Test logout expires the cookie and is safe to call twice, in `backend/tests/integration/test_auth.py`
+- [x] T037 [P] [US2] Test the callback with a denied/cancelled consent redirects to login with an error and creates no account, in `backend/tests/integration/test_auth.py`
+- [x] T038 [P] [US2] Test the callback rejects a missing or mismatched `state` with 400, in `backend/tests/integration/test_auth.py`
 
 ### Implementation for User Story 2
 
-- [ ] T039 [P] [US2] Define `User` and `ProfessionalProfile` SQLAlchemy models in `backend/src/careerhq/domain/models.py` per [data-model.md](./data-model.md), including both UNIQUE constraints
-- [ ] T040 [P] [US2] Define Pydantic response schemas (`UserOut`, `ProfileOut`) in `backend/src/careerhq/domain/schemas.py` matching contracts/api.md
-- [ ] T041 [US2] Write migration `backend/alembic/versions/0002_users_profiles.py` creating both tables with `UNIQUE(google_sub)` and `UNIQUE(user_id)` declared inline, plus a working downgrade
-- [ ] T042 [P] [US2] Implement JWT encode/decode and cookie set/clear helpers in `backend/src/careerhq/infrastructure/security.py` — HttpOnly, SameSite=Lax, Secure when not local, Max-Age from `SESSION_TTL_DAYS` (FR-016)
-- [ ] T043 [P] [US2] Define the verified-claims seam in `backend/src/careerhq/api/deps.py`: a `get_verified_google_claims` dependency that performs the Authlib token exchange and ID-token verification, returning a typed `GoogleClaims` object. **The callback route must depend on this rather than calling Authlib inline** — overriding it is how T031–T033 and T037 exercise real provisioning, cookie issuance, and redirect logic without a network call to Google (research.md R-009)
-- [ ] T044 [US2] Implement idempotent provisioning in `backend/src/careerhq/application/provision_user.py` — `INSERT ... ON CONFLICT DO NOTHING` then select, user and profile in one transaction (FR-010, FR-011)
-- [ ] T045 [US2] Implement `GET /api/auth/google/login` in `backend/src/careerhq/api/routes/auth.py` — Authlib client, `state` in a short-lived HttpOnly cookie, reject absolute `next` values (contracts/api.md)
-- [ ] T046 [US2] Implement `GET /api/auth/google/callback` in `backend/src/careerhq/api/routes/auth.py` — validate state, resolve claims via the T043 dependency, call provisioning, issue the session cookie, redirect
-- [ ] T047 [US2] Implement the `get_current_user` dependency in `backend/src/careerhq/api/deps.py` — decode the cookie, load the user, raise 401 on any failure including a `sub` that no longer exists
-- [ ] T048 [US2] Implement `GET /api/auth/me` and `POST /api/auth/logout` in `backend/src/careerhq/api/routes/auth.py`
-- [ ] T049 [US2] Implement `GET /api/profile` in `backend/src/careerhq/api/routes/profile.py` — resolves the profile from the session only; no route accepts a client-supplied ID (FR-015)
+- [x] T039 [P] [US2] Define `User` and `ProfessionalProfile` SQLAlchemy models in `backend/src/careerhq/domain/models.py` per [data-model.md](./data-model.md), including both UNIQUE constraints
+- [x] T040 [P] [US2] Define Pydantic response schemas (`UserOut`, `ProfileOut`) in `backend/src/careerhq/domain/schemas.py` matching contracts/api.md
+- [x] T041 [US2] Write migration `backend/alembic/versions/0002_users_profiles.py` creating both tables with `UNIQUE(google_sub)` and `UNIQUE(user_id)` declared inline, plus a working downgrade
+- [x] T042 [P] [US2] Implement JWT encode/decode and cookie set/clear helpers in `backend/src/careerhq/infrastructure/security.py` — HttpOnly, SameSite=Lax, Secure when not local, Max-Age from `SESSION_TTL_DAYS` (FR-016)
+- [x] T043 [P] [US2] Define the verified-claims seam in `backend/src/careerhq/api/deps.py`: a `get_verified_google_claims` dependency that performs the Authlib token exchange and ID-token verification, returning a typed `GoogleClaims` object. **The callback route must depend on this rather than calling Authlib inline** — overriding it is how T031–T033 and T037 exercise real provisioning, cookie issuance, and redirect logic without a network call to Google (research.md R-009)
+- [x] T044 [US2] Implement idempotent provisioning in `backend/src/careerhq/application/provision_user.py` — `INSERT ... ON CONFLICT DO NOTHING` then select, user and profile in one transaction (FR-010, FR-011)
+- [x] T045 [US2] Implement `GET /api/auth/google/login` in `backend/src/careerhq/api/routes/auth.py` — Authlib client, `state` in a short-lived HttpOnly cookie, reject absolute `next` values (contracts/api.md)
+- [x] T046 [US2] Implement `GET /api/auth/google/callback` in `backend/src/careerhq/api/routes/auth.py` — validate state, resolve claims via the T043 dependency, call provisioning, issue the session cookie, redirect
+- [x] T047 [US2] Implement the `get_current_user` dependency in `backend/src/careerhq/api/deps.py` — decode the cookie, load the user, raise 401 on any failure including a `sub` that no longer exists
+- [x] T048 [US2] Implement `GET /api/auth/me` and `POST /api/auth/logout` in `backend/src/careerhq/api/routes/auth.py`
+- [x] T049 [US2] Implement `GET /api/profile` in `backend/src/careerhq/api/routes/profile.py` — resolves the profile from the session only; no route accepts a client-supplied ID (FR-015)
 - [ ] T050 [P] [US2] Implement the typed fetch wrapper in `frontend/src/lib/api.ts` — same-origin requests, 401 handling, typed responses
 - [ ] T051 [P] [US2] Build the sign-in page at `frontend/src/app/login/page.tsx` with a "Continue with Google" action and an error state for a declined consent
 - [ ] T052 [US2] Build the authenticated shell in `frontend/src/components/app-shell.tsx` and `frontend/src/components/user-menu.tsx` — navigation plus name/email/avatar and a sign-out action (FR-017)
