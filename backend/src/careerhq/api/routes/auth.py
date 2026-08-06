@@ -12,6 +12,7 @@ from fastapi.responses import RedirectResponse
 
 from careerhq.api.deps import CurrentUser, DbSession, VerifiedClaims, get_oauth
 from careerhq.application.provision_user import provision_user
+from careerhq.config import Settings, get_settings
 from careerhq.domain.schemas import UserOut
 from careerhq.infrastructure.security import (
     clear_session_cookie,
@@ -49,6 +50,7 @@ def _safe_destination(next_path: str | None) -> str:
 async def google_login(
     request: Request,
     oauth: Annotated[OAuth, Depends(get_oauth)],
+    settings: Annotated[Settings, Depends(get_settings)],
     next: Annotated[str | None, Query(description="Same-site path to return to")] = None,
 ) -> Response:
     """Redirect to Google's consent screen.
@@ -58,7 +60,12 @@ async def google_login(
     defeats CSRF on the sign-in flow.
     """
     request.session[REDIRECT_KEY] = _safe_destination(next)
-    redirect_uri = str(request.base_url).rstrip("/") + CALLBACK_PATH
+
+    # Built from configuration, never from the incoming request: the frontend
+    # proxies to http://backend:8000, so request.base_url is the internal
+    # Docker hostname and Google would reject it.
+    redirect_uri = settings.public_base_url.rstrip("/") + CALLBACK_PATH
+
     # Authlib is untyped here; it returns a Starlette RedirectResponse.
     redirect: Response = await oauth.google.authorize_redirect(request, redirect_uri)
     return redirect

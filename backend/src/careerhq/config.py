@@ -29,6 +29,17 @@ class Settings(BaseSettings):
     environment: Literal["local", "production"] = "local"
     log_level: str = "INFO"
 
+    # The origin the *browser* uses, which is not what the backend sees. The
+    # frontend proxies /api/* to http://backend:8000, so a redirect URI derived
+    # from the incoming request would be the internal Docker hostname — which
+    # Google rejects, and rightly so.
+    #
+    # It is also configuration rather than something to infer from a Host
+    # header: the value has to match what is registered in the Google Cloud
+    # Console exactly, and a header an attacker controls should never decide
+    # where users are sent after authenticating.
+    public_base_url: str = "http://localhost:3000"
+
     # -- Database -----------------------------------------------------------
     database_url: str
 

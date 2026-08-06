@@ -103,6 +103,24 @@ async def test_login_redirects_to_google(client: httpx.AsyncClient) -> None:
     assert "accounts.google.com" in response.headers["location"]
 
 
+async def test_login_sends_google_the_browser_facing_redirect_uri(
+    client: httpx.AsyncClient,
+) -> None:
+    """Found during the browser walkthrough (T056).
+
+    The redirect URI must be the origin the *browser* uses. Deriving it from
+    the incoming request yields `http://backend:8000` — the internal Docker
+    hostname the frontend proxies to — which Google rejects with
+    `Error 400: invalid_request`. It must come from configuration, which is
+    also what makes it match the Cloud Console entry exactly.
+    """
+    response = await client.get("/api/auth/google/login", follow_redirects=False)
+    location = response.headers["location"]
+
+    assert "redirect_uri=http%3A%2F%2Flocalhost%3A3000%2Fapi%2Fauth%2Fgoogle%2Fcallback" in location
+    assert "backend%3A8000" not in location
+
+
 async def test_login_rejects_an_absolute_next_url(client: httpx.AsyncClient) -> None:
     """An open redirect would send a freshly-authenticated user to an attacker."""
     response = await client.get(

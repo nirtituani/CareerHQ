@@ -135,7 +135,7 @@ empty workspace showing your identity, sign out, and confirm the workspace is un
 - [x] T053 [US2] Build the empty dashboard at `frontend/src/app/dashboard/page.tsx` stating no data exists yet and what will appear there (FR-018)
 - [x] T054 [US2] Add the route guard in `frontend/src/middleware.ts` redirecting unauthenticated visitors from protected paths to `/login` (FR-014). This checks cookie *presence* only — middleware has no access to the signing secret, so an expired or forged cookie renders the page and is then refused by the API. Authorization lives at the API boundary; the guard is a redirect convenience, not a security control
 - [x] T055 [US2] Add a non-technical API-unreachable state that recovers automatically once the backend is healthy, in `frontend/src/components/api-unavailable.tsx` and the dashboard route (FR-019)
-- [ ] T056 [US2] Run the User Story 2 section of [quickstart.md](./quickstart.md), including the database row-count check and the HttpOnly cookie inspection
+- [x] T056 [US2] Run the User Story 2 section of [quickstart.md](./quickstart.md), including the database row-count check and the HttpOnly cookie inspection
 
 **Checkpoint**: A real person can sign in and reach their own workspace. Stories 1 and 2 both work
 independently.
