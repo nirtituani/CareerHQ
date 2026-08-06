@@ -129,12 +129,12 @@ empty workspace showing your identity, sign out, and confirm the workspace is un
 - [x] T047 [US2] Implement the `get_current_user` dependency in `backend/src/careerhq/api/deps.py` — decode the cookie, load the user, raise 401 on any failure including a `sub` that no longer exists
 - [x] T048 [US2] Implement `GET /api/auth/me` and `POST /api/auth/logout` in `backend/src/careerhq/api/routes/auth.py`
 - [x] T049 [US2] Implement `GET /api/profile` in `backend/src/careerhq/api/routes/profile.py` — resolves the profile from the session only; no route accepts a client-supplied ID (FR-015)
-- [ ] T050 [P] [US2] Implement the typed fetch wrapper in `frontend/src/lib/api.ts` — same-origin requests, 401 handling, typed responses
-- [ ] T051 [P] [US2] Build the sign-in page at `frontend/src/app/login/page.tsx` with a "Continue with Google" action and an error state for a declined consent
-- [ ] T052 [US2] Build the authenticated shell in `frontend/src/components/app-shell.tsx` and `frontend/src/components/user-menu.tsx` — navigation plus name/email/avatar and a sign-out action (FR-017)
-- [ ] T053 [US2] Build the empty dashboard at `frontend/src/app/dashboard/page.tsx` stating no data exists yet and what will appear there (FR-018)
-- [ ] T054 [US2] Add the route guard in `frontend/src/middleware.ts` redirecting unauthenticated visitors from protected paths to `/login` (FR-014). This checks cookie *presence* only — middleware has no access to the signing secret, so an expired or forged cookie renders the page and is then refused by the API. Authorization lives at the API boundary; the guard is a redirect convenience, not a security control
-- [ ] T055 [US2] Add a non-technical API-unreachable state that recovers automatically once the backend is healthy, in `frontend/src/components/api-unavailable.tsx` and the dashboard route (FR-019)
+- [x] T050 [P] [US2] Implement the typed fetch wrapper in `frontend/src/lib/api.ts` — same-origin requests, 401 handling, typed responses
+- [x] T051 [P] [US2] Build the sign-in page at `frontend/src/app/login/page.tsx` with a "Continue with Google" action and an error state for a declined consent
+- [x] T052 [US2] Build the authenticated shell in `frontend/src/components/app-shell.tsx` and `frontend/src/components/user-menu.tsx` — navigation plus name/email/avatar and a sign-out action (FR-017)
+- [x] T053 [US2] Build the empty dashboard at `frontend/src/app/dashboard/page.tsx` stating no data exists yet and what will appear there (FR-018)
+- [x] T054 [US2] Add the route guard in `frontend/src/middleware.ts` redirecting unauthenticated visitors from protected paths to `/login` (FR-014). This checks cookie *presence* only — middleware has no access to the signing secret, so an expired or forged cookie renders the page and is then refused by the API. Authorization lives at the API boundary; the guard is a redirect convenience, not a security control
+- [x] T055 [US2] Add a non-technical API-unreachable state that recovers automatically once the backend is healthy, in `frontend/src/components/api-unavailable.tsx` and the dashboard route (FR-019)
 - [ ] T056 [US2] Run the User Story 2 section of [quickstart.md](./quickstart.md), including the database row-count check and the HttpOnly cookie inspection
 
 **Checkpoint**: A real person can sign in and reach their own workspace. Stories 1 and 2 both work
