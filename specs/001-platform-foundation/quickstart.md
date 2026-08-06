@@ -116,6 +116,20 @@ docker compose exec backend pytest -k concurrent_first_signin -v
 
 ## Common issues
 
+**A change to `.env` seems to have no effect** — use `docker compose up -d <service>`, not
+`docker compose restart <service>`. Environment variables are injected when a container is
+*created*; `restart` reuses the existing container and keeps the values it was born with, while
+`up -d` notices the configuration changed and recreates it. Verify with:
+
+```bash
+docker compose exec backend printenv GOOGLE_CLIENT_ID
+```
+
+**A host port is already in use** — every published port is configurable in `.env`
+(`FRONTEND_PORT`, `BACKEND_PORT`, `POSTGRES_PORT`, `REDIS_PORT`, `MINIO_PORT`,
+`MINIO_CONSOLE_PORT`). Find what is holding the port with `docker ps`, then change the host side
+only — containers still reach each other on the standard ports over the internal network.
+
 **`redirect_uri_mismatch` from Google** — the URI in the Cloud Console must match
 `http://localhost:3000/api/auth/google/callback` exactly, including scheme and port.
 
