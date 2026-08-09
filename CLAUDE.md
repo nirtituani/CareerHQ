@@ -110,10 +110,14 @@ Recorded so they are not rediscovered.
 - **`docker compose restart` does not pick up `.env` changes.** Environment variables are injected
   when a container is *created*. Use `up -d`, which recreates it. Verify with
   `docker compose exec backend printenv VAR`.
-- **Never create the Python venv from inside another venv.** Doing so produces a venv that
-  silently does not process `.pth` files, so an editable install points at the right path and
-  Python ignores it. Use the base interpreter. Check `command =` in `.venv/pyvenv.cfg` if imports
-  fail in an apparently correct install.
+- **`ModuleNotFoundError: No module named 'careerhq'` from an apparently correct editable
+  install** is macOS setting the BSD `hidden` flag on the `.pth` file. Python 3.12's `site` module
+  deliberately skips hidden `.pth` files, so the install looks perfect — right path, right
+  contents, readable — and Python ignores it. Diagnose with `ls -lO .venv/lib/*/site-packages/*.pth`
+  (look for `hidden`), fix with `chflags nohidden` on those files. `pytest` no longer depends on
+  this at all, because `pythonpath = ["src"]` is set in `pyproject.toml`; anything else invoking
+  the venv's Python directly still can. Recreating the venv also clears it, which is why an earlier
+  diagnosis blamed venv nesting — that was wrong.
 - **Host ports are configurable** in `.env` (`FRONTEND_PORT`, `BACKEND_PORT`, …). Change those
   rather than editing `docker-compose.yml` when a port collides.
 - **`request.base_url` is the internal hostname behind the proxy.** The frontend proxies `/api/*`

@@ -149,11 +149,11 @@ independently.
 **Independent Test**: Push a branch containing a deliberate style violation, type error, and
 failing test; confirm the pipeline fails and names each problem; fix and confirm it passes.
 
-- [ ] T057 [P] [US3] Configure Vitest and Testing Library in `frontend/vitest.config.ts` and add a rendering test for the app shell in `frontend/src/components/__tests__/app-shell.test.tsx`
-- [ ] T058 [P] [US3] Add a Playwright smoke test covering the signed-out redirect to login in `frontend/e2e/auth.spec.ts`
-- [ ] T059 [P] [US3] Add `lint`, `test`, and `build` scripts to `frontend/package.json`
-- [ ] T060 [US3] Enforce the coverage floor with `--cov-fail-under=80` in `backend/pyproject.toml` (SC-007)
-- [ ] T061 [US3] Write `.github/workflows/ci.yml` — backend job (ruff format --check, ruff check, mypy, pytest with a Postgres service container) and frontend job (lint, test, build), both on push and pull request (FR-020, FR-021)
+- [x] T057 [P] [US3] Configure Vitest and Testing Library in `frontend/vitest.config.ts` and add a rendering test for the app shell in `frontend/src/components/__tests__/app-shell.test.tsx`
+- [x] T058 [P] [US3] Add a Playwright smoke test covering the signed-out redirect to login in `frontend/e2e/auth.spec.ts`
+- [x] T059 [P] [US3] Add `lint`, `test`, and `build` scripts to `frontend/package.json`
+- [x] T060 [US3] Enforce the coverage floor with `--cov-fail-under=80` in `backend/pyproject.toml` (SC-007)
+- [x] T061 [US3] Write `.github/workflows/ci.yml` — backend job (ruff format --check, ruff check, mypy, pytest with a Postgres service container) and frontend job (lint, test, build), both on push and pull request (FR-020, FR-021)
 - [ ] T062 [US3] Document the equivalent local commands in `README.md` so developers get identical results to CI (FR-022)
 - [ ] T063 [US3] Verify the pipeline actually fails: push a branch with a deliberate formatting error, an unannotated function, and a failing assertion; confirm each is named; then fix and confirm green
 

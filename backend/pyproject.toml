@@ -88,9 +88,18 @@ ignore_missing_imports = true
 # ---------------------------------------------------------------------------
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Put src on the path directly rather than relying on the editable install.
+# macOS sets the BSD `hidden` flag on .pth files under some conditions, and
+# Python 3.12 skips hidden .pth files — which makes a correct-looking editable
+# install silently unimportable. This removes that dependency entirely.
+pythonpath = ["src"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
-addopts = "--cov=careerhq --cov-report=term-missing"
+# --cov-fail-under enforces the constitutional gate (Principle VII, SC-007).
+# Note this makes `pytest` fail without PostgreSQL: the database tests skip, and
+# skipped tests cover nothing. Run the stack, or pass --no-cov for a quick
+# unit-only check.
+addopts = "--cov=careerhq --cov-report=term-missing --cov-fail-under=80"
 
 [tool.coverage.run]
 # The package name, not the path: a path-based source conflicts with the
