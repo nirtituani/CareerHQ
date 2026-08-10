@@ -145,6 +145,16 @@ Recorded so they are not rediscovered.
   stack that is demonstrably running.
 - **A killed `next build` leaves workers behind** that make the next build take minutes and then
   fail on a vanishing temp file. `pkill -f "next-build|processChild"` and `rm -rf .next`.
+- **`docker compose exec backend pytest` collects nothing.** `backend/.dockerignore` excludes
+  `tests/`, so the runtime image has no suite — and pytest exiting on an empty collection looks
+  much like a pass if you are skimming. Run the backend gates on the host, which is what CI does.
+- **`docker compose exec frontend npm run build` fails** prerendering `/_global-error`, because
+  the container is built `target: dev` and its running dev server owns `/app/.next`. The identical
+  build succeeds on the host and in CI. Same rule: gates run on the host.
+- **Every checkout of this repo shares one set of Docker volumes.** `docker-compose.yml` pins
+  `name: careerhq`, so cloning into a new directory does *not* give a clean database — it attaches
+  to the existing one. `docker compose down -v` for genuinely empty state; it is scoped to this
+  project and touches no other project's volumes.
 - **Pushing anything under `.github/workflows/` needs a token with the `workflow` scope.**
   Otherwise the push is rejected outright, with the commit still safe locally.
 - **A comment beginning `# noqa` is parsed as a blanket lint suppression.** Do not start an
