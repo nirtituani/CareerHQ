@@ -40,3 +40,11 @@ test-results/
 playwright-report/
 blob-report/
 .last-run.json
+
+# iCloud Drive conflict copies. This project sits under ~/Documents, which iCloud
+# syncs; when it cannot reconcile a fast-changing file it keeps both and names one
+# "file 2.ext". They are stale duplicates of real source files and `git add -A`
+# would happily commit all of them.
+* 2.*
+* 2
+*\ 2.*
