@@ -27,15 +27,36 @@ the author's design notes, the resume-builder reference — is in `docs/referenc
 
 ## Current state
 
-**Slice 001 — Platform Foundation.** All three user stories complete and verified; 65 of 69 tasks
-done. Remaining: `T065`, `T067`, `T068`, `T069` — documentation corrections, a security review,
-and a full quickstart run from a clean clone.
+**Slice 001 — Platform Foundation.** All three user stories complete and verified; 68 of 69 tasks
+done. `T065`, `T067`, and `T068` are closed. `T069` is verified except the interactive Google
+sign-in leg — everything automatable passed against a clean clone on empty volumes.
 
 Working: Docker Compose stack, Google sign-in end to end, per-user isolation, health checks
-reporting each dependency by name, and CI green on every gate. 46 backend tests at 89% coverage,
+reporting each dependency by name, and CI green on every gate. 55 backend tests at 89% coverage,
 3 component tests, 6 Playwright smoke tests.
 
-Branch: `001-platform-foundation`.
+Branch: `001-platform-foundation`. **Next**: merge to `main`, then slice 002 — deployment.
+Deploy *before* building the agent, so OAuth redirect URIs, managed Postgres, and HTTPS fail
+while the application is still small enough to debug them in isolation.
+
+### What the T068 security review established
+
+These are conventions, not one-off fixes — new code is expected to follow them:
+
+- **Configuration errors name the field, never the value.** `get_settings()` catches
+  `ValidationError` and rebuilds the message, because pydantic puts rejected input in its own
+  error text — a too-short `SESSION_SECRET` was being printed in full by the crash meant to
+  protect it. Secret fields are detected from their `SecretStr` annotation, so a new secret is
+  covered automatically.
+- **Unauthenticated endpoints disclose the kind of failure, not the detail.** Readiness returns
+  `OperationalError`; the driver's text — which names the internal IP, port, and database user —
+  goes only to the log.
+- **`SecurityHeadersMiddleware` sets `nosniff`, `DENY`, and `no-referrer` on every response**,
+  including errors. HSTS is production-only; sending it from plain-HTTP localhost pins a scheme
+  that does not work there, and browsers cache the pin.
+
+A full `/security-review` of the branch diff has **not** been run — T068 was scoped to cookies,
+headers, and secret handling.
 
 ---
 
@@ -108,7 +129,7 @@ docker compose down -v                # stop and delete the database
 Backend checks (from `backend/`, with the venv active):
 
 ```bash
-.venv/bin/pytest              # 24 tests run without Docker; 22 skip without PostgreSQL
+.venv/bin/pytest              # 42 of 55 run without Docker; 13 skip without PostgreSQL
 .venv/bin/ruff check .
 .venv/bin/mypy src
 ```
@@ -137,7 +158,7 @@ Recorded so they are not rediscovered.
   come from `PUBLIC_BASE_URL`, not from the request.
 - **Verify package versions against the registry before pinning.** Nine versions across this
   project did not exist when first written down. Installing is faster than guessing.
-- **`pytest` fails without PostgreSQL** — not because tests error, but because 22 of 46 skip and
+- **`pytest` fails without PostgreSQL** — not because tests error, but because 13 of 55 skip and
   skipped tests cover nothing, so the coverage gate trips. `pytest --no-cov` for a quick
   unit-only check; `docker compose up -d` for the real run.
 - **Playwright must target `127.0.0.1`, not `localhost`.** Node resolves `localhost` to `::1`
