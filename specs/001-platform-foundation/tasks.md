@@ -154,8 +154,8 @@ failing test; confirm the pipeline fails and names each problem; fix and confirm
 - [x] T059 [P] [US3] Add `lint`, `test`, and `build` scripts to `frontend/package.json`
 - [x] T060 [US3] Enforce the coverage floor with `--cov-fail-under=80` in `backend/pyproject.toml` (SC-007)
 - [x] T061 [US3] Write `.github/workflows/ci.yml` — backend job (ruff format --check, ruff check, mypy, pytest with a Postgres service container) and frontend job (lint, test, build), both on push and pull request (FR-020, FR-021)
-- [ ] T062 [US3] Document the equivalent local commands in `README.md` so developers get identical results to CI (FR-022)
-- [ ] T063 [US3] Verify the pipeline actually fails: push a branch with a deliberate formatting error, an unannotated function, and a failing assertion; confirm each is named; then fix and confirm green
+- [x] T062 [US3] Document the equivalent local commands in `README.md` so developers get identical results to CI (FR-022)
+- [x] T063 [US3] Verify the pipeline actually fails: push a branch with a deliberate formatting error, an unannotated function, and a failing assertion; confirm each is named; then fix and confirm green
 
 **Checkpoint**: All three stories are independently functional and the work is protected from
 regression.
@@ -164,7 +164,7 @@ regression.
 
 ## Phase 6: Polish & Cross-Cutting Concerns
 
-- [ ] T064 [P] Write `README.md` — what CareerHQ is, prerequisites, the one-command start, the local check commands, and links to the spec artifacts
+- [x] T064 [P] Write `README.md` — what CareerHQ is, prerequisites, the one-command start, the local check commands, and links to the spec artifacts
 - [ ] T065 [P] Correct the embeddings section of `docs/06_Technology_Stack.md` — the interface is configurable with local sentence-transformers as the default, because Anthropic provides no embeddings endpoint (constitution correction)
 - [x] T066 [P] Fill in the empty `docs/05_Implementation_Plan.md` — point to the `specs/` artifacts as the executable plan and record the six-slice roadmap ✅ **Pulled forward out of the polish phase and completed before implementation** — a roadmap is an orientation document, and orientation is worth more at the start than at the end
 - [ ] T067 [P] Complete the truncated sections of `docs/04_System_Design.md` — Knowledge Platform, deployment, security, and observability
