@@ -1,0 +1,115 @@
+[project]
+name = "careerhq"
+version = "0.1.0"
+description = "CareerHQ backend — AI-powered career intelligence platform"
+requires-python = ">=3.12"
+
+dependencies = [
+    "fastapi>=0.141,<0.142",
+    "uvicorn[standard]>=0.52,<0.53",
+    "sqlalchemy[asyncio]>=2.0.51,<2.1",
+    "alembic>=1.19,<1.20",
+    "psycopg[binary,pool]>=3.3,<3.4",
+    # [email] pulls in email-validator, required by EmailStr in the API schemas.
+    "pydantic[email]>=2.13,<2.14",
+    "pydantic-settings>=2.14,<2.15",
+    "authlib>=1.7,<1.8",
+    "pyjwt>=2.13,<3.0",
+    "itsdangerous>=2.2,<3.0",
+    "redis>=8.1,<8.2",
+    "boto3>=1.43,<2.0",
+    "httpx>=0.28,<0.29",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.1,<9.2",
+    "pytest-asyncio>=1.4,<2.0",
+    "pytest-cov>=7.1,<8.0",
+    "ruff>=0.16,<0.17",
+    "mypy>=2.3,<2.4",
+]
+
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+# ---------------------------------------------------------------------------
+# Ruff — format + lint (T003)
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "B",    # flake8-bugbear
+    "C4",   # flake8-comprehensions
+    "UP",   # pyupgrade
+    "ASYNC",# flake8-async
+    "S",    # flake8-bandit
+    "RUF",  # ruff-specific
+]
+ignore = [
+    "S101",  # assert is expected in tests
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S105", "S106"]      # hardcoded test credentials are fine
+"alembic/versions/*" = ["E501"]   # generated migration lines can be long
+
+# ---------------------------------------------------------------------------
+# mypy — strict on application code (T003)
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["tests.*", "alembic.*"]
+disallow_untyped_defs = false
+
+[[tool.mypy.overrides]]
+module = ["authlib.*", "boto3.*", "botocore.*"]
+ignore_missing_imports = true
+
+# ---------------------------------------------------------------------------
+# pytest + coverage (T004)
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Put src on the path directly rather than relying on the editable install.
+# macOS sets the BSD `hidden` flag on .pth files under some conditions, and
+# Python 3.12 skips hidden .pth files — which makes a correct-looking editable
+# install silently unimportable. This removes that dependency entirely.
+pythonpath = ["src"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+# --cov-fail-under enforces the constitutional gate (Principle VII, SC-007).
+# Note this makes `pytest` fail without PostgreSQL: the database tests skip, and
+# skipped tests cover nothing. Run the stack, or pass --no-cov for a quick
+# unit-only check.
+addopts = "--cov=careerhq --cov-report=term-missing --cov-fail-under=80"
+
+[tool.coverage.run]
+# The package name, not the path: a path-based source conflicts with the
+# editable install's import hook and breaks collection.
+source = ["careerhq"]
+omit = ["*/alembic/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]

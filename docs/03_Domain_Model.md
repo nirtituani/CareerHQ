@@ -259,14 +259,17 @@ A Resume Version is created from:
 ### Properties
 
 - Resume Version ID
-- Resume Profile ID
+- Source Resume Profile ID — **lineage**: which Master this was created from
+- Source Resume Profile revision — the state of that Master at creation time
 - Target Application ID, when available
 - Version name
 - Professional title
 - Structured sections
 - Section order
+- Item inclusion set — which bullets, skills, and projects are included in this Version
 - Layout configuration
 - Match Analysis
+- Confidence Score from the Reviewer
 - Tailoring workflow reference
 - Creation timestamp
 - Last updated timestamp
@@ -275,13 +278,18 @@ A Resume Version is created from:
 
 ### Business Rules
 
-- Every Resume Version belongs to exactly one Resume Profile.
-- Resume Versions may be edited before submission.
-- Resume Versions are independent snapshots.
+- Every Resume Version records exactly one source Resume Profile.
+- **Lineage is recorded, not inherited.** After creation a Version is an independent document; it
+  never receives updates from its source.
+- Resume Versions may be edited while in `Draft` or `Ready`.
 - Professional Profile updates do not modify an existing Resume Version.
 - Resume Profile updates do not modify an existing Resume Version.
 - A Resume Version may produce multiple preview exports.
 - A Resume Version may produce only one immutable Submitted Resume per Application submission event.
+- A `Submitted` Version is locked: it may be viewed, re-downloaded, or duplicated into a new
+  `Draft`, but never modified.
+- Item inclusion is per Version. Excluding a bullet from a Version does not remove it from the
+  Professional Profile.
 
 ---
 
@@ -461,6 +469,23 @@ Contains:
 - Order
 - Visibility
 - Locked state
+
+### ItemInclusion
+
+Contains:
+
+- Resume Version ID
+- Referenced item type — experience bullet, skill, project, certification
+- Referenced item ID
+- Included state
+- Order within its section
+- Source — user choice or AI recommendation
+- Approval state
+
+Inclusion is resolved **per item, per Version**. A Resume Version does not copy professional
+content; it records which items from the Professional Profile it includes and in what order. This
+is what allows a user to approve or reject an AI proposal one bullet at a time, and what makes a
+Version a lightweight selection rather than a duplicated document.
 
 ---
 
@@ -1451,21 +1476,27 @@ KnowledgeDocument
 stateDiagram-v2
     [*] --> Draft
     Draft --> Tailoring
-    Tailoring --> Review
-    Review --> Draft: Changes requested
-    Review --> Approved: User approves
-    Approved --> Exported
-    Exported --> Submitted
-    Submitted --> [*]
+    Tailoring --> Reviewing: Agent self-critique
+    Reviewing --> Tailoring: Confidence below threshold
+    Reviewing --> Draft: User requests changes
+    Reviewing --> Ready: User approves
+    Ready --> Draft: Further editing
+    Ready --> Exported
+    Exported --> Submitted: User confirms it was sent
+    Submitted --> [*]: Locked permanently
 ```
 
 ### Rules
 
-- Draft and Tailoring states are editable.
-- Review state allows approval, rejection, or manual editing.
-- Approved content may be exported.
-- Export does not automatically mean submission.
-- Submission creates an immutable Submitted Resume.
+- `Draft` and `Tailoring` are editable.
+- `Reviewing` is the Reviewer agent's grounding, integrity, and coverage check. It may loop back to
+  `Tailoring` on its own initiative when the Confidence Score is below threshold — this loop is
+  internal and does not require user input.
+- `Ready` means user-approved. It remains editable; approval is not a one-way door until export.
+- Export does not imply submission. A user may export a PDF and never send it.
+- `Submitted` is terminal and **locked**. The Version cannot be edited again. Duplicating it
+  creates a new `Draft` with its own lineage.
+- A Version's source Resume Profile may change at any time without affecting the Version.
 
 ---
 
@@ -1634,7 +1665,10 @@ They may initially be handled within the Modular Monolith.
 
 - Each user owns exactly one Professional Profile.
 - Every Resume Profile belongs to one Professional Profile.
-- Every Resume Version originates from one Resume Profile.
+- Every Resume Version records exactly one source Resume Profile, and that lineage is immutable.
+- A Resume Version never inherits changes from its source after creation.
+- A Submitted Resume Version can never transition to any other state.
+- Imported resume content becomes a professional fact only after explicit user review.
 - Professional facts must originate from the user or receive explicit user approval.
 - AI suggestions are not professional facts.
 - Submitted Resumes are immutable.
