@@ -82,9 +82,16 @@ First-time backend setup:
 
 ```bash
 cd backend
-/Library/Frameworks/Python.framework/Versions/3.12/bin/python3.12 -m venv .venv
+python3.12 -m venv .venv
 .venv/bin/pip install -e ".[dev]"
 ```
+
+> On macOS, if an apparently correct editable install still raises
+> `ModuleNotFoundError: No module named 'careerhq'`, the `.pth` file has the BSD `hidden` flag and
+> Python's `site` module skips it deliberately. Check with
+> `ls -lO .venv/lib/*/site-packages/*.pth` and clear it with `chflags nohidden`. `pytest` is
+> unaffected — `pyproject.toml` sets `pythonpath = ["src"]` — but anything else invoking the venv's
+> Python directly is.
 
 ---
 

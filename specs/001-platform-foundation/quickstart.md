@@ -90,17 +90,40 @@ names `cache` as the failure. `docker compose start redis` to recover.
 
 ## Verify User Story 3 — quality gates
 
-Locally, the same commands CI runs:
+Run these **on the host**, not with `docker compose exec` — they are the same commands CI runs,
+and two of them cannot work inside the containers at all (see the note below).
+
+Backend, from `backend/` with the venv active (first time:
+`python3.12 -m venv .venv && .venv/bin/pip install -e ".[dev]"` — see the README):
 
 ```bash
-docker compose exec backend ruff format --check .
-docker compose exec backend ruff check .
-docker compose exec backend mypy .
-docker compose exec backend pytest --cov --cov-report=term-missing   # ≥80%
-docker compose exec frontend npm run lint
-docker compose exec frontend npm run build
-docker compose exec frontend npm test
+.venv/bin/ruff format --check .    # formatting
+.venv/bin/ruff check .             # lint
+.venv/bin/mypy src                 # types (strict)
+.venv/bin/pytest                   # tests, with the 80% coverage gate
 ```
+
+Frontend, from `frontend/`:
+
+```bash
+npm run lint          # oxlint
+npm run typecheck     # tsc --noEmit
+npm test              # vitest
+npm run build         # next build
+npm run e2e           # playwright — needs the stack running
+```
+
+`pytest` needs the stack up: the database tests **skip** without PostgreSQL, and skipped tests
+cover nothing, so the coverage gate fails. `pytest --no-cov` for a quick unit-only check.
+
+> **Why not `docker compose exec`?** Found while running this quickstart from a clean clone
+> (T069). `backend/.dockerignore` excludes `tests/`, so the runtime image has no test suite and
+> `docker compose exec backend pytest` reports *no tests collected* — which reads like a passing
+> run if you are not watching. And the frontend container is built `target: dev`, so its running
+> dev server owns `/app/.next`; `docker compose exec frontend npm run build` races it and fails
+> prerendering `/_global-error`, while the identical build succeeds on the host and in CI. Lint,
+> type-checking, and `npm test` do work in the containers, but there is no reason to run half the
+> gates one way and half the other.
 
 Then confirm the pipeline actually fails on bad input: push a branch containing a deliberate
 formatting error, an unannotated function, and a failing assertion. GitHub Actions must report
@@ -109,7 +132,7 @@ failure and name each problem. Fix and confirm green.
 The concurrency test from SC-004 is part of the backend suite:
 
 ```bash
-docker compose exec backend pytest -k concurrent_first_signin -v
+.venv/bin/pytest -k concurrent_first_signin -v
 ```
 
 ---
@@ -133,6 +156,12 @@ only — containers still reach each other on the standard ports over the intern
 **`redirect_uri_mismatch` from Google** — the URI in the Cloud Console must match
 `http://localhost:3000/api/auth/google/callback` exactly, including scheme and port.
 
+**A fresh clone still has the previous database** — `docker-compose.yml` pins `name: careerhq`,
+so every checkout on the machine shares one Compose project and therefore one set of volumes.
+Cloning into a new directory does *not* give you a clean database. For genuinely clean state run
+`docker compose down -v` first, which deletes the volumes; the next `up` re-runs the migrations
+and initialises MinIO from scratch.
+
 **`extension "vector" is not available`** — the Postgres service must use the
 `pgvector/pgvector:pg17` image, not stock `postgres`. If you changed it after the first run,
 remove the volume (`docker compose down -v`) so the new image initializes cleanly.
@@ -140,6 +169,3 @@ remove the volume (`docker compose down -v`) so the new image initializes cleanl
 **Frontend shows "service unavailable"** — expected briefly while the backend applies migrations
 on first start; it should clear on its own within a few seconds (FR-019). If it persists, check
 `docker compose logs backend`.
-
-**Port already in use** — 3000, 8000, 5432, 6379, or 9000 is taken. Stop the conflicting process
-or override the host port in `docker-compose.yml`.
