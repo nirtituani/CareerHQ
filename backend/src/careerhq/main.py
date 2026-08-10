@@ -16,6 +16,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from careerhq.config import Settings, get_settings
 from careerhq.infrastructure.logging import RequestContextMiddleware, configure_logging
+from careerhq.infrastructure.security import SecurityHeadersMiddleware
 
 logger = logging.getLogger("careerhq")
 
@@ -51,6 +52,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.settings = settings
     app.add_middleware(RequestContextMiddleware)
+    app.add_middleware(SecurityHeadersMiddleware, is_production=settings.is_production)
 
     # Authlib stores the OAuth `state` parameter here between the redirect to
     # Google and the callback. It is a signed cookie, not server-side storage,

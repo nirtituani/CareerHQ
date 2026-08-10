@@ -1,4 +1,4 @@
-"""Session tokens and cookies.
+"""Session tokens, cookies, and security response headers.
 
 The session is a signed JWT in an HttpOnly cookie — there is no session table.
 Stateless keeps the API horizontally scalable and keeps Redis off the
@@ -12,10 +12,14 @@ deny-list can be added later without changing the cookie contract.
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import jwt
 from fastapi import Response
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request as StarletteRequest
 
 from careerhq.config import get_settings
 
@@ -94,3 +98,39 @@ def clear_session_cookie(response: Response) -> None:
         secure=settings.is_production,
         path="/",
     )
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Attach the response headers that constrain how a browser treats us.
+
+    Cheap, static, and applied to every response including errors — a 401 is
+    exactly what an attacker probes most (T068).
+
+    ``nosniff`` stops content-type guessing, so a JSON error body can never be
+    executed as script. ``DENY`` blocks framing, which is what makes clickjacking
+    impossible against a session that authenticates by cookie. ``no-referrer``
+    keeps paths — which here can carry a ``next`` destination — out of the
+    Referer header on outbound links.
+
+    HSTS is production-only on purpose: sent from plain-HTTP localhost it would
+    pin a scheme that does not exist there, and browsers cache that pin.
+    """
+
+    def __init__(self, app: Any, *, is_production: bool = False) -> None:
+        super().__init__(app)
+        self.is_production = is_production
+
+    async def dispatch(
+        self,
+        request: StarletteRequest,
+        call_next: Callable[[StarletteRequest], Awaitable[Response]],
+    ) -> Response:
+        response = await call_next(request)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "no-referrer")
+        if self.is_production:
+            response.headers.setdefault(
+                "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
+            )
+        return response

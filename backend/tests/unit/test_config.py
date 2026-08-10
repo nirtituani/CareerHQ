@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from careerhq.config import Settings
+from careerhq.config import Settings, get_settings
 from tests.conftest import TEST_ENV
 
 REQUIRED_FIELDS = (
@@ -62,6 +62,32 @@ def test_empty_or_weak_session_secret_is_rejected(
         Settings(_env_file=None)  # type: ignore[call-arg]
 
     assert "session_secret" in str(exc_info.value)
+
+
+@pytest.mark.parametrize("weak_value", ["short-secret-value-abc", "hunter2"])
+def test_startup_failure_does_not_echo_the_secret(
+    monkeypatch: pytest.MonkeyPatch, weak_value: str
+) -> None:
+    """Found during the security review (T068).
+
+    Pydantic puts the rejected input in the error text — `input_value='...'` —
+    so a SESSION_SECRET that is merely too short lands in the container startup
+    log in full. `get_settings()` is what the container calls, so that is where
+    the message is rebuilt from field names and error types alone.
+    """
+    for key, value in TEST_ENV.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setenv("SESSION_SECRET", weak_value)
+    get_settings.cache_clear()
+
+    with pytest.raises(RuntimeError) as exc_info:
+        get_settings()
+
+    message = str(exc_info.value)
+    assert "session_secret" in message, "the operator still needs to know which field"
+    assert weak_value not in message, "the rejected secret was echoed"
+
+    get_settings.cache_clear()
 
 
 def test_valid_environment_constructs(monkeypatch: pytest.MonkeyPatch) -> None:

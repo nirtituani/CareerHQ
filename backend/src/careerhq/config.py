@@ -11,7 +11,8 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, ValidationError
+from pydantic_core import ErrorDetails
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -86,11 +87,50 @@ class Settings(BaseSettings):
         return self.google_client_id is not None and self.google_client_secret is not None
 
 
+def _secret_fields() -> frozenset[str]:
+    """Field names whose values must never appear in an error message.
+
+    Derived from the annotations rather than listed by hand, so a secret added
+    later is covered without anyone remembering to update this.
+    """
+    return frozenset(
+        name
+        for name, field in Settings.model_fields.items()
+        if field.annotation in (SecretStr, SecretStr | None)
+    )
+
+
+def _describe(error: ErrorDetails, secrets: frozenset[str]) -> str:
+    """One line per invalid field, with the value withheld when it is a secret.
+
+    Pydantic puts the rejected input in its own message — `input_value='...'` —
+    which for SESSION_SECRET means the secret itself is printed by the crash
+    that was supposed to protect it (T068).
+    """
+    field = ".".join(str(part) for part in error["loc"]) or "(root)"
+    if field in secrets:
+        return f"{field}: {error['type']}"
+    return f"{field}: {error['type']} — {error['msg']}"
+
+
 @lru_cache
 def get_settings() -> Settings:
     """Return the process-wide settings, constructed once.
 
     Cached so that configuration is read and validated a single time, and so
     tests can clear the cache to substitute a different environment.
+
+    A validation failure is re-raised with the offending values stripped. The
+    operator still learns which field is wrong and why — that is the whole point
+    of failing at startup (FR-006) — but a rejected secret does not travel into
+    the container log on its way out.
     """
-    return Settings()  # values are supplied by the environment
+    try:
+        return Settings()  # values are supplied by the environment
+    except ValidationError as exc:
+        secrets = _secret_fields()
+        details = "\n  ".join(_describe(error, secrets) for error in exc.errors())
+        raise RuntimeError(
+            f"Invalid configuration ({exc.error_count()} problem(s)):\n  {details}\n"
+            "See .env.example for the expected values."
+        ) from None  # `from None`: the original exception carries the values

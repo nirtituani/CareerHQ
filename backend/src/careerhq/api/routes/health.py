@@ -71,8 +71,13 @@ async def _run_probe(name: str, probe: Callable[[], Awaitable[None]]) -> dict[st
             "error": f"Timed out after {PROBE_TIMEOUT_SECONDS}s",
         }
     except Exception as exc:
+        # The driver's message is diagnostic gold and a disclosure risk at once:
+        # a real PostgreSQL auth failure reads `connection to server at
+        # "172.19.0.4", port 5432 failed: FATAL: password authentication failed
+        # for user "careerhq"`. This endpoint is unauthenticated, so the caller
+        # gets the kind of failure and the operator gets the rest (T068).
         logger.warning("dependency probe failed", extra={"dependency": name, "error": str(exc)})
-        return {"status": "error", "error": str(exc) or exc.__class__.__name__}
+        return {"status": "error", "error": exc.__class__.__name__}
 
     return {
         "status": "ok",
