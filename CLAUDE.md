@@ -36,9 +36,20 @@ Working: Docker Compose stack, Google sign-in end to end, per-user isolation, he
 reporting each dependency by name, and CI green on every gate. 55 backend tests at 89% coverage,
 3 component tests, 6 Playwright smoke tests.
 
-Branch: `001-platform-foundation`. **Next**: merge to `main`, then slice 002 — deployment.
-Deploy *before* building the agent, so OAuth redirect URIs, managed Postgres, and HTTPS fail
-while the application is still small enough to debug them in isolation.
+Merged to `main` and pushed; CI green on the merge commit. Working branch is now `main`.
+
+**Next**: slice 002 — deployment. Deploy *before* building the agent, so OAuth redirect URIs,
+managed Postgres, and HTTPS fail while the application is still small enough to debug them in
+isolation.
+
+Two things carried forward into that slice: `PUBLIC_BASE_URL` already drives every browser-facing
+URL, so fixing the OAuth redirect for a real domain is configuration rather than code; and HSTS is
+wired to `is_production` but has never once run with `ENVIRONMENT=production`, so it is unproven.
+
+**Repo location**: `/Users/nirtituani/Developer/CareerHQ`. It was moved out of
+`~/Documents/AI Workshop/` because iCloud syncs that folder and had generated 69 conflict copies
+of source files — including `config 2.py` and `security 2.py`. `.gitignore` now excludes the
+`* 2.*` pattern, but the real fix was leaving iCloud. Do not move it back.
 
 ### What the T068 security review established
 
