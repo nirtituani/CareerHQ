@@ -27,11 +27,13 @@ the author's design notes, the resume-builder reference — is in `docs/referenc
 
 ## Current state
 
-**Slice 001 — Platform Foundation.** User Stories 1 and 2 complete and verified; 57 of 69 tasks
-done. Remaining: US3 (`T057`–`T063`, CI pipeline) and polish (`T064`–`T069`).
+**Slice 001 — Platform Foundation.** All three user stories complete and verified; 65 of 69 tasks
+done. Remaining: `T065`, `T067`, `T068`, `T069` — documentation corrections, a security review,
+and a full quickstart run from a clean clone.
 
 Working: Docker Compose stack, Google sign-in end to end, per-user isolation, health checks
-reporting each dependency by name. 46 tests, 89% backend coverage.
+reporting each dependency by name, and CI green on every gate. 46 backend tests at 89% coverage,
+3 component tests, 6 Playwright smoke tests.
 
 Branch: `001-platform-foundation`.
 
@@ -66,12 +68,22 @@ implementation deviates — a task list that lies about what happened is worse t
   declare. `domain/` imports no framework code — that is what keeps Principle V enforceable.
 - **Frontend**: Next.js 16 App Router, TypeScript 7, Tailwind 4 (configured in CSS via `@theme`;
   there is no `tailwind.config.js`), shadcn/ui.
+- **Frontend tooling**: **oxlint**, not ESLint — `typescript-eslint` refuses to run against
+  TypeScript 7 and `eslint-config-next` imports it at load time, so the whole Next lint preset is
+  unusable. Rules live in `.oxlintrc.json`; the rules of hooks are enforced. Type correctness is
+  `npm run typecheck` (tsc), which was always more accurate than lint rules approximating it.
+  Vitest config is `vitest.config.mts` (ESM); Playwright is separate and needs the stack running.
 - **Business invariants belong in the schema.** A UNIQUE constraint cannot be raced or forgotten;
   an application-level check can be both.
 - **Ownership comes from the session, never from the request.** No endpoint accepts a
   client-supplied user or profile id. A test enumerates every route and asserts non-public ones
   return 401.
-- **Quality gates**: `ruff format`, `ruff check`, `mypy` strict, `pytest` at ≥80% coverage.
+- **Quality gates**: `ruff format`, `ruff check`, `mypy` strict, `pytest` at ≥80% coverage;
+  frontend `lint`, `typecheck`, `test`, `build`. CI runs all of them with `if: !cancelled()` so a
+  push surfaces every problem at once rather than one per round trip.
+- **A gate nobody has watched fail is not a gate.** When adding one, prove it catches something —
+  push a deliberate break, confirm the failure is named, then remove it. That is how the CI
+  fail-fast problem above was found.
 
 ---
 
@@ -123,8 +135,18 @@ Recorded so they are not rediscovered.
 - **`request.base_url` is the internal hostname behind the proxy.** The frontend proxies `/api/*`
   to `http://backend:8000`, so anything browser-facing — OAuth redirect URIs especially — must
   come from `PUBLIC_BASE_URL`, not from the request.
-- **Verify package versions against the registry before pinning.** Six versions in the original
-  plan did not exist. Installing is faster than guessing.
+- **Verify package versions against the registry before pinning.** Nine versions across this
+  project did not exist when first written down. Installing is faster than guessing.
+- **`pytest` fails without PostgreSQL** — not because tests error, but because 22 of 46 skip and
+  skipped tests cover nothing, so the coverage gate trips. `pytest --no-cov` for a quick
+  unit-only check; `docker compose up -d` for the real run.
+- **Playwright must target `127.0.0.1`, not `localhost`.** Node resolves `localhost` to `::1`
+  first while Docker publishes IPv4 only, which surfaces as `ECONNREFUSED ::1:3000` against a
+  stack that is demonstrably running.
+- **A killed `next build` leaves workers behind** that make the next build take minutes and then
+  fail on a vanishing temp file. `pkill -f "next-build|processChild"` and `rm -rf .next`.
+- **Pushing anything under `.github/workflows/` needs a token with the `workflow` scope.**
+  Otherwise the push is rejected outright, with the commit still safe locally.
 - **A comment beginning `# noqa` is parsed as a blanket lint suppression.** Do not start an
   explanatory comment with that word.
 

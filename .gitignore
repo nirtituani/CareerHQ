@@ -34,3 +34,9 @@ npm-debug.log*
 *.db
 *.sqlite3
 storage/
+
+# Playwright output
+test-results/
+playwright-report/
+blob-report/
+.last-run.json
