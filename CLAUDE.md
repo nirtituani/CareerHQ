@@ -27,9 +27,10 @@ the author's design notes, the resume-builder reference — is in `docs/referenc
 
 ## Current state
 
-**Slice 001 — Platform Foundation.** All three user stories complete and verified; 68 of 69 tasks
-done. `T065`, `T067`, and `T068` are closed. `T069` is verified except the interactive Google
-sign-in leg — everything automatable passed against a clean clone on empty volumes.
+**Slice 001 — Platform Foundation is complete.** All 69 tasks done, all three user stories
+verified, and the quickstart run end to end from a fresh clone on wiped volumes — including a
+real Google sign-in taking the database from `0|0` to `1|1`, and a second sign-in leaving it at
+`1|1` while advancing only `last_login_at`.
 
 Working: Docker Compose stack, Google sign-in end to end, per-user isolation, health checks
 reporting each dependency by name, and CI green on every gate. 55 backend tests at 89% coverage,
