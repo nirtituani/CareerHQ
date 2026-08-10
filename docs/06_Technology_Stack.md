@@ -347,10 +347,13 @@ Reasons
 
 ## LLM Providers
 
-Current Providers
+Primary
+
+- Anthropic Claude (`LLM_PROVIDER_MODEL=anthropic/claude-opus-5`)
+
+Also supported
 
 - OpenAI
-- Anthropic
 - Google Gemini
 
 The application communicates only with LiteLLM.
@@ -361,18 +364,34 @@ Providers remain replaceable.
 
 ## Embedding Models
 
-Initial Provider
+Embeddings sit behind a configurable interface, separate from the LLM gateway.
+
+Default
+
+- `sentence-transformers/all-MiniLM-L6-v2`, running locally
+
+Optional hosted providers
 
 - OpenAI Embeddings
-
-Future Providers
-
 - Gemini Embeddings
 - Voyage AI
 - BGE
 - Instructor
 
-Embedding providers remain configurable.
+Reasons
+
+- **Anthropic has no embeddings endpoint.** The primary LLM provider is
+  Anthropic Claude, so embeddings cannot come from the same place as
+  generation — they are a genuinely separate choice, not a setting on the
+  gateway.
+- **The stack runs with no API key.** A local default means `docker compose up`
+  works on a clean clone before any provider account exists, which is what keeps
+  the quickstart honest.
+- **LiteLLM does not cover this seam.** Business code stays provider-agnostic
+  either way (Principle IV), but the indirection is our own interface rather
+  than the gateway's.
+
+Configured by `EMBEDDING_MODEL`. Changing providers is configuration, not code.
 
 ---
 
