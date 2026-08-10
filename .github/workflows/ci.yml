@@ -59,18 +59,25 @@ jobs:
       - name: Install
         run: pip install -e ".[dev]"
 
+
+      # Every check runs even when an earlier one failed, so a push surfaces all
+      # the problems at once rather than one per round trip. The job still fails.
       - name: Format
+        if: '!cancelled()'
         run: ruff format --check .
 
       - name: Lint
+        if: '!cancelled()'
         run: ruff check .
 
       - name: Type check
+        if: '!cancelled()'
         run: mypy src
 
       # Runs last: a type error should be reported as a type error, not as a
       # confusing test failure downstream of it.
       - name: Tests
+        if: '!cancelled()'
         run: pytest
 
   frontend:
@@ -97,15 +104,19 @@ jobs:
       # TypeScript 7, and eslint-config-next imports it at load time. oxlint
       # parses TypeScript natively and still enforces the rules of hooks.
       - name: Lint
+        if: '!cancelled()'
         run: npm run lint
 
       - name: Type check
+        if: '!cancelled()'
         run: npm run typecheck
 
       - name: Tests
+        if: '!cancelled()'
         run: npm test
 
       - name: Build
+        if: '!cancelled()'
         run: npm run build
         env:
           BACKEND_URL: http://backend:8000
