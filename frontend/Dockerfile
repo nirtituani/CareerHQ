@@ -21,6 +21,19 @@ FROM node:24-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+
+# next.config.ts resolves the /api/* proxy destination when the bundle is
+# built, not when the server runs — the value ends up in routes-manifest.json.
+# Setting BACKEND_URL only at runtime is therefore too late: the build has
+# already baked in the localhost fallback, and every /api/* request 500s with
+# ECONNREFUSED to a port nothing listens on inside this container.
+#
+# A Docker build is isolated from the host environment, so a platform can only
+# supply a value through a declared ARG. Without this line the variable is
+# invisible to the build no matter how it is configured.
+ARG BACKEND_URL
+ENV BACKEND_URL=${BACKEND_URL}
+
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
