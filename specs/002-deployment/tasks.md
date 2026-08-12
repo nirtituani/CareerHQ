@@ -223,6 +223,11 @@ again creates neither.
 - [ ] T038 [US2] Record what was actually observed in T035–T037 in `specs/002-deployment/`, not
       what was expected. This configuration had never executed before this slice; the observation
       is the evidence FR-015 requires
+- [ ] T039 👁 **OBSERVE** [US2] Search the deployed backend logs for the literal values of
+      `SESSION_SECRET`, `GOOGLE_CLIENT_SECRET` and the database password, covering startup and at
+      least one completed sign-in. **Failure looks like**: any occurrence at all (FR-017). Slice
+      001 found a crash that printed `SESSION_SECRET` in full precisely because it was the code
+      meant to protect it — deployed logging is new ground and has never been checked this way
 
 **Checkpoint**: The deployed system authenticates real users under production security settings
 that have now been seen working rather than assumed.
@@ -237,19 +242,19 @@ a theory.
 **Independent Test**: Merge a trivial visible change and confirm it appears with no further
 action. Separately merge a change that fails a gate and confirm the site is unchanged.
 
-- [ ] T039 🔧 **MANUAL** [US3] Enable **Wait for CI** on both services in Railway. Without it a
+- [ ] T040 🔧 **MANUAL** [US3] Enable **Wait for CI** on both services in Railway. Without it a
       merge deploys immediately and CI results arrive too late to prevent anything (FR-020)
-- [ ] T040 [US3] Merge a trivial, visible change to `main` and confirm it reaches the public site
+- [ ] T041 [US3] Merge a trivial, visible change to `main` and confirm it reaches the public site
       with no manual step. Watch with `gh run watch` (SC-005)
-- [ ] T041 [US3] **Watch the gate fail.** On a branch, deliberately break a test, merge it, and
+- [ ] T042 [US3] **Watch the gate fail.** On a branch, deliberately break a test, merge it, and
       confirm the public site is **unchanged** and the failure is visible in Actions. Then revert.
       A gate nobody has watched fail is not a gate — this is the same discipline CLAUDE.md
       requires when adding any gate (SC-006)
-- [ ] T042 👁 **OBSERVE** [US3] Confirm the pre-deploy command ran by finding `alembic upgrade
+- [ ] T043 👁 **OBSERVE** [US3] Confirm the pre-deploy command ran by finding `alembic upgrade
       head` output in the deployment logs. On the first deploy it will report nothing to apply,
       because the deployed database is already current — that is the expected result, not a
       skipped step (data-model.md)
-- [ ] T043 👁 **OBSERVE** [US3] Practise a rollback: redeploy the previous deployment and confirm
+- [ ] T044 👁 **OBSERVE** [US3] Practise a rollback: redeploy the previous deployment and confirm
       the site returns to it. Do this before an incident requires it (FR-023, SC-007)
 
 **Checkpoint**: Every later slice now ships continuously rather than accumulating an undeployed
@@ -259,28 +264,36 @@ backlog.
 
 ## Phase 6: Polish & Cross-Cutting Concerns
 
-- [ ] T044 [P] Add the deployment section to `README.md` covering deploy, reading logs, and
+- [ ] T045 [P] Add the deployment section to `README.md` covering deploy, reading logs, and
       rollback — including the asymmetry that application rollback is cheap, schema rollback is
       conditional on the migration being reversible, and business data is **never** rolled back
       under Principle IV (FR-024). An operator reads this during an incident, so it must be where
-      they will look
-- [ ] T045 [P] Record in `CLAUDE.md` the gotchas this slice proved, with the symptom for each,
+      they will look. It must also state **the exact OAuth redirect URI** and its exact-match
+      requirement (FR-012 — the value currently lives only in T029 and a slice artifact, neither
+      of which is the project's documentation), and **where to see which version is live, whether
+      the last deploy succeeded, and why it failed** (FR-022)
+- [ ] T046 [P] Record in `CLAUDE.md` the gotchas this slice proved, with the symptom for each,
       since neither names its own cause: Railway's private network is IPv6 while Docker's is IPv4;
       and Wait for CI waits on **all** GitHub check suites, so a merge can silently never deploy
       while this repository's CI is green
-- [ ] T046 [P] Update `CLAUDE.md`'s current-state section: slice 002 complete, the public URL,
+- [ ] T047 [P] Update `CLAUDE.md`'s current-state section: slice 002 complete, the public URL,
       and what carries into slice 003
-- [ ] T047 [P] Update `docs/05_Implementation_Plan.md` §5 and §10 — slice 002 complete, slice 003
+- [ ] T048 [P] Update `docs/05_Implementation_Plan.md` §5 and §10 — slice 002 complete, slice 003
       next
-- [ ] T048 [P] Update `docs/08_Technical_Spec.md`: close Q2 (readiness following configuration),
+- [ ] T049 [P] Update `docs/08_Technical_Spec.md`: close Q2 (readiness following configuration),
       mark the production security path as verified rather than unproven in §4.2, and record the
       deployed URL in §1.2
-- [ ] T049 Confirm the scope guards held: no user-visible behaviour changed other than the address
+- [ ] T050 Confirm the scope guards held: no user-visible behaviour changed other than the address
       the system is reached at (FR-025, SC-009). Review the full diff against `main` — if it
       contains an application feature, the slice drifted
-- [ ] T050 Run every gate from the host and confirm green: `ruff format --check .`, `ruff check .`,
+- [ ] T051 Run every gate from the host and confirm green: `ruff format --check .`, `ruff check .`,
       `mypy src`, `pytest` from `backend/`; `npm run lint`, `npm run typecheck`, `npm test`,
       `npm run build` from `frontend/`
+- [ ] T052 Walk `README.md`'s deployment section end to end **as written**, and correct it against
+      what actually happens — deploy, find the status of that deployment, and return to the
+      previous version, using only the documentation (SC-007, FR-022). This is the slice-002
+      equivalent of slice 001's T069, which corrected the quickstart against a real clean-clone run
+      and found genuine errors. Documentation nobody has followed is a claim, not a procedure
 
 ---
 
@@ -311,12 +324,12 @@ Everything else hangs off this spine. T007 is the single most blocking task in t
 - Phase 1: T001–T003 are independent files
 - Phase 2: T004–T006 together; then T008 and T009 together
 - US1: T011–T016 are all in one file but independent cases — write them together, then T017
-- Polish: T044–T048 are five different files
+- Polish: T045–T049 are five different files
 
 ### Manual and observation tasks cannot be parallelised with code
 
-T019–T023, T029–T030 and T039 are performed by the author in external consoles. T025–T028,
-T031–T037 and T042–T043 require a deployed system. Neither can be batched with implementation
+T019–T023, T029–T030 and T040 are performed by the author in external consoles. T025–T028,
+T031–T039, T043–T044 and T052 require a deployed system. Neither can be batched with implementation
 work, and both must be sequenced after the deployment they inspect.
 
 ---
@@ -341,7 +354,7 @@ site) → US3 (demo: merge a change and watch it appear) → Polish.
   frontend domain does not exist until T020, so T029 cannot be done in advance — this ordering is
   forced, not chosen.
 - **Commit after each task or logical group**; the branch is `002-deployment`.
-- **T041 is the task most likely to be skipped and the one most worth doing.** Watching the gate
+- **T042 is the task most likely to be skipped and the one most worth doing.** Watching the gate
   fail is the only evidence it works.
 - **If the diff grows an application feature, stop.** FR-025 and SC-009 exist to catch that, and
-  T049 is the checkpoint.
+  T050 is the checkpoint.

@@ -249,9 +249,13 @@ public site is unchanged.
   derived from, and avoids cross-origin configuration.
 - **Registering the return address with the identity provider is a manual action by the author.**
   It requires access to an external account that the system cannot and should not automate.
-- **Cache and object storage are deliberately absent.** Nothing depends on them yet beyond the
-  readiness report. They arrive with slices 003 and 004, at which point they become configured
-  dependencies and readiness begins checking them without further change.
+- **Cache and object storage are deliberately absent.** No feature uses them yet. They arrive with
+  slices 003 and 004, at which point they become configured dependencies and readiness begins
+  checking them without further change.
+  **They are not merely unused, though — they are currently *required* configuration**, so the
+  system cannot start without values for them. Making that configuration optional is therefore
+  prerequisite to any deployment work, not a consequence of it. Sizing this slice from the
+  readiness report alone would understate it.
 - **A single deployment region and the hosting provider's generated address are sufficient.** No
   custom domain, content delivery network, automatic scaling, or alerting is in scope.
 - **Rollback is an operator action, not an automatic response.** The system does not attempt to

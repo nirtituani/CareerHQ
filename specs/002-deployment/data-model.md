@@ -49,8 +49,10 @@ cache_configured            → REDIS_URL is set
 object_storage_configured   → the S3 settings are set
 ```
 
-These are the sole input to which dependencies get probed (see
-[contracts/readiness.md](./contracts/readiness.md)).
+These are the sole input to which dependencies get probed. A dependency whose property is `False`
+is reported as **`not_configured`** rather than probed — never as `ok`, which would make the
+endpoint claim a result it never produced. See
+[contracts/readiness.md](./contracts/readiness.md) for the full status contract.
 
 ### The trade this makes, stated plainly
 
