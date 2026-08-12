@@ -8,12 +8,21 @@
 
 set -euo pipefail
 
+# Hosting platforms assign a port at run time and inject it as $PORT, then probe
+# that port to decide whether the service came up. A hardcoded port means the
+# health check knocks somewhere nothing is listening, and the symptom is a
+# healthcheck that retries until it gives up — with no error from the
+# application, because the application is fine and simply unreachable.
+#
+# Defaults to 8000 so local Compose, which publishes that port, is unaffected.
+PORT="${PORT:-8000}"
+
 echo "Applying database migrations..."
 alembic upgrade head
 
-echo "Starting API on :8000"
+echo "Starting API on :${PORT}"
 exec uvicorn careerhq.main:app \
   --host 0.0.0.0 \
-  --port 8000 \
+  --port "${PORT}" \
   --no-access-log \
   "$@"
