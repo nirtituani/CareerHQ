@@ -136,39 +136,39 @@ fetch readiness and confirm it names what it checked.
 
 ### Deploy
 
-- [ ] T019 🔧 **MANUAL** [US1] In the Railway project, create a **backend** service from this
+- [x] T019 🔧 **MANUAL** [US1] In the Railway project, create a **backend** service from this
       repository with root directory `backend/`. Do **not** generate a public domain — it is
       reached through the frontend over the private network
-- [ ] T020 🔧 **MANUAL** [US1] Create a **frontend** service from this repository with root
+- [x] T020 🔧 **MANUAL** [US1] Create a **frontend** service from this repository with root
       directory `frontend/`, and **generate a public domain**. Record the domain; every later task
       needs it
-- [ ] T021 🔧 **MANUAL** [US1] Set the backend service variables: `ENVIRONMENT=production`,
+- [x] T021 🔧 **MANUAL** [US1] Set the backend service variables: `ENVIRONMENT=production`,
       `DATABASE_URL=${{pgvector.DATABASE_URL}}`, `SESSION_SECRET` (generate with
       `openssl rand -hex 32`), `PUBLIC_BASE_URL=https://<frontend-domain>`. **Leave `REDIS_URL`
       and every `S3_*` variable unset** — that is what makes readiness report `not_configured`
-- [ ] T022 🔧 **MANUAL** [US1] Set the frontend service variable
+- [x] T022 🔧 **MANUAL** [US1] Set the frontend service variable
       `BACKEND_URL=http://backend.railway.internal:8000`
-- [ ] T023 🔧 **MANUAL** [US1] Confirm the backend service's pre-deploy command and healthcheck
+- [x] T023 🔧 **MANUAL** [US1] Confirm the backend service's pre-deploy command and healthcheck
       path are applied from `railway.toml`; set them in the console if the file is not picked up
-- [ ] T024 [US1] Deploy both services and confirm the backend reaches a healthy state. If it never
+- [x] T024 [US1] Deploy both services and confirm the backend reaches a healthy state. If it never
       goes healthy, fetch `/api/health/ready` directly — the healthcheck points at readiness, so a
       readiness bug blocks the entire deployment (research.md R4)
 
 ### Verify (SC-001, SC-003, SC-008)
 
-- [ ] T025 👁 **OBSERVE** [US1] Open `https://<frontend-domain>` from a device with no project
+- [x] T025 👁 **OBSERVE** [US1] Open `https://<frontend-domain>` from a device with no project
       setup and confirm the sign-in page renders over HTTPS. **Failure looks like**: a certificate
       warning, or the page loading over plain HTTP
-- [ ] T026 👁 **OBSERVE** [US1] `curl -s https://<frontend-domain>/api/health/ready` and confirm
+- [x] T026 👁 **OBSERVE** [US1] `curl -s https://<frontend-domain>/api/health/ready` and confirm
       `database` is `ok` while `cache` and `object_storage` are `not_configured`, with overall
       `ok`. **Failure looks like**: either reporting `ok` — nothing is deployed to be `ok` about,
       the endpoint is lying and FR-006 is violated — or reporting `error`, which would mean the
       probe is not following configuration
-- [ ] T027 👁 **OBSERVE** [US1] Confirm the frontend's `/api/*` proxy actually reaches the backend
+- [x] T027 👁 **OBSERVE** [US1] Confirm the frontend's `/api/*` proxy actually reaches the backend
       over Railway's private network. **Failure looks like**: the page loading normally while
       every API request fails — Railway's private network is IPv6 and Docker's is IPv4, so this
       cannot reproduce locally (research.md R6)
-- [ ] T028 👁 **OBSERVE** [US1] Attempt to connect to the database from outside the deployment and
+- [x] T028 👁 **OBSERVE** [US1] Attempt to connect to the database from outside the deployment and
       confirm it fails (SC-008). **Failure looks like**: a successful connection, meaning the
       database has a public endpoint it should not have
 
@@ -210,10 +210,10 @@ again creates neither.
 
 ### Verify production security — FR-015, the first execution ever (SC-004)
 
-- [ ] T035 👁 **OBSERVE** [US2] `curl -sI https://<frontend-domain>` and confirm a
+- [x] T035 👁 **OBSERVE** [US2] `curl -sI https://<frontend-domain>` and confirm a
       `Strict-Transport-Security` header is present. **Failure looks like**: no such header,
       meaning `is_production` is not true in the deployed environment
-- [ ] T036 👁 **OBSERVE** [US2] `curl -sI http://<frontend-domain>` and confirm a redirect to the
+- [x] T036 👁 **OBSERVE** [US2] `curl -sI http://<frontend-domain>` and confirm a redirect to the
       `https://` address. **Failure looks like**: a 200 served over plain HTTP
 - [ ] T037 👁 **OBSERVE** [US2] In the browser, after signing in, open DevTools → Application →
       Cookies and confirm the session cookie carries **`Secure`** and **`HttpOnly`**. Do this in a
