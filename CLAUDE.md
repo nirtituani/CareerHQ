@@ -68,6 +68,18 @@ Deployment config is version-controlled: `backend/railway.toml` (pre-deploy `ale
 head`, healthcheck `/api/health/ready`) and `frontend/railway.toml`. Railway reads them from each
 service's root directory — **not** from the repository root.
 
+**The environment variables are documented in `README.md` → Deployment.** Three of them are easy
+to get wrong and each failed at least once during slice 002:
+
+- `DATABASE_URL` must use **`postgresql+psycopg://`** — a bare `postgres://` will not build the
+  async engine — and **`PGHOST_PRIVATE`/`PGPORT_PRIVATE`**, not `PGHOST`, which is the public
+  proxy. Compose it from `${{pgvector.*}}` references so a password rotation propagates by itself.
+- **`PORT=8000` is set explicitly** on the backend. The entrypoint honours whatever a platform
+  assigns, which is correct — but the frontend reaches the backend at a *fixed*
+  `backend.railway.internal:8000`, so the assigned port has to be pinned or the two disagree.
+- `BACKEND_URL` on the frontend is consumed at **build** time. Changing it needs a rebuild, not a
+  restart.
+
 **Only Postgres is deployed.** Redis and object storage are not; nothing needs them until slices
 003/004. That is why `REDIS_URL` and the `S3_*` settings are now optional, and why readiness
 reports them as `not_configured` rather than failing. Setting placeholder values would make the
