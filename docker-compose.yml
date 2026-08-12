@@ -6,7 +6,7 @@ services:
   # extension is enabled by migration 0001 and stock postgres does not ship it.
   # ---------------------------------------------------------------------------
   postgres:
-    image: pgvector/pgvector:pg17
+    image: pgvector/pgvector:pg18
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-careerhq}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-careerhq}
@@ -21,7 +21,12 @@ services:
       # is a one-line .env change rather than an edit to this file.
       - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      # Mounted at /var/lib/postgresql, not /var/lib/postgresql/data. Postgres 18
+      # images store data in a major-version subdirectory (18/docker) so that
+      # `pg_upgrade --link` can work across versions without crossing a mount
+      # boundary. Mounting the old pg17 path makes the image refuse to start
+      # rather than silently write somewhere unexpected.
+      - postgres_data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-careerhq} -d ${POSTGRES_DB:-careerhq}"]
       interval: 5s

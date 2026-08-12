@@ -10,14 +10,19 @@ the plan: see `docs/05_Implementation_Plan.md` §2.
 
 ## Read these first
 
-In this order. The whole project is legible from four files.
+In this order. The whole project is legible from five files.
 
-1. **`docs/07_Capabilities.md`** — what CareerHQ is and what each capability does. Start here.
-2. **`.specify/memory/constitution.md`** — the seven non-negotiable principles. Violations of
+1. **`docs/07_Capabilities.md`** — what CareerHQ is and what each capability does. Start here;
+   it is one page.
+2. **`docs/08_Technical_Spec.md`** — the full technical spec in one document: problem, goals,
+   architecture, test plan, rollout, rollback, cost, risk, open questions. Every capability
+   carries a status marker, so it is also the fastest way to see what is actually built.
+3. **`.specify/memory/constitution.md`** — the seven non-negotiable principles. Violations of
    II–IV are release blockers.
-3. **`docs/05_Implementation_Plan.md`** — the slice roadmap and why it is ordered that way.
-4. **`specs/00N-<slice>/tasks.md`** — the current slice's task list, with checkboxes showing
-   exactly where work stopped.
+4. **`docs/05_Implementation_Plan.md`** — the slice roadmap and why it is ordered that way.
+5. **`specs/00N-<slice>/tasks.md`** — the current slice's task list, with checkboxes showing
+   exactly where work stopped. **Only slice 001 has these** — 002–007 are specified when they
+   start.
 
 Supporting detail lives in `docs/01` (requirements), `docs/02` (ADRs), `docs/03` (domain model),
 `docs/04` (architecture), `docs/06` (stack). Original source material — the course requirements,
@@ -40,11 +45,41 @@ Merged to `main` and pushed; CI green on the merge commit. Working branch is now
 
 **Next**: slice 002 — deployment. Deploy *before* building the agent, so OAuth redirect URIs,
 managed Postgres, and HTTPS fail while the application is still small enough to debug them in
-isolation.
+isolation. **Not yet specified** — `specs/002-*` does not exist; run `/speckit.specify` to start.
 
 Two things carried forward into that slice: `PUBLIC_BASE_URL` already drives every browser-facing
 URL, so fixing the OAuth redirect for a real domain is configuration rather than code; and HSTS is
 wired to `is_production` but has never once run with `ENVIRONMENT=production`, so it is unproven.
+
+### Slice 002 groundwork already done
+
+Decided, and not worth re-litigating:
+
+- **Host is Railway.** A project exists with one service, `pgvector`, running
+  `pgvector/pgvector:pg18`. **Verified on the deployed database**: PostgreSQL 18.4 with the
+  `vector` extension 0.8.6, created successfully. This closed the largest open risk.
+- **The database had to be provisioned with pgvector from the start.** Railway's default
+  Postgres does not carry it, and adding it afterwards is a `pg_dump` migration rather than a
+  setting. Do not add a plain Postgres service and plan to upgrade it.
+- **Local now matches deployed at Postgres 18.4** — `docker-compose.yml` was moved from `pg17`
+  to `pg18` for that reason. Both report `PostgreSQL 18.4 (Debian 18.4-1.pgdg12+1)`.
+- **Only Postgres is deployed.** Redis and object storage are not, because nothing depends on
+  them yet beyond the readiness probe. They arrive with slices 003/004.
+- **That forces a readiness change.** `api/routes/health.py` hardcodes three probes and requires
+  all three to pass, so a Postgres-only deployment reports unready forever. Probing must follow
+  configuration — and the endpoint must stay honest: it may not report `ok` for something it did
+  not check. Tracked as Q2 in `docs/08` §7.
+- **Still outstanding and only the author can do it**: adding the deployed domain as an
+  authorized redirect URI in the Google OAuth client.
+
+### Slice 004 decision recorded ahead of its spec
+
+`docs/08` §3.2.3 fixes the model per workflow node: **Sonnet** to analyze, draft and revise;
+**Opus** for the Reviewer, and for a revision that has already failed once. The Reviewer gets the
+stronger model because it enforces Principle III, which is a release blocker; escalating Revise on
+the second attempt stops the loop where an Opus reviewer rejects work a Sonnet reviser cannot fix.
+Roughly $0.17 per tailoring run against $0.24 all-Opus. When slice 004 is specified, that decision
+must flow into it rather than being re-derived.
 
 **Repo location**: `/Users/nirtituani/Developer/CareerHQ`. It was moved out of
 `~/Documents/AI Workshop/` because iCloud syncs that folder and had generated 69 conflict copies
@@ -184,10 +219,21 @@ Recorded so they are not rediscovered.
 - **`docker compose exec frontend npm run build` fails** prerendering `/_global-error`, because
   the container is built `target: dev` and its running dev server owns `/app/.next`. The identical
   build succeeds on the host and in CI. Same rule: gates run on the host.
+- **Postgres 18 images mount at `/var/lib/postgresql`, not `/var/lib/postgresql/data`.** From
+  18 onward the official images store data in a major-version subdirectory (`18/docker`) so
+  `pg_upgrade --link` works without crossing a mount boundary. Mounting the pg17 path makes
+  the container **exit 1 on startup** with a long explanation, and compose reports only
+  `dependency failed to start` — the real message is in `docker compose logs postgres`.
+  Changing the tag from `pg17` to `pg18` is therefore not a one-line edit; the volume mount
+  has to move too.
 - **Every checkout of this repo shares one set of Docker volumes.** `docker-compose.yml` pins
   `name: careerhq`, so cloning into a new directory does *not* give a clean database — it attaches
   to the existing one. `docker compose down -v` for genuinely empty state; it is scoped to this
   project and touches no other project's volumes.
+- **The `gh` CLI is not installed.** Git itself works — HTTPS over `osxkeychain`, verified by
+  fetch and push — but there is no `gh pr create`, no `gh run watch`, and no `gh secret set`.
+  CI status can be read from the public Actions API with `curl` instead. `brew install gh` is
+  worth doing before slice 002, which involves deploy secrets and workflow files.
 - **Pushing anything under `.github/workflows/` needs a token with the `workflow` scope.**
   Otherwise the push is rejected outright, with the commit still safe locally.
 - **A comment beginning `# noqa` is parsed as a blanket lint suppression.** Do not start an

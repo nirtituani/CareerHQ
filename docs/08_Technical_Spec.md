@@ -138,7 +138,7 @@ it becomes a pure interface addition rather than a rebuild.
 | # | Assumption | If wrong |
 |---|---|---|
 | A1 | The user has an existing CV to import | The profile starts empty; no builder exists to fill it (§2.5) |
-| A2 | Railway's managed Postgres supports the `pgvector` extension | Migration `0001_extensions` fails; slice 002 needs a different host — **unverified, see §7** |
+| A2 | ~~Railway's managed Postgres supports `pgvector`~~ — **verified, no longer an assumption** | Closed. PostgreSQL 18.4 with `vector` 0.8.6, created successfully on the deployed database (§3.5) |
 | A3 | `PUBLIC_BASE_URL` already drives every browser-facing URL | OAuth redirect becomes a code change rather than configuration |
 | A4 | Job descriptions are pasted as text, not scraped | No scraping infrastructure is planned |
 | A5 | A single user's data fits comfortably in one Postgres instance | Sharding was never designed (§3.2.5) |
@@ -389,6 +389,21 @@ readiness probe, so they arrive with slices 003/004. That in turn requires the r
 endpoint to probe only configured dependencies, since it currently hardcodes all three and
 requires all to pass.
 
+**Database provisioning is constrained, and the constraint is not reversible cheaply.**
+Railway's default Postgres service does not carry `pgvector`, and adding it afterwards is
+not a configuration change — Railway's own guidance is to deploy a pgvector-enabled
+Postgres and migrate across with `pg_dump`. The database must therefore be provisioned
+from the pgvector image at creation time, which is what was done: `pgvector/pgvector:pg18`,
+verified as PostgreSQL 18.4 with `vector` 0.8.6 created successfully.
+
+**Local and deployed run the same Postgres build.** Local was moved from `pg17` to `pg18`
+to match, and both report `PostgreSQL 18.4 (Debian 18.4-1.pgdg12+1)` — differing only in
+CPU architecture. That alignment surfaced a real incompatibility on the development machine
+rather than during a deploy: Postgres 18 images store data in a major-version subdirectory
+and expect the volume mounted at `/var/lib/postgresql`, so the pg17 mount path makes the
+container exit on startup. Finding it locally cost minutes; finding it mid-deploy, alongside
+first-run OAuth and HTTPS, would have cost considerably more. Recorded in `CLAUDE.md`.
+
 **`ENVIRONMENT=production` will run for the first time**, activating HSTS, `Secure`
 cookies, and `https_only` sessions. None of that path has ever executed. It must be
 verified in the deployed environment, not assumed.
@@ -625,7 +640,7 @@ checkout of the repo shares one set of Docker volumes, because `docker-compose.y
 |---|---|---|---|
 | **Four-to-six weeks is not enough for seven slices** | High | High | Slices 001–005 are the core and satisfy every graded requirement; 006 and 007 are explicitly droppable ([docs/05](05_Implementation_Plan.md) §5) |
 | **Reviewer fails to catch fabrication** | Medium | **Critical** | Principle III is a release blocker. Slice 005 *measures* grounding accuracy rather than assuming it — this is precisely why evaluation was promoted to a slice |
-| Railway pgvector support unverified (A2) | Medium | High | Verify before slice 002 commits to the host; alternatives are same-day migrations (§4.1) |
+| ~~Railway pgvector support unverified (A2)~~ | — | — | **Retired.** Verified on the deployed database: PostgreSQL 18.4, `vector` 0.8.6 created successfully |
 | Production security path unproven (§4.2) | Medium | Medium | Slice 002 exists partly to prove it; deploying early is the mitigation |
 | Solo developer, no redundancy | Medium | High | SDD artifacts in `specs/` make project state legible to anyone; nothing lives only in the author's head |
 | LLM cost overrun from a runaway loop | Low | Medium | Every execution records tokens and cost (Principle V); §4.4 sets the budget it is measured against |
@@ -722,7 +737,7 @@ Unresolved, listed rather than hidden.
 
 | # | Question | Blocks | Notes |
 |---|---|---|---|
-| Q1 | Does Railway's managed Postgres support `pgvector`? | Slice 002 | Assumption A2. Verify before committing to the host |
+| ~~Q1~~ | ~~Does Railway's managed Postgres support `pgvector`?~~ | — | **Closed.** Verified on the deployed database — PostgreSQL 18.4, `vector` 0.8.6 available and created. Provisioning constraint recorded in §3.5 |
 | Q2 | How should readiness report dependencies that are configured-but-absent? | Slice 002 | Current code hardcodes three probes and requires all to pass; a Postgres-only deploy would report unready forever. Recommended: probe follows configuration, and the endpoint never reports `ok` for something it did not check |
 | Q3 | Can a local model on this machine serve the dev loop? | §4.4 savings | Assumption A6, **untested**. If not, dev-loop cost returns to ~$50 |
 | Q4 | Three coupled parameters: the Reviewer's confidence threshold, the maximum revision attempts, and the attempt at which Revise escalates to Opus (§3.2.3) | Slice 004 | Needs the benchmark from slice 005 to set empirically — chicken-and-egg; start with threshold-plus-two-attempts-escalating-on-the-second and calibrate. Slice 005 can then measure whether escalation actually improves grounding accuracy or merely costs more, which is a sharper evaluation question than tuning a threshold alone |
