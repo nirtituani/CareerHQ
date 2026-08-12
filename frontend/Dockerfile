@@ -35,7 +35,16 @@ ARG BACKEND_URL
 ENV BACKEND_URL=${BACKEND_URL}
 
 ENV NEXT_TELEMETRY_DISABLED=1
-RUN npm run build
+
+# The value is echoed inside the RUN rather than before it so that it forms
+# part of the layer's cache key. Declaring the ARG alone is not enough: a build
+# that changes only the variable produces an identical RUN instruction, so the
+# layer is reused and the previously baked destination survives into an image
+# that looks freshly built. That failure is silent — the deploy succeeds, the
+# health check passes because it probes `/` rather than `/api/*`, and only a
+# real API request reveals the stale value.
+RUN echo "Building with BACKEND_URL=${BACKEND_URL:-<unset — will bake in the localhost fallback>}" \
+    && npm run build
 
 FROM node:24-alpine AS runner
 WORKDIR /app
