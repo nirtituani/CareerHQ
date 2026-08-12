@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import httpx
 import pytest
+from sqlalchemy.exc import OperationalError
 
 from careerhq.api.routes import health
 
@@ -96,6 +97,105 @@ async def test_readiness_reports_a_hung_dependency_as_failed(
     assert response.json()["dependencies"]["database"]["status"] == "error"
 
 
+async def test_unconfigured_dependencies_are_reported_as_such_not_as_healthy(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """T012: the deployed environment runs Postgres only.
+
+    A dependency that was never deployed must not be reported `ok` — that would
+    turn the health check green by claiming a result no probe produced. Nor may
+    it fail the check: it is absent by design, not broken.
+    """
+    monkeypatch.setattr(health, "probe_database", _reachable)
+    _configure(monkeypatch, cache=False, object_storage=False)
+
+    response = await client.get("/api/health/ready")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "ok"
+    assert body["dependencies"]["database"]["status"] == "ok"
+    for absent in ("cache", "object_storage"):
+        assert body["dependencies"][absent]["status"] == "not_configured"
+        assert "latency_ms" not in body["dependencies"][absent]
+
+
+async def test_absent_dependency_neither_causes_nor_masks_a_real_failure(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """T013 — the test this slice most needs.
+
+    Two mistakes are possible once probing follows configuration, and they pull
+    in opposite directions: reporting an absent dependency as failed would
+    block every deployment, and excluding absent ones so loosely that a real
+    failure stops counting would make the endpoint useless. One response has to
+    get both right at once.
+    """
+    monkeypatch.setattr(health, "probe_database", _unreachable)
+    _configure(monkeypatch, cache=False, object_storage=False)
+
+    response = await client.get("/api/health/ready")
+
+    assert response.status_code == 503
+    body = response.json()
+    assert body["status"] == "degraded", "a real failure must still fail the check"
+    assert body["dependencies"]["database"]["status"] == "error"
+    assert body["dependencies"]["cache"]["status"] == "not_configured"
+
+
+async def test_every_dependency_key_is_present_whatever_the_configuration(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """T015: a consumer never distinguishes "key missing" from "dependency missing".
+
+    Omitting absent dependencies would be the tidier response and the worse
+    contract — a reader could not tell "not deployed" from "we forgot to check".
+    """
+    monkeypatch.setattr(health, "probe_database", _reachable)
+    _configure(monkeypatch, cache=False, object_storage=False)
+
+    body = (await client.get("/api/health/ready")).json()
+
+    assert set(body["dependencies"]) == set(DEPENDENCIES)
+
+
+async def test_failure_discloses_the_kind_and_not_the_detail(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """T014: this endpoint is unauthenticated (T068).
+
+    A real psycopg failure reads `connection to server at "172.19.0.4", port
+    5432 failed: FATAL: password authentication failed for user "careerhq"`.
+    The caller gets the exception class; the operator gets the rest, in the log.
+    """
+    monkeypatch.setattr(health, "probe_database", _unreachable_with_internals)
+    _configure(monkeypatch, cache=False, object_storage=False)
+
+    body = (await client.get("/api/health/ready")).json()
+    reported = body["dependencies"]["database"]["error"]
+
+    assert reported == "OperationalError"
+    for leaked in ("172.19.0.4", "5432", "careerhq", "password"):
+        assert leaked not in reported
+
+
+# -- helpers ----------------------------------------------------------------
+
+
+def _configure(monkeypatch: pytest.MonkeyPatch, *, cache: bool, object_storage: bool) -> None:
+    """Present a settings object reporting the dependencies as (un)configured."""
+    real = health.get_settings()
+
+    class _Configured:
+        cache_configured = cache
+        object_storage_configured = object_storage
+
+        def __getattr__(self, name: str) -> object:
+            return getattr(real, name)
+
+    monkeypatch.setattr(health, "get_settings", _Configured)
+
+
 # -- probe doubles ----------------------------------------------------------
 
 
@@ -105,6 +205,23 @@ async def _reachable() -> None:
 
 async def _unreachable() -> None:
     raise ConnectionRefusedError("Connection refused")
+
+
+async def _unreachable_with_internals() -> None:
+    """A driver failure shaped like the real one, internal addresses included.
+
+    SQLAlchemy wraps the driver's exception rather than raising its own message,
+    so the double has to be built the same way — the point of the test is what
+    happens to `orig`.
+    """
+    raise OperationalError(
+        "SELECT 1",
+        {},
+        Exception(
+            'connection to server at "172.19.0.4", port 5432 failed: '
+            'FATAL: password authentication failed for user "careerhq"'
+        ),
+    )
 
 
 async def _hangs() -> None:

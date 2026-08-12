@@ -73,7 +73,7 @@ arrive too late to prevent anything (FR-020).
 In the Google Cloud console, on the OAuth 2.0 client, add to **Authorized redirect URIs**:
 
 ```
-https://<frontend-domain>/api/auth/callback
+https://<frontend-domain>/api/auth/google/callback
 ```
 
 Exactly that, with no trailing slash. Google matches redirect URIs by exact string, so a near-miss

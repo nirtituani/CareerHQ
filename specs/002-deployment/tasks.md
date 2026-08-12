@@ -43,14 +43,14 @@ Existing web application per plan.md: `backend/src/careerhq/`, `frontend/src/`, 
 
 **Purpose**: Deployment configuration that lives in the repository rather than only in a console.
 
-- [ ] T001 [P] Create `railway.toml` at the repository root declaring, per service: the backend's
+- [x] T001 [P] Create `railway.toml` at the repository root declaring, per service: the backend's
       pre-deploy command `alembic upgrade head` and healthcheck path `/api/health/ready`
       (research.md R3, R4). Config-as-code so the deployment is reviewable in a diff rather than
       discoverable only by clicking through a web console
-- [ ] T002 [P] Update `.env.example` to document `REDIS_URL` and the `S3_*` block as **optional**,
+- [x] T002 [P] Update `.env.example` to document `REDIS_URL` and the `S3_*` block as **optional**,
       with a comment saying why: they are unset in deployment until slices 003/004 need them, and
       setting placeholder values would make the application believe it has a cache
-- [ ] T003 [P] Add `ENVIRONMENT=production` and `PUBLIC_BASE_URL` to the deployment section of
+- [x] T003 [P] Add `ENVIRONMENT=production` and `PUBLIC_BASE_URL` to the deployment section of
       `.env.example` with a comment that `PUBLIC_BASE_URL` must match the OAuth redirect URI
       registered with Google exactly
 
@@ -67,28 +67,28 @@ reaches any endpoint (research.md R1). Every later task is unreachable until thi
 
 ### Tests first
 
-- [ ] T004 [P] Write a failing test in `backend/tests/unit/test_config.py` asserting that
+- [x] T004 [P] Write a failing test in `backend/tests/unit/test_config.py` asserting that
       `Settings` constructs successfully when `REDIS_URL` and every `S3_*` value are absent
-- [ ] T005 [P] Write a failing test in `backend/tests/unit/test_config.py` asserting
+- [x] T005 [P] Write a failing test in `backend/tests/unit/test_config.py` asserting
       `cache_configured` and `object_storage_configured` are `False` when unset and `True` when
       set, mirroring the existing `google_oauth_configured` tests
-- [ ] T006 [P] Write a failing test in `backend/tests/unit/test_config.py` asserting that
+- [x] T006 [P] Write a failing test in `backend/tests/unit/test_config.py` asserting that
       `DATABASE_URL` and `SESSION_SECRET` remain **required** — a missing `SESSION_SECRET` must
       still raise, naming the field without printing its value (T068 protection, data-model.md)
 
 ### Implementation
 
-- [ ] T007 Make `redis_url` and the four `s3_*` fields optional (`| None = None`) in
+- [x] T007 Make `redis_url` and the four `s3_*` fields optional (`| None = None`) in
       `backend/src/careerhq/config.py`, and add `cache_configured` / `object_storage_configured`
       properties beside the existing `google_oauth_configured`. Follow that field's comment — it
       describes this exact situation for a different dependency
-- [ ] T008 [P] Make `backend/src/careerhq/infrastructure/redis.py` raise a specific named error
+- [x] T008 [P] Make `backend/src/careerhq/infrastructure/redis.py` raise a specific named error
       when a client is requested and `cache_configured` is `False`, rather than constructing a
       client from `None`. Absence must fail loudly at first use, since it no longer fails at
       startup (plan.md Constitution Check)
-- [ ] T009 [P] Make `backend/src/careerhq/infrastructure/storage.py` fail the same way when
+- [x] T009 [P] Make `backend/src/careerhq/infrastructure/storage.py` fail the same way when
       `object_storage_configured` is `False`
-- [ ] T010 [P] Write tests in `backend/tests/unit/test_config.py` asserting both accessors raise
+- [x] T010 [P] Write tests in `backend/tests/unit/test_config.py` asserting both accessors raise
       their named error when unconfigured — proving the failure moved rather than vanished
 
 **Checkpoint**: The backend starts with only `DATABASE_URL` and `SESSION_SECRET` set. Verify
@@ -107,31 +107,31 @@ fetch readiness and confirm it names what it checked.
 
 ### Tests first — the six obligations from contracts/readiness.md
 
-- [ ] T011 [P] [US1] Test in `backend/tests/integration/test_health.py`: all dependencies
+- [x] T011 [P] [US1] Test in `backend/tests/integration/test_health.py`: all dependencies
       configured and healthy → all three `ok`, overall `ok`, HTTP 200 *(may already exist; assert
       it still passes unchanged)*
-- [ ] T012 [P] [US1] Test in `backend/tests/integration/test_health.py`: cache and object storage
+- [x] T012 [P] [US1] Test in `backend/tests/integration/test_health.py`: cache and object storage
       unconfigured → both report `not_configured`, overall `ok`, HTTP 200
-- [ ] T013 [P] [US1] Test in `backend/tests/integration/test_health.py`: cache unconfigured **and**
+- [x] T013 [P] [US1] Test in `backend/tests/integration/test_health.py`: cache unconfigured **and**
       database unreachable → database `error`, cache `not_configured`, overall `error`, HTTP 503.
       **This is the most important test in the slice** — it proves `not_configured` neither causes
       failure nor masks a real one
-- [ ] T014 [P] [US1] Test in `backend/tests/integration/test_health.py`: a failing probe returns
+- [x] T014 [P] [US1] Test in `backend/tests/integration/test_health.py`: a failing probe returns
       the exception class name and **not** the driver's message, which names the internal host,
       port and database user (T068)
-- [ ] T015 [P] [US1] Test in `backend/tests/integration/test_health.py`: all three dependency keys
+- [x] T015 [P] [US1] Test in `backend/tests/integration/test_health.py`: all three dependency keys
       are present in every response regardless of configuration, so a consumer never distinguishes
       "key missing" from "dependency missing"
-- [ ] T016 [P] [US1] Test in `backend/tests/integration/test_health.py`: a configured probe that
+- [x] T016 [P] [US1] Test in `backend/tests/integration/test_health.py`: a configured probe that
       exceeds the timeout reports `error` and the response still returns
 
 ### Implementation
 
-- [ ] T017 [US1] Derive the probe set from configuration in
+- [x] T017 [US1] Derive the probe set from configuration in
       `backend/src/careerhq/api/routes/health.py` — probe a dependency if and only if it is
       configured; report `not_configured` otherwise; compute overall status from **checked**
       dependencies only. Keep the existing timeout and disclosure behaviour untouched
-- [ ] T018 [US1] Confirm coverage stays ≥80% and `ruff check`, `ruff format --check` and
+- [x] T018 [US1] Confirm coverage stays ≥80% and `ruff check`, `ruff format --check` and
       `mypy src` all pass from `backend/`
 
 ### Deploy
@@ -188,7 +188,7 @@ again creates neither.
 
 - [ ] T029 🔧 **MANUAL** [US2] In the Google Cloud console, on the OAuth 2.0 client, add to
       **Authorized redirect URIs** exactly:
-      `https://<frontend-domain>/api/auth/callback` — no trailing slash. Google matches by exact
+      `https://<frontend-domain>/api/auth/google/callback` — no trailing slash. Google matches by exact
       string, so a near miss fails at the provider with an error describing a mismatch rather than
       what to fix. This step cannot be automated
 - [ ] T030 🔧 **MANUAL** [US2] Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` on the backend

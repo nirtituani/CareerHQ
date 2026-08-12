@@ -1,0 +1,31 @@
+# Railway deployment configuration for the backend service (T001).
+#
+# Lives here rather than at the repository root because Railway resolves this
+# file relative to a service's root directory, and this repository holds two
+# services. Keeping it in version control means the deployment is reviewable in
+# a diff rather than discoverable only by clicking through a web console.
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+# Migrations run here as well as in entrypoint.sh, and the duplication is
+# deliberate. The entrypoint keeps local Compose working. This runs once per
+# deploy, before the new version is allowed to start — and if it fails, Railway
+# does not proceed, so the previous version keeps serving rather than the new
+# one crash-looping against a schema it cannot use (research.md R3, FR-021).
+# The second run finds nothing to apply; alembic is idempotent.
+preDeployCommand = "alembic upgrade head"
+
+# Readiness, not liveness. Liveness touches no dependency, so a backend that
+# cannot reach Postgres would be declared healthy and take traffic. Railway
+# keeps the previous deployment serving until this answers 200, which is what
+# makes the deploy zero-downtime — and what makes honest readiness reporting
+# load-bearing rather than cosmetic: a dependency wrongly reported as failed
+# blocks every deployment (research.md R4, FR-006).
+healthcheckPath = "/api/health/ready"
+healthcheckTimeout = 300
+
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3

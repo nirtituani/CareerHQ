@@ -16,7 +16,7 @@ from typing import Any
 import boto3
 from botocore.config import Config
 
-from careerhq.config import get_settings
+from careerhq.config import DependencyNotConfiguredError, get_settings
 
 # boto3 ships no type stubs and the third-party ones add a heavy dependency for
 # a client we call in three places. Any is the honest annotation here.
@@ -25,8 +25,19 @@ S3Client = Any
 
 @lru_cache
 def get_s3_client() -> S3Client:
-    """Return the process-wide S3 client."""
+    """Return the process-wide S3 client.
+
+    Raises `DependencyNotConfiguredError` when object storage is not
+    configured, for the same reason as the cache client: absence is a valid
+    deployment state, but asking for a client anyway is a mistake that should
+    name the missing setting rather than surface as a credential error.
+    """
     settings = get_settings()
+    if not settings.object_storage_configured:
+        raise DependencyNotConfiguredError("Object storage", "S3_ENDPOINT_URL and the S3_* block")
+    # Narrowed by the guard above; mypy cannot see through the property.
+    assert settings.s3_access_key is not None
+    assert settings.s3_secret_key is not None
     return boto3.client(
         "s3",
         endpoint_url=settings.s3_endpoint_url,

@@ -16,6 +16,23 @@ from pydantic_core import ErrorDetails
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+class DependencyNotConfiguredError(RuntimeError):
+    """Raised when a client is requested for a dependency that is not configured.
+
+    Optional configuration trades away the fail-fast property that a missing
+    required field gives: the process no longer stops at startup naming the
+    setting. This moves that failure to first use rather than losing it — a
+    caller that reaches for an unconfigured cache gets an error naming the
+    setting to add, not an `AttributeError` on `None` several frames away.
+    """
+
+    def __init__(self, dependency: str, setting: str) -> None:
+        super().__init__(
+            f"{dependency} is not configured — set {setting}. "
+            f"It is optional by design and unset in environments that do not use it yet."
+        )
+
+
 class Settings(BaseSettings):
     """Runtime configuration, loaded from the environment or a local .env file."""
 
@@ -45,13 +62,25 @@ class Settings(BaseSettings):
     database_url: str
 
     # -- Cache. Never a source of truth. ------------------------------------
-    redis_url: str
+    # Optional by design, on the same terms as the Google credentials below.
+    # Nothing reads the cache until slice 003, but until slice 002 this was a
+    # required field — so a deployment without Redis could not start at all,
+    # rather than merely reporting the cache as absent. That put the platform's
+    # ability to boot behind a dependency it never called
+    # (specs/002-deployment/research.md R1).
+    #
+    # Unset means "not configured", which readiness reports as such rather than
+    # probing. Do not supply a placeholder to fill the blank: the application
+    # would believe it has a cache and fail at first use instead of at startup.
+    redis_url: str | None = None
 
     # -- Object storage -----------------------------------------------------
-    s3_endpoint_url: str
-    s3_access_key: SecretStr
-    s3_secret_key: SecretStr
-    s3_bucket: str
+    # Optional on the same terms. Set all four together or none of them; a
+    # half-configured client is worse than an absent one.
+    s3_endpoint_url: str | None = None
+    s3_access_key: SecretStr | None = None
+    s3_secret_key: SecretStr | None = None
+    s3_bucket: str | None = None
     s3_region: str = "us-east-1"
 
     # -- Authentication -----------------------------------------------------
@@ -85,6 +114,31 @@ class Settings(BaseSettings):
     @property
     def google_oauth_configured(self) -> bool:
         return self.google_client_id is not None and self.google_client_secret is not None
+
+    # The two properties below are the sole input to which dependencies the
+    # readiness endpoint probes. A dependency that is not configured is
+    # reported as `not_configured` — never probed, and never reported healthy,
+    # which would make the endpoint claim a result it did not produce.
+    # See specs/002-deployment/contracts/readiness.md.
+
+    @property
+    def cache_configured(self) -> bool:
+        return self.redis_url is not None
+
+    @property
+    def object_storage_configured(self) -> bool:
+        """All four settings, not any of them.
+
+        A client built from a partial configuration fails at call time with an
+        error about credentials rather than about configuration, which sends
+        the reader to the wrong place.
+        """
+        return None not in (
+            self.s3_endpoint_url,
+            self.s3_access_key,
+            self.s3_secret_key,
+            self.s3_bucket,
+        )
 
 
 def _secret_fields() -> frozenset[str]:

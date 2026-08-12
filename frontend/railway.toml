@@ -1,0 +1,26 @@
+# Railway deployment configuration for the frontend service (T001).
+#
+# This is the only publicly reachable service. It proxies /api/* to the backend
+# over Railway's private network, mirroring the local Compose arrangement — so
+# every request is same-origin, there is no CORS surface, and one
+# PUBLIC_BASE_URL is what the OAuth redirect derives from (research.md R6).
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+# No build target is set on purpose. The Dockerfile's stages run
+# deps -> dev -> builder -> runner, and Docker builds the last stage when none
+# is named, so `runner` — the production standalone server — is the default.
+# Naming a target here would be a second place to keep in step with the
+# Dockerfile's stage order.
+
+[deploy]
+# Liveness is the right check for this service: it holds no dependency of its
+# own, and the backend's readiness already gates the part that does. Pointing
+# this at a route that proxies to the backend would make a backend problem look
+# like two failing services instead of one.
+healthcheckPath = "/"
+healthcheckTimeout = 300
+
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3

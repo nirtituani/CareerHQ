@@ -26,6 +26,11 @@ good intentions.
 | `error` | Configured, probed, failed or timed out | **Yes** |
 | `not_configured` | Not configured in this environment; **no probe was attempted** | No |
 
+**Overall status uses `ok` or `degraded`** — not `error`. `degraded` is the existing vocabulary
+from slice 001 and is kept deliberately: changing it would alter an endpoint's contract for
+cosmetic reasons, which FR-025 forbids. Per-dependency status uses `error`; the two levels use
+different words on purpose.
+
 `not_configured` is the value FR-006 requires. Reporting an unconfigured dependency as `ok` would
 turn the health check green and make the endpoint lie; omitting it entirely would leave a reader
 unable to distinguish "not deployed" from "we forgot to check".
@@ -71,7 +76,7 @@ not a failure.
 
 ```json
 {
-  "status": "error",
+  "status": "degraded",
   "version": "0.1.0",
   "dependencies": {
     "database":       { "status": "error", "error": "OperationalError" },
@@ -91,7 +96,7 @@ not a failure.
    `not_configured`.
 3. **Overall `status` is `ok` when every *checked* dependency is `ok`.** `not_configured` entries
    are excluded from the calculation entirely — they cannot cause failure and cannot mask it.
-4. **HTTP status follows overall status**: `200` for `ok`, `503` for `error`.
+4. **HTTP status follows overall status**: `200` for `ok`, `503` for `degraded`.
 5. **Every known dependency appears in every response.** The key set is stable; only the values
    change. A consumer never has to distinguish "key missing" from "dependency missing".
 6. **Failure disclosure is unchanged** (established by T068): an unauthenticated caller receives
@@ -118,7 +123,7 @@ Per Principle VII, each written and failing before implementation:
 |---|---|---|
 | 1 | All dependencies configured and healthy | All three `ok`; overall `ok`; `200` |
 | 2 | Cache and object storage unconfigured | Both `not_configured`; overall `ok`; `200` |
-| 3 | Cache unconfigured, database unreachable | Database `error`, cache `not_configured`; overall `error`; `503` |
+| 3 | Cache unconfigured, database unreachable | Database `error`, cache `not_configured`; overall `degraded`; `503` |
 | 4 | A configured dependency fails | Response contains the exception class and **not** the driver message |
 | 5 | Any configuration | All three keys present in `dependencies` |
 | 6 | A configured probe exceeds the timeout | That dependency is `error`; the response still returns |

@@ -23,6 +23,7 @@ from typing import Any
 from fastapi import APIRouter, Response, status
 from sqlalchemy import text
 
+from careerhq.config import get_settings
 from careerhq.infrastructure import redis as redis_infra
 from careerhq.infrastructure import storage
 from careerhq.infrastructure.database import get_engine
@@ -91,22 +92,47 @@ async def health() -> dict[str, str]:
     return {"status": "ok", "version": _version()}
 
 
+#: Reported for a dependency this environment does not configure. Deliberately
+#: distinct from both neighbours: not `ok`, because no probe ran and the
+#: endpoint must never claim a result it did not produce; not `error`, because
+#: absence by design is not a fault. Omitting the entry entirely was the other
+#: candidate and is worse — a reader could not tell "not deployed" from "we
+#: forgot to check" (specs/002-deployment/contracts/readiness.md, FR-006).
+NOT_CONFIGURED = "not_configured"
+
+
 @router.get("/health/ready", summary="Readiness")
 async def readiness(response: Response) -> dict[str, Any]:
-    """Probe every dependency concurrently and report each one by name."""
-    # Resolved here rather than at import so that a test substituting a probe
-    # is honoured.
-    probes: dict[str, Callable[[], Awaitable[None]]] = {
+    """Probe every *configured* dependency concurrently and report each by name.
+
+    The probe set follows configuration rather than being fixed, because
+    environments legitimately differ: the deployed one runs Postgres alone,
+    while local development runs all three. A hardcoded set would report the
+    two absent dependencies as failed, and since the platform health check
+    points at this endpoint, that would block every deployment.
+    """
+    # Resolved per request rather than at import so that a test substituting a
+    # probe or a configuration is honoured.
+    settings = get_settings()
+    probes: dict[str, Callable[[], Awaitable[None]] | None] = {
         "database": probe_database,
-        "cache": probe_cache,
-        "object_storage": probe_object_storage,
+        "cache": probe_cache if settings.cache_configured else None,
+        "object_storage": (probe_object_storage if settings.object_storage_configured else None),
     }
 
-    names = list(probes)
-    results = await asyncio.gather(*(_run_probe(name, probes[name]) for name in names))
-    dependencies = dict(zip(names, results, strict=True))
+    checked = {name: probe for name, probe in probes.items() if probe is not None}
+    results = await asyncio.gather(*(_run_probe(name, probe) for name, probe in checked.items()))
+    probed = dict(zip(checked, results, strict=True))
 
-    healthy = all(result["status"] == "ok" for result in dependencies.values())
+    # Rebuilt in declaration order so the response reads identically however
+    # much of the stack an environment happens to run.
+    dependencies: dict[str, Any] = {
+        name: probed.get(name, {"status": NOT_CONFIGURED}) for name in probes
+    }
+
+    # Checked dependencies only. An unconfigured one can neither fail the
+    # check nor mask a failure in one that was actually probed.
+    healthy = all(dependencies[name]["status"] == "ok" for name in checked)
     if not healthy:
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
 
