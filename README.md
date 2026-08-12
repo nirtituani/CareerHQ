@@ -12,11 +12,17 @@ Built with FastAPI, Next.js, PostgreSQL with pgvector, and LangGraph.
 
 ## Status
 
-**Slice 001 — Platform Foundation**, in progress. Working today: the containerized environment,
-Google sign-in with per-user isolation, and health checks that report each dependency by name.
+**Live at https://frontend-production-02ac.up.railway.app**
+
+**Slice 001 — Platform Foundation**: complete. **Slice 002 — Deployment**: live, finishing.
+
+Working today: the containerized environment, Google sign-in with per-user isolation, health
+checks that report each dependency by name — and all of it running on a public HTTPS address,
+redeployed from `main`.
 
 The agent capabilities are next. See [`docs/05_Implementation_Plan.md`](docs/05_Implementation_Plan.md)
-for the roadmap and [`docs/07_Capabilities.md`](docs/07_Capabilities.md) for what each one does.
+for the roadmap, [`docs/07_Capabilities.md`](docs/07_Capabilities.md) for what each one does, and
+[`docs/08_Technical_Spec.md`](docs/08_Technical_Spec.md) for the whole system in one document.
 
 ---
 
@@ -108,6 +114,102 @@ docker compose down -v             # stop and delete the database
 
 Application source is mounted, so code edits need no rebuild. `restart` does **not** pick up
 `.env` changes — environment variables are injected when a container is created, so use `up -d`.
+
+---
+
+## Deployment
+
+Hosted on Railway, in the project `CareerHQ`. Three services: `frontend` (the only public one),
+`backend`, and `pgvector`. The frontend proxies `/api/*` to the backend over Railway's private
+network, so there is one public origin and no CORS surface.
+
+Deployment settings live in `backend/railway.toml` and `frontend/railway.toml`, read from each
+service's **root directory** — not from the repository root.
+
+### Deploying
+
+Merge to `main`. That is the whole procedure. CI runs the same gates listed above, and Railway's
+**Wait for CI** setting holds the deployment until they pass — so a failing gate leaves the
+public site untouched rather than rolling back after the fact.
+
+Database migrations run as a pre-deploy step (`alembic upgrade head`). If a migration fails, the
+deployment does not proceed and the previous version keeps serving.
+
+### Reading logs
+
+```bash
+railway logs --service backend      # one JSON object per line, each with a request id
+railway logs --service frontend
+```
+
+Or the **Deployments** tab in Railway, which also shows which commit is live and why a deployment
+failed. A failed migration appears there, in the pre-deploy step's output.
+
+### Rolling back
+
+Deployments tab → the last known-good deployment → **Redeploy**.
+
+**What that does and does not undo:**
+
+| Layer | Rolls back? |
+|---|---|
+| Application code | ✅ Completely — containers are stateless |
+| Database schema | ⚠️ Only if the migration was reversible. `alembic downgrade` restores structure, **not data** — a dropped column is not undone by re-adding an empty one |
+| Business data | ❌ **Never**, by design |
+
+The last row is Constitution Principle IV. Submitted resumes and status history are immutable: an
+application whose history rewrote itself on deploy could not reproduce what was sent to an
+employer, which is the guarantee the system exists to provide.
+
+**So a migration that discards data needs a database snapshot taken immediately before deploy** —
+its rollback path is restore-from-backup, not `downgrade`. Additive migrations, which is nearly
+all of them, need nothing.
+
+### Configuration
+
+Set on the `backend` service:
+
+```
+ENVIRONMENT=production
+DATABASE_URL=postgresql+psycopg://${{pgvector.PGUSER}}:${{pgvector.PGPASSWORD}}@${{pgvector.PGHOST_PRIVATE}}:${{pgvector.PGPORT_PRIVATE}}/${{pgvector.PGDATABASE}}
+PORT=8000
+SESSION_SECRET=…
+PUBLIC_BASE_URL=https://<frontend-domain>
+GOOGLE_CLIENT_ID=…
+GOOGLE_CLIENT_SECRET=…
+```
+
+On `frontend`:
+
+```
+BACKEND_URL=http://backend.railway.internal:8000
+```
+
+Three things about that list are easy to get wrong:
+
+- **`REDIS_URL` and `S3_*` are deliberately unset.** They are optional, and readiness reports them
+  as `not_configured`. A placeholder value would make the application believe it has a cache and
+  fail at first use.
+- **`DATABASE_URL` must use `postgresql+psycopg://` and the `_PRIVATE` host.** A bare `postgres://`
+  will not build the async engine, and the public host routes database traffic over the internet.
+- **`BACKEND_URL` is consumed when the frontend image is *built*.** Changing it requires a
+  rebuild, not a restart.
+
+### The Google OAuth redirect URI
+
+In the Google Cloud console, on the OAuth 2.0 client, **Authorized redirect URIs** must contain
+exactly:
+
+```
+https://<frontend-domain>/api/auth/google/callback
+```
+
+No trailing slash, and byte-identical to `PUBLIC_BASE_URL` plus that path. Google matches by
+string, so a near miss fails at the provider with an error describing a mismatch rather than what
+to fix. Keep the `http://localhost:3000/...` entry alongside it so local development still works.
+
+**Copy the domain from Railway rather than typing it.** Three misspellings of it cost real time
+during slice 002.
 
 ---
 

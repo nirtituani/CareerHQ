@@ -82,8 +82,8 @@ is written; it is finished when it can be demonstrated against a deployed enviro
 | # | Slice | Delivers | Depends on | Status |
 |---|---|---|---|---|
 | 001 | Platform Foundation | Containerized environment, Google sign-in, authenticated shell, CI | — | **Complete** |
-| 002 | Deployment | Public URL, deployed from Docker, redeployed on every merge | 001 | **Next** |
-| 003 | Data Foundation | Resume import and parsing, Professional Profile, applications, JobTracker import | 001 | Planned |
+| 002 | Deployment | Public URL, deployed from Docker, redeployed on every merge | 001 | **Live** |
+| 003 | Data Foundation | Resume import and parsing, Professional Profile, applications, JobTracker import | 001 | **Next** |
 | 004 | **Resume Tailoring Agent** | LangGraph workflow, RAG, self-critique Reviewer, item-level approval, versions, PDF | 003 | Planned |
 | 005 | Evaluation & Benchmark | Test set, metrics, LLM-as-judge, results dashboard | 004 | Planned |
 | 006 | Company Research | Research agent over a web search MCP, citation-preserving snapshots | 003 | Planned |
@@ -322,12 +322,27 @@ database from `0|0` to `1|1` and a second sign-in leaving it at `1|1` while adva
 3 component tests, 6 Playwright smoke tests.
 
 **Active slice**: 002 — Deployment
-**Stage**: Not yet specified
+**Stage**: Live, finishing — 37 of 52 tasks. User Stories 1 and 2 verified against the running
+system; User Story 3 (continuous deployment) and documentation remain.
 
-Two things carry forward from 001. `PUBLIC_BASE_URL` already drives every browser-facing URL, so
-pointing OAuth at a real domain is configuration rather than code. And HSTS, secure cookies, and
-`https_only` are all wired to `is_production`, which has never once run with
-`ENVIRONMENT=production` — that path is unproven and this slice is where it gets proven.
+**Deployed at https://frontend-production-02ac.up.railway.app** — public HTTPS, real Google
+sign-in working end to end, readiness reporting deployed dependencies truthfully.
+
+The production security path is no longer unproven. HSTS, `Secure` and `https_only` have now run
+with `ENVIRONMENT=production` and were confirmed by observing real responses and the real session
+cookie, not by reading the code. The evidence is in
+[`specs/002-deployment/observations.md`](../specs/002-deployment/observations.md).
+
+That distinction earned its keep. Three of this slice's failures were invisible to the source: a
+hardcoded listening port that was correct locally by coincidence; a production container stage
+nobody had ever built; and a proxy destination baked in at build time, so a runtime variable
+arrived too late. A fourth was subtler still — the security headers were correct and complete on
+`/api/*` while absent from every page a browser actually navigates to, because the middleware that
+sets them never sees those responses.
+
+This is the argument for deploying before the agent, made concrete: each of those would otherwise
+have surfaced later, tangled with a half-finished agent, instead of against an application small
+enough to debug in isolation.
 
 Progress for each slice is tracked in its own `specs/00N-<slice>/tasks.md`. This section is updated
 as slices complete.

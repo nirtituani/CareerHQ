@@ -43,34 +43,55 @@ reporting each dependency by name, and CI green on every gate. 55 backend tests 
 
 Merged to `main` and pushed; CI green on the merge commit. Working branch is now `main`.
 
-**Next**: slice 002 — deployment. Deploy *before* building the agent, so OAuth redirect URIs,
-managed Postgres, and HTTPS fail while the application is still small enough to debug them in
-isolation. **Not yet specified** — `specs/002-*` does not exist; run `/speckit.specify` to start.
+**Slice 002 — Deployment is live and mostly done: 37 of 52 tasks.**
 
-Two things carried forward into that slice: `PUBLIC_BASE_URL` already drives every browser-facing
-URL, so fixing the OAuth redirect for a real domain is configuration rather than code; and HSTS is
-wired to `is_production` but has never once run with `ENVIRONMENT=production`, so it is unproven.
+**CareerHQ is deployed at https://frontend-production-02ac.up.railway.app** — publicly
+reachable over HTTPS, with a real Google sign-in working end to end and taking the deployed
+database from `0|0` to `1|1`, staying `1|1` on a second sign-in.
 
-### Slice 002 groundwork already done
+User Stories 1 and 2 are verified against the running system. What that established is recorded
+in `specs/002-deployment/observations.md`, which is the evidence FR-015 required — that file
+matters more than usual, because it records where a first measurement was **wrong** as well as
+where it passed.
 
-Decided, and not worth re-litigating:
+### What is deployed
 
-- **Host is Railway.** A project exists with one service, `pgvector`, running
-  `pgvector/pgvector:pg18`. **Verified on the deployed database**: PostgreSQL 18.4 with the
-  `vector` extension 0.8.6, created successfully. This closed the largest open risk.
-- **The database had to be provisioned with pgvector from the start.** Railway's default
-  Postgres does not carry it, and adding it afterwards is a `pg_dump` migration rather than a
-  setting. Do not add a plain Postgres service and plan to upgrade it.
-- **Local now matches deployed at Postgres 18.4** — `docker-compose.yml` was moved from `pg17`
-  to `pg18` for that reason. Both report `PostgreSQL 18.4 (Debian 18.4-1.pgdg12+1)`.
-- **Only Postgres is deployed.** Redis and object storage are not, because nothing depends on
-  them yet beyond the readiness probe. They arrive with slices 003/004.
-- **That forces a readiness change.** `api/routes/health.py` hardcodes three probes and requires
-  all three to pass, so a Postgres-only deployment reports unready forever. Probing must follow
-  configuration — and the endpoint must stay honest: it may not report `ok` for something it did
-  not check. Tracked as Q2 in `docs/08` §7.
-- **Still outstanding and only the author can do it**: adding the deployed domain as an
-  authorized redirect URI in the Google OAuth client.
+Railway project `CareerHQ`, three services:
+
+| Service | Role | Public? |
+|---|---|---|
+| `frontend` | Next.js. Serves pages, proxies `/api/*` to the backend | **Yes** — the only public door |
+| `backend` | FastAPI. Reached at `backend.railway.internal:8000` | No |
+| `pgvector` | PostgreSQL 18.4 + `vector` 0.8.6. `pgvector.railway.internal` | No — TCP proxy deleted |
+
+Deployment config is version-controlled: `backend/railway.toml` (pre-deploy `alembic upgrade
+head`, healthcheck `/api/health/ready`) and `frontend/railway.toml`. Railway reads them from each
+service's root directory — **not** from the repository root.
+
+**Only Postgres is deployed.** Redis and object storage are not; nothing needs them until slices
+003/004. That is why `REDIS_URL` and the `S3_*` settings are now optional, and why readiness
+reports them as `not_configured` rather than failing. Setting placeholder values would make the
+application believe it has a cache and fail at first use.
+
+### What remains in slice 002
+
+- **T040–T044** — enable Wait for CI, merge a trivial change and watch it deploy, then
+  **deliberately break a test, merge it, and confirm the site does not move**. A gate nobody has
+  watched fail is not a gate. Plus a rollback drill.
+- **T034, T039** — declined consent creating nothing; deployed logs searched for secret values.
+- **T050–T052** — final gates, scope-guard check, and walking the README deployment section as
+  written.
+
+### Two things worth doing when convenient
+
+- **Rotate the database password.** It was visible on screen during setup while the public TCP
+  proxy was still open. The proxy is gone now, so this is hygiene rather than urgent — but a
+  known password becomes live again the moment anyone re-adds a proxy. `DATABASE_URL` references
+  `${{pgvector.PGPASSWORD}}`, so rotating propagates with nothing to hand-edit. Note that changing
+  the variable alone does **not** change the password: run `ALTER USER … WITH PASSWORD` first.
+- **The deployed domain says `frontend`, and three misspellings of it cost real time** (`fronted`,
+  `frontned`). Copy it from Railway rather than typing it, and remember `PUBLIC_BASE_URL` must
+  match the Google redirect URI byte for byte.
 
 ### Slice 004 decision recorded ahead of its spec
 
@@ -219,6 +240,33 @@ Recorded so they are not rediscovered.
 - **`docker compose exec frontend npm run build` fails** prerendering `/_global-error`, because
   the container is built `target: dev` and its running dev server owns `/app/.next`. The identical
   build succeeds on the host and in CI. Same rule: gates run on the host.
+- **A hardcoded listening port is invisible locally and fatal when deployed.** `entrypoint.sh`
+  used `--port 8000`; hosting platforms assign a port and inject it as `$PORT`, then probe *that*.
+  Compose publishes 8000, so hardcoding it was accidentally correct. The symptom names nothing —
+  a health check retrying for five minutes with **no application error**, because the application
+  is healthy and merely unreachable. It now reads `${PORT:-8000}`.
+- **The frontend's production image had never been built by anyone.** Compose builds
+  `target: dev` and stops, so the `runner` stage was first exercised on the deployment platform —
+  where it failed on `COPY /app/public`, a directory that did not exist. If you change anything in
+  the production stages, build it: `docker build --target runner frontend/`.
+- **`BACKEND_URL` is consumed at *build* time, not run time.** `next.config.ts` resolves the
+  `/api/*` proxy destination into `routes-manifest.json` when the bundle is built. A Docker build
+  is sealed off from the host environment, so the value only arrives through a declared `ARG` —
+  and the ARG must be referenced *inside* the `RUN` line, or a build that changes only the
+  variable reuses the cached layer and silently ships the previous destination. The symptom is a
+  site that serves pages perfectly while every `/api/*` call 500s, which reads like a network
+  fault. The build log now prints the value it baked in.
+- **A passing health check is not evidence the proxy works.** The frontend's check probes `/`,
+  which never traverses `/api/*`. Three separate proxy misconfigurations all deployed green.
+- **Security headers must be sent by both halves of the origin.** `SecurityHeadersMiddleware` is
+  backend-only, so HSTS, `nosniff`, `DENY` and `no-referrer` were on `/api/*` and absent from
+  every page a browser actually navigates to. The middleware was correct throughout — it simply
+  never sees those responses. `frontend/next.config.ts` now sets the same four, with the same
+  values, and they must stay in step.
+- **`nc -z` cannot tell "port open" from "service exposed".** Checking whether the database was
+  publicly reachable, `nc` reported the port open because Railway's proxy edge is shared and
+  accepts connections regardless. Speaking the PostgreSQL protocol gave the real answer
+  (connection reset). For any "is X exposed" check, speak X's protocol and include a control.
 - **Postgres 18 images mount at `/var/lib/postgresql`, not `/var/lib/postgresql/data`.** From
   18 onward the official images store data in a major-version subdirectory (`18/docker`) so
   `pg_upgrade --link` works without crossing a mount boundary. Mounting the pg17 path makes

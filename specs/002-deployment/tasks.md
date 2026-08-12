@@ -264,7 +264,7 @@ backlog.
 
 ## Phase 6: Polish & Cross-Cutting Concerns
 
-- [ ] T045 [P] Add the deployment section to `README.md` covering deploy, reading logs, and
+- [x] T045 [P] Add the deployment section to `README.md` covering deploy, reading logs, and
       rollback — including the asymmetry that application rollback is cheap, schema rollback is
       conditional on the migration being reversible, and business data is **never** rolled back
       under Principle IV (FR-024). An operator reads this during an incident, so it must be where
@@ -272,15 +272,15 @@ backlog.
       requirement (FR-012 — the value currently lives only in T029 and a slice artifact, neither
       of which is the project's documentation), and **where to see which version is live, whether
       the last deploy succeeded, and why it failed** (FR-022)
-- [ ] T046 [P] Record in `CLAUDE.md` the gotchas this slice proved, with the symptom for each,
+- [x] T046 [P] Record in `CLAUDE.md` the gotchas this slice proved, with the symptom for each,
       since neither names its own cause: Railway's private network is IPv6 while Docker's is IPv4;
       and Wait for CI waits on **all** GitHub check suites, so a merge can silently never deploy
       while this repository's CI is green
-- [ ] T047 [P] Update `CLAUDE.md`'s current-state section: slice 002 complete, the public URL,
+- [x] T047 [P] Update `CLAUDE.md`'s current-state section: slice 002 complete, the public URL,
       and what carries into slice 003
-- [ ] T048 [P] Update `docs/05_Implementation_Plan.md` §5 and §10 — slice 002 complete, slice 003
+- [x] T048 [P] Update `docs/05_Implementation_Plan.md` §5 and §10 — slice 002 complete, slice 003
       next
-- [ ] T049 [P] Update `docs/08_Technical_Spec.md`: close Q2 (readiness following configuration),
+- [x] T049 [P] Update `docs/08_Technical_Spec.md`: close Q2 (readiness following configuration),
       mark the production security path as verified rather than unproven in §4.2, and record the
       deployed URL in §1.2
 - [ ] T050 Confirm the scope guards held: no user-visible behaviour changed other than the address

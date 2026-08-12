@@ -35,15 +35,16 @@ truth for their own areas; this document owns the narrative and links down for d
 
 ## 1.2 Status at a glance
 
-**One of seven slices is built.** Everything in this document carries an explicit status
-marker so that planned work is never mistaken for shipped work.
+**Two of seven slices are built, and the system is deployed.** Everything in this document
+carries an explicit status marker so that planned work is never mistaken for shipped work.
 
 | | |
 |---|---|
-| **Built and verified** | Slice 001 — Platform Foundation |
-| **Next** | Slice 002 — Deployment |
-| **Evidence** | 55 backend tests at 89% coverage, 3 component tests, 6 Playwright smoke tests, CI green on `e195125` |
-| **Verified how** | Full quickstart from a fresh clone on wiped volumes, including a real Google sign-in taking the database from `0\|0` to `1\|1` |
+| **Live at** | **https://frontend-production-02ac.up.railway.app** |
+| **Built and verified** | Slice 001 — Platform Foundation; Slice 002 — Deployment (37/52, User Stories 1–2 verified) |
+| **Next** | Slice 003 — Data Foundation |
+| **Evidence** | 58 backend tests at 89% coverage, 3 component tests, 6 Playwright smoke tests, CI green on `main` |
+| **Verified how** | Locally: full quickstart from a fresh clone on wiped volumes. **On the deployed system**: a real Google sign-in taking the database from `0\|0` to `1\|1` and leaving it there on a second sign-in, with security headers, cookie flags and readiness confirmed by observation — see [`specs/002-deployment/observations.md`](../specs/002-deployment/observations.md) |
 
 ---
 
@@ -480,9 +481,20 @@ one-off fixes:
 - **Ownership comes from the session, never the request** (§3.2.2).
 - **Unauthenticated endpoints disclose failure kind, not detail** (§3.4).
 
-**Not yet done:** a full `/security-review` of the branch diff has never been run — the
-slice-001 review was scoped to cookies, headers, and secret handling. The production
-security path (HSTS, `Secure`, `https_only`) is **unproven** until slice 002.
+**The production security path is now proven.** HSTS, `Secure` and `https_only` have run with
+`ENVIRONMENT=production` and were confirmed by observing real responses and the real session
+cookie in a browser (§5, `specs/002-deployment/observations.md`).
+
+One correction that observation produced and code review could not: **`SecurityHeadersMiddleware`
+covers only half the origin.** It is backend-only, so its four headers were present on `/api/*`
+and absent from every page a browser navigates to — the frontend serves that HTML, and the
+middleware never sees it. `frontend/next.config.ts` now sets the same four with the same values.
+**They must stay in step**: a header added to one half and not the other leaves the origin
+inconsistent in a way nothing tests.
+
+**Still not done:** a full `/security-review` of the branch diff has never been run — the
+slice-001 review was scoped to cookies, headers, and secret handling, and slice 002 verified
+behaviour rather than auditing the diff.
 
 ## 4.3 Privacy
 
@@ -738,7 +750,7 @@ Unresolved, listed rather than hidden.
 | # | Question | Blocks | Notes |
 |---|---|---|---|
 | ~~Q1~~ | ~~Does Railway's managed Postgres support `pgvector`?~~ | — | **Closed.** Verified on the deployed database — PostgreSQL 18.4, `vector` 0.8.6 available and created. Provisioning constraint recorded in §3.5 |
-| Q2 | How should readiness report dependencies that are configured-but-absent? | Slice 002 | Current code hardcodes three probes and requires all to pass; a Postgres-only deploy would report unready forever. Recommended: probe follows configuration, and the endpoint never reports `ok` for something it did not check |
+| ~~Q2~~ | ~~How should readiness report dependencies that are configured-but-absent?~~ | — | **Closed.** Probing follows configuration, and an unconfigured dependency reports `not_configured` — never `ok`, and never omitted. Overall status considers checked dependencies only, so an absent dependency can neither fail the check nor mask a real failure. Verified on the deployed system. The blocker turned out to sit one layer earlier than the endpoint: `REDIS_URL` and the `S3_*` settings were required fields, so the backend could not start at all without them |
 | Q3 | Can a local model on this machine serve the dev loop? | §4.4 savings | Assumption A6, **untested**. If not, dev-loop cost returns to ~$50 |
 | Q4 | Three coupled parameters: the Reviewer's confidence threshold, the maximum revision attempts, and the attempt at which Revise escalates to Opus (§3.2.3) | Slice 004 | Needs the benchmark from slice 005 to set empirically — chicken-and-egg; start with threshold-plus-two-attempts-escalating-on-the-second and calibrate. Slice 005 can then measure whether escalation actually improves grounding accuracy or merely costs more, which is a sharper evaluation question than tuning a threshold alone |
 | Q5 | Account deletion, data export, retention policy | Beyond course scope | §4.3. Unbuilt and undesigned |
