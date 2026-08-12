@@ -34,6 +34,36 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+
+  /**
+   * The backend's SecurityHeadersMiddleware stamps these on /api/* responses,
+   * but those are not the responses a browser navigates to — this service
+   * serves the HTML, and it was serving it bare. Verifying against the deployed
+   * site is what surfaced that; the middleware is correct and always was, and
+   * reading it would only ever have confirmed the half of the traffic it sees.
+   *
+   * Kept deliberately identical to the backend's values, so the two halves of
+   * one origin cannot drift into disagreeing about the same policy.
+   */
+  async headers() {
+    const securityHeaders = [
+      { key: "X-Content-Type-Options", value: "nosniff" },
+      { key: "X-Frame-Options", value: "DENY" },
+      { key: "Referrer-Policy", value: "no-referrer" },
+    ];
+
+    // Production only, matching the backend. Sending HSTS from plain-HTTP
+    // localhost pins a scheme that does not work there, and browsers cache the
+    // pin — so the cost of getting this wrong lands on developers, later.
+    if (process.env.NODE_ENV === "production") {
+      securityHeaders.push({
+        key: "Strict-Transport-Security",
+        value: "max-age=31536000; includeSubDomains",
+      });
+    }
+
+    return [{ source: "/:path*", headers: securityHeaders }];
+  },
 };
 
 export default nextConfig;
