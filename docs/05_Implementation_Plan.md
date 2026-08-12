@@ -81,8 +81,8 @@ is written; it is finished when it can be demonstrated against a deployed enviro
 
 | # | Slice | Delivers | Depends on | Status |
 |---|---|---|---|---|
-| 001 | Platform Foundation | Containerized environment, Google sign-in, authenticated shell, CI | — | **In progress** |
-| 002 | Deployment | Public URL, deployed from Docker, redeployed on every merge | 001 | Planned |
+| 001 | Platform Foundation | Containerized environment, Google sign-in, authenticated shell, CI | — | **Complete** |
+| 002 | Deployment | Public URL, deployed from Docker, redeployed on every merge | 001 | **Next** |
 | 003 | Data Foundation | Resume import and parsing, Professional Profile, applications, JobTracker import | 001 | Planned |
 | 004 | **Resume Tailoring Agent** | LangGraph workflow, RAG, self-critique Reviewer, item-level approval, versions, PDF | 003 | Planned |
 | 005 | Evaluation & Benchmark | Test set, metrics, LLM-as-judge, results dashboard | 004 | Planned |
@@ -314,10 +314,20 @@ A slice is complete when **all** of the following hold:
 
 # 10. Current Status
 
-**Active slice**: 001 — Platform Foundation
-**Stage**: Tasked and analyzed; implementation not started
-**Artifacts**: specification, plan, research, data model, API contracts, quickstart, 69 tasks
-**Next checkpoint**: User Story 1 (`T001`–`T030`) — one command brings the platform up healthy
+**Last completed slice**: 001 — Platform Foundation
 
-Progress is tracked in `specs/001-platform-foundation/tasks.md`. This section is updated as slices
-complete.
+All 69 tasks done and all three user stories verified, including a real Google sign-in taking the
+database from `0|0` to `1|1` and a second sign-in leaving it at `1|1` while advancing only
+`last_login_at`. Merged to `main`; CI green on the merge commit. 55 backend tests at 89% coverage,
+3 component tests, 6 Playwright smoke tests.
+
+**Active slice**: 002 — Deployment
+**Stage**: Not yet specified
+
+Two things carry forward from 001. `PUBLIC_BASE_URL` already drives every browser-facing URL, so
+pointing OAuth at a real domain is configuration rather than code. And HSTS, secure cookies, and
+`https_only` are all wired to `is_production`, which has never once run with
+`ENVIRONMENT=production` — that path is unproven and this slice is where it gets proven.
+
+Progress for each slice is tracked in its own `specs/00N-<slice>/tasks.md`. This section is updated
+as slices complete.
