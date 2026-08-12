@@ -230,10 +230,12 @@ Recorded so they are not rediscovered.
   `name: careerhq`, so cloning into a new directory does *not* give a clean database — it attaches
   to the existing one. `docker compose down -v` for genuinely empty state; it is scoped to this
   project and touches no other project's volumes.
-- **The `gh` CLI is not installed.** Git itself works — HTTPS over `osxkeychain`, verified by
-  fetch and push — but there is no `gh pr create`, no `gh run watch`, and no `gh secret set`.
-  CI status can be read from the public Actions API with `curl` instead. `brew install gh` is
-  worth doing before slice 002, which involves deploy secrets and workflow files.
+- **`gh` is installed but may not be authenticated.** Check with `gh auth status` before
+  reaching for it; an unauthenticated `gh` fails in ways that look like a missing repo. Log in
+  with `gh auth login -s workflow` — requesting the `workflow` scope up front, because slice 002
+  adds a deploy workflow and a push touching `.github/workflows/` is rejected outright without
+  it. Git itself works independently, over HTTPS with `osxkeychain`. CI status can also be read
+  from the public Actions API with `curl`, which needs no auth at all.
 - **Pushing anything under `.github/workflows/` needs a token with the `workflow` scope.**
   Otherwise the push is rejected outright, with the commit still safe locally.
 - **A comment beginning `# noqa` is parsed as a blanket lint suppression.** Do not start an
