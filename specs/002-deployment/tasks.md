@@ -186,23 +186,23 @@ configuration is confirmed by observation for the first time in the project's li
 the public address, then confirm exactly one account and one profile exist and that signing in
 again creates neither.
 
-- [ ] T029 🔧 **MANUAL** [US2] In the Google Cloud console, on the OAuth 2.0 client, add to
+- [x] T029 🔧 **MANUAL** [US2] In the Google Cloud console, on the OAuth 2.0 client, add to
       **Authorized redirect URIs** exactly:
       `https://<frontend-domain>/api/auth/google/callback` — no trailing slash. Google matches by exact
       string, so a near miss fails at the provider with an error describing a mismatch rather than
       what to fix. This step cannot be automated
-- [ ] T030 🔧 **MANUAL** [US2] Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` on the backend
+- [x] T030 🔧 **MANUAL** [US2] Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` on the backend
       service from the same OAuth client
 
 ### Verify identity (SC-002)
 
-- [ ] T031 👁 **OBSERVE** [US2] In a private window, sign in with Google at
+- [x] T031 👁 **OBSERVE** [US2] In a private window, sign in with Google at
       `https://<frontend-domain>` and confirm arrival at the dashboard. **Failure looks like**: a
       `redirect_uri_mismatch` at Google, meaning T029's value does not match `PUBLIC_BASE_URL`
-- [ ] T032 👁 **OBSERVE** [US2] In the `pgvector` service Console, confirm counts are `1|1` after
+- [x] T032 👁 **OBSERVE** [US2] In the `pgvector` service Console, confirm counts are `1|1` after
       first sign-in. **Failure looks like**: `1|0`, meaning the profile was not created in the
       same transaction as the user
-- [ ] T033 👁 **OBSERVE** [US2] Sign out, sign in again, and confirm counts are **still** `1|1`.
+- [x] T033 👁 **OBSERVE** [US2] Sign out, sign in again, and confirm counts are **still** `1|1`.
       **Failure looks like**: `1|2` — the UNIQUE constraint did not deploy, which is a
       Principle I violation and a release blocker
 - [ ] T034 👁 **OBSERVE** [US2] Decline consent at Google and confirm the outcome is explained and
@@ -215,12 +215,12 @@ again creates neither.
       meaning `is_production` is not true in the deployed environment
 - [x] T036 👁 **OBSERVE** [US2] `curl -sI http://<frontend-domain>` and confirm a redirect to the
       `https://` address. **Failure looks like**: a 200 served over plain HTTP
-- [ ] T037 👁 **OBSERVE** [US2] In the browser, after signing in, open DevTools → Application →
+- [x] T037 👁 **OBSERVE** [US2] In the browser, after signing in, open DevTools → Application →
       Cookies and confirm the session cookie carries **`Secure`** and **`HttpOnly`**. Do this in a
       browser rather than with `curl` — the browser is what enforces these flags. **Failure looks
       like**: either flag unchecked, meaning the session can be sent over plain HTTP or read by
       page scripts
-- [ ] T038 [US2] Record what was actually observed in T035–T037 in `specs/002-deployment/`, not
+- [x] T038 [US2] Record what was actually observed in T035–T037 in `specs/002-deployment/`, not
       what was expected. This configuration had never executed before this slice; the observation
       is the evidence FR-015 requires
 - [ ] T039 👁 **OBSERVE** [US2] Search the deployed backend logs for the literal values of
