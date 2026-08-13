@@ -264,8 +264,10 @@ independently, and that re-running it does not duplicate anything.
   is never the source of truth for anything downstream.
 - **Extraction Item**: A single extracted fact carrying its source and confidence, so unverified
   extraction stays distinguishable from a user-verified value.
-- **Master Resume (Resume Profile)**: A career-focused view over the profile, created from the
-  approved import. References profile facts rather than duplicating them.
+- **Master Resume**: A career-focused view over the profile, created from the approved import.
+  References profile facts rather than duplicating them. The domain entity is `ResumeProfile`
+  (table `resume_profiles`, docs/03 §4.3); "Master Resume" is the user-facing name for the one
+  marked `is_master`. Both terms appear across these documents and mean the same thing.
 - **Application**: One tracked employment opportunity — company, job title, job description,
   dates, current status, normalized status category, append-only status history, source, notes.
   May exist before any resume is submitted.

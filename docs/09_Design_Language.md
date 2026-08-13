@@ -214,8 +214,11 @@ Four stat tiles — Total, Active, Interviews, Rejected — with figures in disp
 active tile is visibly selected. This is carried directly from JobTracker, where `StatsCards`
 already renders each tile as a `<button>` with an `activeFilter` prop — an existing good idea, kept.
 
-Below them: what needs attention (stalled applications, imports left un-reviewed), and recent
-activity.
+**Deferred, deliberately**: "what needs attention" (stalled applications, un-reviewed imports) and
+recent activity. Both are genuinely useful and neither is required by any functional requirement,
+so slice 003 ships the tiles and the filtered table only. Recorded here rather than dropped,
+because the idea is worth keeping — but a design document describing screens no task builds is
+drift, and cross-artifact analysis exists to catch exactly that.
 
 ### 6.2 Applications
 
