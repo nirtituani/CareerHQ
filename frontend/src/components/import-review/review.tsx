@@ -14,7 +14,7 @@ import {
   type ExtractionItem,
   type ImportedResume,
   SECTIONS,
-  summarise,
+  describe,
 } from "@/lib/imports";
 
 /**
@@ -150,6 +150,7 @@ export function ImportReview({
         <ul className="min-w-0 flex-1 space-y-2">
           {visible.map((item, index) => {
             const settled = item.decision !== "pending";
+            const described = describe(item);
             return (
               <li
                 key={item.id}
@@ -162,16 +163,30 @@ export function ImportReview({
                 }}
               >
                 <div className="flex items-start justify-between gap-4">
-                  <p
-                    className={settled ? "truncate text-sm" : "text-sm"}
-                    style={
-                      item.decision === "discarded"
-                        ? { textDecoration: "line-through" }
-                        : undefined
-                    }
-                  >
-                    {summarise(item)}
-                  </p>
+                  <div className="min-w-0">
+                    <p
+                      className="text-sm"
+                      style={
+                        item.decision === "discarded"
+                          ? { textDecoration: "line-through" }
+                          : undefined
+                      }
+                    >
+                      {described.primary}
+                    </p>
+                    {/* Every captured field is shown. Hiding one would mean
+                        asking the user to verify something they cannot see. */}
+                    {!settled &&
+                      described.details.map((detail) => (
+                        <p
+                          key={detail}
+                          className="text-xs"
+                          style={{ color: "var(--faint)" }}
+                        >
+                          {detail}
+                        </p>
+                      ))}
+                  </div>
 
                   <div className="flex shrink-0 items-center gap-3">
                     <ConfidenceMeter value={item.confidence} />
