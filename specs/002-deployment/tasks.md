@@ -249,17 +249,25 @@ a theory.
 **Independent Test**: Merge a trivial visible change and confirm it appears with no further
 action. Separately merge a change that fails a gate and confirm the site is unchanged.
 
-- [ ] T040 🔧 **MANUAL** [US3] Enable **Wait for CI** on both services in Railway. Without it a
+- [x] T040 🔧 **MANUAL** [US3] Enable **Wait for CI** on both services in Railway. Without it a
       merge deploys immediately and CI results arrive too late to prevent anything (FR-020).
       **Dashboard only** — confirmed unscriptable: `waitForCI` does not exist in Railway's public
       GraphQL schema, and `ServiceInstanceUpdateInput` exposes no equivalent field, so the CLI
-      cannot set it
-- [ ] T041 [US3] Merge a trivial, visible change to `main` and confirm it reaches the public site
-      with no manual step. Watch with `gh run watch` (SC-005)
-- [ ] T042 [US3] **Watch the gate fail.** On a branch, deliberately break a test, merge it, and
+      cannot set it. **Enabled on both services and proven armed** — see T041, where the
+      deployment sat in Railway's `WAITING` state until CI reported success
+- [x] T041 [US3] Merge a trivial, visible change to `main` and confirm it reaches the public site
+      with no manual step. Watch with `gh run watch` (SC-005). **Done** with commit `39b6e76`
+      pushed to `main`. The change was documentation rather than visually visible, so arrival was
+      confirmed by the deployed commit hash instead — the stricter check, and the technique the
+      T044 drill established. Both services moved `beeadaf` → `39b6e76` with no manual step, and
+      the gate was observed holding the deployment first
+- [x] T042 [US3] **Watch the gate fail.** On a branch, deliberately break a test, merge it, and
       confirm the public site is **unchanged** and the failure is visible in Actions. Then revert.
       A gate nobody has watched fail is not a gate — this is the same discipline CLAUDE.md
-      requires when adding any gate (SC-006)
+      requires when adding any gate (SC-006). **Done and reverted.** Railway created a deployment
+      for the broken merge, held it at `WAITING`, then moved it to **`SKIPPED`** when CI failed —
+      never `SUCCESS`. The site stayed on the previous commit answering 200 throughout. Two
+      independent gates caught it, ruff `B011` and pytest, both reported in the same run
 - [x] T043 👁 **OBSERVE** [US3] Confirm the pre-deploy command ran by finding `alembic upgrade
       head` output in the deployment logs. On the first deploy it will report nothing to apply,
       because the deployed database is already current — that is the expected result, not a
@@ -313,7 +321,7 @@ backlog.
 - [x] T051 Run every gate from the host and confirm green: `ruff format --check .`, `ruff check .`,
       `mypy src`, `pytest` from `backend/`; `npm run lint`, `npm run typecheck`, `npm test`,
       `npm run build` from `frontend/`
-- [ ] T052 Walk `README.md`'s deployment section end to end **as written**, and correct it against
+- [x] T052 Walk `README.md`'s deployment section end to end **as written**, and correct it against
       what actually happens — deploy, find the status of that deployment, and return to the
       previous version, using only the documentation (SC-007, FR-022). This is the slice-002
       equivalent of slice 001's T069, which corrected the quickstart against a real clean-clone run
@@ -325,8 +333,10 @@ backlog.
       rather than a setting someone must switch on, which it still is not (T040); (3) the OAuth
       section said "must contain exactly" and then gave `<frontend-domain>`, when FR-012 asked for
       the exact URI. The executable half — deploy, read that deployment's status, and return to
-      the previous version using only this document — needs the Railway dashboard and rides on
-      T041/T044
+      the previous version using only this document — has now also been walked: T041 deployed a
+      merge, `railway deployment list` and the Deployments tab both answered which version was
+      live and whether it succeeded, and T044 returned the site to the previous version. The
+      rollback traps that walk exposed are corrected in the same section
 
 ---
 

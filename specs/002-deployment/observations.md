@@ -206,13 +206,66 @@ Two things the drill established that the documentation had wrong or silent:
    version is live" must be read from the deployment's **commit**, never its id — and a rolled-back
    deployment id never becomes live again under its own name.
 
+## FR-020 / SC-005 / T040 + T041 — the gate holds, then releases
+
+Watched on a real push of `39b6e76` to `main`, polling CI and Railway together:
+
+```
+08:32:47  CI=in_progress        554d6ead:WAITING:39b6e76   <- held by Wait for CI
+08:33:31  CI=completed/success  554d6ead:SUCCESS:39b6e76   <- released on green
+08:33:53                        28cab4db:REMOVED:beeadaf   <- previous retired
+```
+
+The `WAITING` state is the evidence. A deployment that merely arrives after CI proves nothing
+about ordering — that could be coincidence of timing. Seeing Railway *hold* a created deployment
+and release it when CI reported success is what shows the gate is armed. It also settles the
+caveat printed under the toggle ("make sure you have accepted our updated GitHub permissions"),
+which is otherwise a silent failure mode.
+
+Both services moved `beeadaf` → `39b6e76` with no manual step; the site kept 4/4 security headers
+and a healthy readiness response throughout.
+
+Neither service sets `watchPatterns`, so every push to `main` deploys both regardless of which
+paths changed — a documentation-only commit still exercises the full pipeline.
+
+## FR-020 / SC-006 / T042 — the gate watched failing
+
+The case T041 could not prove. A deliberately failing test was merged to `main` and the pipeline
+watched, then reverted:
+
+```
+08:37:06  CI=in_progress        69e62334:WAITING:02a5bcf   554d6ead:SUCCESS:39b6e76
+08:37:51  CI=completed/failure  69e62334:SKIPPED:02a5bcf   554d6ead:SUCCESS:39b6e76
+```
+
+**`SKIPPED`, not `SUCCESS`.** Railway created a deployment for the broken commit, held it while CI
+ran, and abandoned it when CI failed — and it stayed `SKIPPED` rather than retrying. The public
+site answered 200 with all four security headers at every poll, still served by the previous
+deployment on the last good commit.
+
+The revert then completed the cycle, which matters as much as the failure: a gate that blocks bad
+commits but also jams good ones is not usable.
+
+```
+08:40:21  CI=in_progress        686b8e23:WAITING:94cd529
+08:41:06  CI=completed/success  686b8e23:DEPLOYING:94cd529
+08:41:28  CI=completed/success  686b8e23:SUCCESS:94cd529
+```
+
+Two things worth keeping:
+
+- **Two independent gates caught the break** — ruff `B011` (`assert False` is stripped under
+  `python -O`) and pytest — and both appeared in the same run rather than the lint failure
+  masking the test failure. That is what CI's `if: !cancelled()` buys, observed rather than
+  assumed.
+- **Deployment status is the honest signal, not CI status.** `WAITING` → `SKIPPED` is visible only
+  from the deployment record. Reading Actions alone shows a red run and leaves open whether
+  anything reached production.
+
 ## Not yet observed
 
 - **T034** — declined consent creating nothing. Needs a browser.
 - **T039** — the sign-in half, per above. Needs a sign-in on the *current* deployment.
-- **T040/T041/T042** — Wait for CI and the deliberate gate failure. `waitForCI` is absent from
-  the public GraphQL schema and from `ServiceInstanceUpdateInput`, so this cannot be scripted —
-  it is a dashboard setting.
 
 ## What observation caught that review could not
 
