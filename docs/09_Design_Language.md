@@ -176,79 +176,158 @@ must say so; an unbuilt panel is not broken and must not alarm.
 
 ---
 
-## 6. Screens
+## 6. Information architecture and screens
 
-### 6.1 Applications list
+The structure follows the author's existing JobTracker, which works and which they use daily.
+Carried over deliberately: left sidebar navigation, a row of stat tiles, and a dense searchable
+table. Changed deliberately: everything below.
 
-Left sidebar navigation; four stat tiles across the top (Total / Active / Interviews / Rejected)
-with figures in display type at `text-4xl.tabular`; then search, status filter and the table.
+### 6.0 Navigation
 
-Columns: company (with logo when a domain is known), job title, status pill, date applied
-(mono, tabular), match, applied via, and a job-description indicator. Row actions on the right,
+```
+Dashboard          stats, what needs attention, recent activity
+Applications       the full table
+Profile            master resume and career data          ← slice 003 builds this
+Career Advisor     slice 007
+CV Builder         later — ADR-013
+Settings
+```
+
+Two notes on why this list and not the six-item one it came from.
+
+**Profile is not CV Builder.** They share a data model and nothing else. Profile holds career data
+populated by import and corrected by hand — slice 003's main story, and the input the resume
+tailoring in slice 004 works *from*. CV Builder is the guided from-scratch composer that ADR-013
+defers as roughly forty settings demonstrating none of the project requirements. Conflating them
+would pull a deferred feature into the critical path.
+
+**Dashboard and Applications are separate screens.** In JobTracker the dashboard *is* the table,
+which was right for one feature and wastes a navigation slot given six. Dashboard answers "what
+should I do today"; Applications answers "show me everything".
+
+### 6.1 Dashboard
+
+Four stat tiles — Total, Active, Interviews, Rejected — with figures in display type at
+`text-4xl.tabular`.
+
+**The tiles are filters, not decoration.** Clicking one filters the table beneath it, and the
+active tile is visibly selected. This is carried directly from JobTracker, where `StatsCards`
+already renders each tile as a `<button>` with an `activeFilter` prop — an existing good idea, kept.
+
+Below them: what needs attention (stalled applications, imports left un-reviewed), and recent
+activity.
+
+### 6.2 Applications
+
+The full table. Columns: company with logo where a domain is known, job title, status pill, date
+applied (mono, tabular), match, applied via. Search and status filter above; row actions right,
 revealed on hover and always reachable by keyboard.
 
-The status pill shows the **user's own label**. Where the normalized category differs in a way that
-matters — a row flagged rejected while still labelled "Interview Round 2" — the pill carries the
-label and a small neutral marker denotes the normalized outcome. That case is not hypothetical: it
-is exactly what the JobTracker import produces, and it is *more* informative than the source, which
-had to reconcile two fields at every read.
+The status pill shows the **user's own label**. Where the normalized category disagrees — a row
+flagged rejected while still labelled "Interview Round 2" — the pill keeps the label and a small
+neutral marker carries the normalized outcome. Not hypothetical: it is exactly what the JobTracker
+import produces, and it shows *more* than the source could, which had to reconcile two fields at
+every read.
 
-### 6.2 Application detail
+**JobTracker's "Job Desc" column does not survive.** It linked out to a posting that may since have
+expired; CareerHQ stores the description text, so opening the record shows the real thing. That
+column is better spent indicating whether a tailored resume exists for the job.
 
-Two columns. Left, the record: every stored field, with the **full job description text** set in
-`text-base` on `--surface-sunken` — CareerHQ stores the description itself, where JobTracker stored
-only a link that may since have expired.
+### 6.3 Application detail — tabbed
 
-Right, a stack of capability panels, each **named and visibly empty** in this slice:
+The screen every later slice lands on, so its job is to hold five capabilities without any of them
+crowding the one the user actually came for.
 
-- **Requirements** — "Extracted requirements arrive with resume tailoring."
-- **Match score** — "Scoring arrives with resume tailoring."
-- **Company research** — "Company research arrives later."
+```
+┌──────────────────────────────────────────────────────────────┐
+│ ← Applications                                                │
+│ arpeely · AI Engineer, Agentic Systems & AI Infrastructure    │
+│ Applied · 09/08/2026 · Referral               [ Tailor CV ]   │
+├──────────────────────────────────────────────────────────────┤
+│ Details │ Requirements ◦ │ Company ◦ │ Interview ◦ │ Versions │
+├──────────────────────────────────────────────────────────────┤
+│   selected tab, full width                                    │
+└──────────────────────────────────────────────────────────────┘
+```
 
-They use the *not built yet* treatment from §5, never the failure or empty-data ones. The purpose
-of building them now is that slices 004, 005 and 006 each get a destination instead of inventing
-their own layout and reconciling three of them later.
+**Tabs rather than a right rail**, because the job description is long and wants the full column —
+a rail permanently squeezes the one piece of content that is always present, to show four panels
+that mostly are not. Radix Tabs also supplies keyboard navigation, and adding the interview coach
+later is one more tab rather than a relayout.
 
-### 6.3 CV import review — the hard screen
+| Tab | Content | Arrives |
+|---|---|---|
+| **Details** | Every stored field, and the full job description text on `--surface-sunken` | Slice 003 |
+| **Requirements** | Extracted requirements from the description | Slice 004 |
+| **Company** | Company research snapshot | Slice 006 |
+| **Interview** | Interview preparation | **Not yet on the roadmap** — see below |
+| **Versions** | Resumes tailored for *this* job, with lineage | Slice 004 |
 
-The problem: dozens of items across eight or more sections, each needing accept / correct /
-discard, and the user must move fast without losing their place.
+**Unbuilt capabilities are marked in the tab itself** (`◦`, muted). Without that, the user clicks
+Company to discover it is not built, then clicks Interview to discover the same. Marking at the
+navigation level means never clicking into disappointment — §5's *not built yet* state applied one
+level up, and the reason it must never read as *failed*.
+
+**One primary action.** `Tailor CV` sits in the header at full weight; everything else is a tab.
+Four unbuilt features must not compete visually with the thing the page exists to do.
+
+**Versions belong here, not under Profile.** Lineage is per-application, and Principle IV exists so
+the exact document sent to a specific employer can be reproduced. The question actually asked is
+"what did I send to arpeely?", which is application-scoped. Profile holds the Master Resume — the
+source tailored *from*; this holds what was tailored *to*.
+
+> **Interview preparation is not a planned slice.** docs/00 lists it as a future release, and
+> docs/01's "Interview Preparation Notes" sits inside Company Research (slice 006). The tab slot
+> costs nothing; a real coach is new scope needing its own slice. Recorded so a placeholder does
+> not quietly become a commitment.
+
+### 6.4 Profile
+
+Career data as structured content: contact, titles, summary, roles with their bullets, skills,
+education, certifications, languages — each carrying the provenance rule from §5, because FR-004
+requires user-verified facts stay distinguishable from unverified extraction *after* approval, not
+only during review.
+
+The Master Resume lives here. Empty until a CV is imported, so the empty state is really an
+onboarding state: it should route to import rather than merely reporting emptiness.
+
+### 6.5 CV import review — the hard screen
+
+Dozens of items across eight or more sections, each needing accept / correct / discard, and the
+user must move fast without losing their place.
 
 **Two panes.** Left, a section navigator with per-section progress (`Work experience 6/9`). Right,
 the items for the current section.
 
-**Each item** is a row-card carrying content, provenance rule and label, confidence meter, and
-three actions — available as buttons and as keys: `A` accept, `E` edit, `D` discard, `J`/`K` to
-move. Keyboard is not a nicety here; it is the difference between reviewing sixty items and
-abandoning the import.
+**Each item** is a row-card carrying content, provenance rule and label, confidence meter, and three
+actions — as buttons and as keys: `A` accept, `E` edit, `D` discard, `J`/`K` to move. Keyboard is
+not a nicety here; it is the difference between reviewing sixty items and abandoning the import.
 
 **Reviewed items collapse** to `--spacing-row-compact`, so the list visibly shortens as work is
 done. Progress you can see beats a progress bar you have to interpret.
 
-**A persistent bottom bar**: `24 of 61 reviewed · 3 need attention`, and the Approve action.
-Approve stays disabled until at least one item is accepted.
+**A persistent bottom bar**: `24 of 61 reviewed · 3 need attention`, and Approve — disabled until at
+least one item is accepted.
 
-**Accept all in section** exists as an explicit, labelled bulk action. Bulk acceptance is a
-legitimate thing to *choose* and an illegitimate thing to *default to* — the distinction §5 draws
-between suggesting and deciding.
+**Accept all in section** is an explicit, labelled bulk action. Bulk acceptance is a legitimate
+thing to *choose* and an illegitimate thing to *default to* — §5's distinction between suggesting
+and deciding.
 
 **Abandonment leaves nothing behind** (FR-007), so the screen must not imply otherwise: no
-autosave-to-profile language, and the profile is written only on approval.
+autosave-to-profile language anywhere, and the profile is written only on approval.
 
-### 6.4 Upload and extraction states
+### 6.6 Upload and extraction states
 
 `idle → uploading → extracting → (extracted | failed)`.
 
-- **Extracting** is the slow one — a single model call. Show what is happening rather than an
+- **Extracting** is the slow one — a single model call. Say what is happening rather than showing an
   indeterminate spinner.
 - **Failed** uses the failure treatment and names the likely cause: *"Couldn't read this PDF — it
   looks like a scan with no text layer. Try a PDF exported from a word processor."* Never an empty
   review form, which would imply the CV was understood and found to contain nothing.
 - **Fixture** shows a persistent banner in `--color-fixture`: *"Demo data — this is not your CV."*
-  It stays visible for the whole review, because the one unacceptable outcome is someone approving
-  invented content into their own profile.
-
----
+  It stays for the whole review, because the one unacceptable outcome is someone approving invented
+  content into their own profile.
 
 ## 7. Accessibility
 
