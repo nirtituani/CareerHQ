@@ -87,16 +87,24 @@ class LiteLLMGateway:
     ) -> Completion[T]:
         model = _model_for_task(task)
 
+        # The schema is sent, not described. An early version said "matching the
+        # schema" without including one, and the model answered plausibly and
+        # wrongly — `confidence: "high"` where a float was required, and
+        # `language` where the field is `name`. It was caught by validation
+        # rather than reaching a user, but an extraction that always fails is
+        # not much better than one that lies.
         response = await _acompletion(
             model=model,
             messages=[
                 {
                     "role": "system",
                     "content": (
-                        "Extract the requested information and reply with a single JSON "
-                        "object matching the schema. Reply with JSON only — no prose, no "
-                        "code fences. Omit any field you cannot find rather than inventing "
-                        "a value."
+                        "Reply with a single JSON object conforming to this JSON Schema. "
+                        "Reply with JSON only — no prose, no code fences.\n\n"
+                        "Every `confidence` is a NUMBER between 0 and 1, never a word.\n"
+                        "Use exactly the field names in the schema.\n"
+                        "Omit anything you cannot find rather than inventing a value.\n\n"
+                        f"{json.dumps(schema.model_json_schema())}"
                     ),
                 },
                 {"role": "user", "content": prompt},

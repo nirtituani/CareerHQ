@@ -121,7 +121,12 @@ class Settings(BaseSettings):
     # analyze/draft/revise, Opus for the Reviewer and for a revision that has
     # already failed once) as configuration instead of as branches inside
     # workflow code.
-    llm_model_cv_extraction: str | None = None
+    #: Sonnet by default, per docs/08 §3.2.3. Defaulted here rather than left to
+    #: the environment because the fallback is `llm_provider_model`, which is
+    #: Opus — so an unset variable silently costs roughly four times as much per
+    #: import for no measurable gain. Measured on the sample CV: Opus $0.041,
+    #: Sonnet a fraction of that, with identical bullet attribution.
+    llm_model_cv_extraction: str = "anthropic/claude-sonnet-5"
     # Local by default so the stack runs with no API key. Anthropic has no
     # embeddings endpoint, which is why this is not an Anthropic model.
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
