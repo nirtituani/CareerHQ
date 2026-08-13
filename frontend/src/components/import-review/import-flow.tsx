@@ -24,8 +24,15 @@ type State =
  * between "we could not read this" and "you have no career history", and only
  * one of them is true.
  */
-export function ImportFlow() {
-  const [state, setState] = useState<State>({ name: "idle" });
+export function ImportFlow({ initial = null }: { initial?: ImportedResume | null }) {
+  const [state, setState] = useState<State>(
+    // A review already in progress resumes straight into itself. The id lives
+    // in the URL, so a refresh is no longer a lost review and another paid
+    // extraction.
+    initial && initial.status === "extracted"
+      ? { name: "reviewing", record: initial }
+      : { name: "idle" },
+  );
 
   async function upload(file: File) {
     setState({ name: "uploading", filename: file.name });
@@ -44,7 +51,11 @@ export function ImportFlow() {
         throw new ApiError(response.status, detail ?? "That upload could not be processed.");
       }
 
-      setState({ name: "reviewing", record: (await response.json()) as ImportedResume });
+      const record = (await response.json()) as ImportedResume;
+      // Put the id in the URL before rendering the review, so the very first
+      // refresh already has somewhere to return to.
+      window.history.replaceState(null, "", `/import?id=${record.id}`);
+      setState({ name: "reviewing", record });
     } catch (error) {
       setState({
         name: "failed",
