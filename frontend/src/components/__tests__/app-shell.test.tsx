@@ -35,20 +35,42 @@ describe("AppShell", () => {
   });
 
   it("marks sections that are not built yet as disabled rather than hiding them", () => {
-    // Showing where the product is going is deliberate. If these ever become
-    // real links, this test should be updated — not deleted.
+    // Showing where the product is going is deliberate. The original version of
+    // this test said "if these ever become real links, update it — do not
+    // delete it", and slice 003 is when that happened: Applications and Profile
+    // are now built, and Resumes was replaced by the destinations in
+    // docs/09 §6.0.
     render(
       <AppShell user={USER}>
         <p>content</p>
       </AppShell>,
     );
 
-    expect(screen.getByRole("link", { name: "Dashboard" })).toHaveAttribute("href", "/dashboard");
-
-    for (const label of ["Applications", "Profile", "Resumes"]) {
-      const item = screen.getByText(label);
-      expect(item).toHaveAttribute("aria-disabled", "true");
-      expect(item.tagName).not.toBe("A");
+    for (const [label, href] of [
+      ["Dashboard", "/dashboard"],
+      ["Applications", "/applications"],
+      ["Profile", "/profile"],
+    ] as const) {
+      expect(screen.getByRole("link", { name: label })).toHaveAttribute("href", href);
     }
+
+    for (const label of ["Career Advisor", "CV Builder", "Settings"]) {
+      const item = screen.getByText(label).closest("[aria-disabled]");
+      expect(item).toHaveAttribute("aria-disabled", "true");
+      expect(item?.tagName).not.toBe("A");
+    }
+  });
+
+  it("renders the user menu exactly once", () => {
+    // A sidebar copy plus a mobile-header copy would be hidden by a breakpoint
+    // class and still present for assistive technology — two elements with the
+    // same accessible name. This caught that during slice 003.
+    render(
+      <AppShell user={USER}>
+        <p>content</p>
+      </AppShell>,
+    );
+
+    expect(screen.getAllByText("Nir Tituani")).toHaveLength(1);
   });
 });

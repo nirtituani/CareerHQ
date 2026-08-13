@@ -26,6 +26,7 @@ from sqlalchemy import text
 from careerhq.config import get_settings
 from careerhq.infrastructure import redis as redis_infra
 from careerhq.infrastructure import storage
+from careerhq.infrastructure.ai import build_completion_client
 from careerhq.infrastructure.database import get_engine
 
 router = APIRouter(tags=["health"])
@@ -60,6 +61,24 @@ async def probe_cache() -> None:
 
 async def probe_object_storage() -> None:
     await storage.head_bucket()
+
+
+async def probe_ai_provider() -> None:
+    """Check the provider is configured and a client can be built.
+
+    Deliberately **not** a reachability check. Verifying the provider actually
+    answers would mean a billed completion on every readiness call, and this
+    endpoint is the platform's healthcheck — it runs constantly. Worse, it would
+    make a provider outage block deployments of changes that have nothing to do
+    with the provider.
+
+    So `ok` here means "wired up", not "working". Whether extraction actually
+    works on the deployed system is verified once, by importing a real CV and
+    confirming the recorded usage is not fixture data — see tasks T088. Readiness
+    answers "is it connected"; that task answers "does it work", and conflating
+    them is how a health check comes to mean nothing.
+    """
+    build_completion_client()
 
 
 async def _run_probe(name: str, probe: Callable[[], Awaitable[None]]) -> dict[str, Any]:
@@ -118,6 +137,7 @@ async def readiness(response: Response) -> dict[str, Any]:
         "database": probe_database,
         "cache": probe_cache if settings.cache_configured else None,
         "object_storage": (probe_object_storage if settings.object_storage_configured else None),
+        "ai_provider": (probe_ai_provider if settings.ai_provider_configured else None),
     }
 
     checked = {name: probe for name, probe in probes.items() if probe is not None}

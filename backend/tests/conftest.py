@@ -35,6 +35,12 @@ TEST_ENV: dict[str, str] = {
     # exchange itself is overridden at the dependency boundary.
     "GOOGLE_CLIENT_ID": "test-client-id.apps.googleusercontent.com",
     "GOOGLE_CLIENT_SECRET": "test-client-secret",
+    # Present for the same reason as the Google credentials above: the provider
+    # must read as configured so readiness reports it like any other dependency.
+    # No network call is made anywhere in the suite — the completion seam is
+    # overridden at the dependency boundary, which is what FR-027 requires and
+    # what T049 verifies by unsetting the real key and watching it not matter.
+    "ANTHROPIC_API_KEY": "sk-ant-test-not-a-real-key",
 }
 for _key, _value in TEST_ENV.items():
     os.environ.setdefault(_key, _value)

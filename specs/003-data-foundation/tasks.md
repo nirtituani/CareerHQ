@@ -48,21 +48,21 @@ Existing web application per plan.md: `backend/src/careerhq/`, `frontend/src/`.
 
 ## Phase 1: Setup
 
-- [ ] T001 Add `litellm==1.96.2`, `pdfplumber==0.11.10` and `python-docx==1.2.0` to
+- [x] T001 Add `litellm==1.96.2`, `pdfplumber==0.11.10` and `python-docx==1.2.0` to
       `backend/pyproject.toml`. Versions verified against PyPI in research R1/R4 — do not adjust
       them from memory. **PyMuPDF is deliberately excluded**: it is the better extractor and is
       dual-licensed AGPL-3.0, which is an obligation for a deployed web application (R4)
-- [ ] T002 [P] Wire `next/font/google` in `frontend/src/app/layout.tsx` for Fraunces, IBM Plex Sans
+- [x] T002 [P] Wire `next/font/google` in `frontend/src/app/layout.tsx` for Fraunces, IBM Plex Sans
       and IBM Plex Mono, exposing `--font-fraunces`, `--font-plex-sans`, `--font-plex-mono`.
       `globals.css` already references these with inline fallbacks, so the page renders either way —
       confirm the fonts actually load rather than trusting the fallback (docs/09 §2)
-- [ ] T003 [P] Add `AI_PROVIDER`, `ANTHROPIC_API_KEY` and the per-task model settings to
+- [x] T003 [P] Add `AI_PROVIDER`, `ANTHROPIC_API_KEY` and the per-task model settings to
       `.env.example`, each commented with what happens when it is unset: readiness reports
       `not_configured` and import returns 503 naming the setting. `S3_*` entries already exist from
       slice 002
-- [ ] T004 Install and confirm the backend still starts: `.venv/bin/pip install -e ".[dev]"`, then
+- [x] T004 Install and confirm the backend still starts: `.venv/bin/pip install -e ".[dev]"`, then
       `docker compose up -d` and check `/api/health/ready` still answers
-- [ ] T005 [P] Create `backend/tests/fixtures/` with a single-column sample CV (PDF) and a DOCX
+- [x] T005 [P] Create `backend/tests/fixtures/` with a single-column sample CV (PDF) and a DOCX
       equivalent, for extraction tests that must not depend on a personal document
 
 ---
@@ -72,32 +72,47 @@ Existing web application per plan.md: `backend/src/careerhq/`, `frontend/src/`.
 **⚠️ Blocks every user story.** The model and schema modules become packages here; doing it later
 means rewriting every import added in between.
 
-- [ ] T006 Convert `backend/src/careerhq/domain/models.py` into a package
+- [x] T006 Convert `backend/src/careerhq/domain/models.py` into a package
       `domain/models/` with `identity.py` holding `User` and `ProfessionalProfile` unchanged, and
       `__init__.py` re-exporting every existing name. **No slice 001 import may change** — verify by
       running the existing suite untouched before writing anything new
-- [ ] T007 Convert `backend/src/careerhq/domain/schemas.py` into a package the same way, with
+- [x] T007 Convert `backend/src/careerhq/domain/schemas.py` into a package the same way, with
       `__init__.py` re-exporting existing names
-- [ ] T008 [P] Write a failing test in `backend/tests/unit/test_config.py` asserting
+- [x] T008 [P] Write a failing test in `backend/tests/unit/test_config.py` asserting
       `ai_provider_configured` is `False` when no provider settings are present and `True` when they
       are, mirroring `google_oauth_configured`. **Correct red**: `AttributeError`, because the
       property does not exist
-- [ ] T009 [P] Write a failing test in `backend/tests/integration/test_health.py` asserting
+- [x] T009 [P] Write a failing test in `backend/tests/integration/test_health.py` asserting
       readiness reports `ai_provider` as `not_configured` when unset, and that this neither fails
       the check nor masks a real failure — the same obligation slice 002's most important readiness
       test proved for cache and object storage
-- [ ] T010 Add `ai_provider`, `anthropic_api_key` and the per-task model map to
+- [x] T010 Add `ai_provider`, `anthropic_api_key` and the per-task model map to
       `backend/src/careerhq/config.py`, with `ai_provider_configured`. Secrets use `SecretStr` so
-      the T068 error-message protection covers them automatically
-- [ ] T011 Add `ai_provider` to the probe set in `backend/src/careerhq/api/routes/health.py`,
-      following the existing three-state pattern exactly
-- [ ] T012 Extend `frontend/src/components/app-shell.tsx` with the sidebar navigation from
+      the T068 error-message protection covers them automatically. **Amended**: slice 001 had
+      already declared `llm_provider_model` and `anthropic_api_key` as a seam, so this added
+      `ai_provider` (defaulting to `anthropic`), `llm_model_cv_extraction`, `ai_provider_configured`
+      and `model_for_task()`
+- [x] T011 Add `ai_provider` to the probe set in `backend/src/careerhq/api/routes/health.py`,
+      following the existing three-state pattern exactly. **Two deviations, both deliberate.**
+      (1) The probe is a *construction* check, not a reachability check: verifying the provider
+      actually answers would bill a completion on every readiness call — and this endpoint is the
+      platform healthcheck, so it runs constantly — besides letting a provider outage block
+      deployments of unrelated changes. `ok` therefore means "wired up", and whether extraction
+      *works* is verified once by T088. (2) This required creating
+      `infrastructure/ai/__init__.py` here rather than in User Story 1, because readiness depends
+      on it; it holds no provider import, so importing it does not drag the SDK into everything's
+      import graph
+- [x] T012 Extend `frontend/src/components/app-shell.tsx` with the sidebar navigation from
       docs/09 §6.0 — Dashboard, Applications, Profile, Career Advisor, CV Builder, Settings. Career
       Advisor, CV Builder and Settings are marked with the *not built yet* treatment rather than
       being broken links, which is §5's three-empty-states rule applied to navigation. **Without
       this every screen the later phases build is unreachable**, which is why it sits in the
-      blocking phase rather than beside the screens it serves
-- [ ] T013 Confirm `ruff check`, `ruff format --check`, `mypy src` and `pytest` all pass from
+      blocking phase rather than beside the screens it serves. **Done**: the top nav became a left
+      sidebar, with the path-aware part extracted to `sidebar-nav.tsx` as a client component so the
+      shell stays a server component. A component test caught the user menu being rendered twice —
+      once in the sidebar and once in a mobile header — which a breakpoint class hid visually while
+      leaving two elements with the same accessible name in the DOM
+- [x] T013 Confirm `ruff check`, `ruff format --check`, `mypy src` and `pytest` all pass from
       `backend/`, and that coverage has not dropped below 80%
 
 **Checkpoint**: models and schemas are packages, configuration knows about the provider, and

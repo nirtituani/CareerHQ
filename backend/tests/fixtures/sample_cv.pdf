@@ -1,0 +1,106 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>
+endobj
+4 0 obj
+<< /Length 1572 >>
+stream
+BT
+/F1 10 Tf
+12 TL
+1 0 0 1 40 760 Tm
+(ALEX MORGAN) Tj
+T*
+(Senior Backend Engineer) Tj
+T*
+(alex.morgan@example.com | +44 7700 900123 | London, UK) Tj
+T*
+(linkedin.com/in/alexmorgan-example) Tj
+T*
+() Tj
+T*
+(SUMMARY) Tj
+T*
+(Backend engineer with eight years building distributed systems in Python and Go.) Tj
+T*
+(Focused on payments infrastructure and the reliability of systems that move money.) Tj
+T*
+() Tj
+T*
+(EXPERIENCE) Tj
+T*
+() Tj
+T*
+(Staff Engineer, Northwind Payments) Tj
+T*
+(March 2021 - Present, London) Tj
+T*
+(- Led the migration of the ledger service from a monolith to seven services,) Tj
+T*
+(  cutting p99 settlement latency from 1.8s to 240ms.) Tj
+T*
+(- Designed the idempotency layer that made retried payment requests safe,) Tj
+T*
+(  eliminating a class of double-charge incidents.) Tj
+T*
+(- Mentored four engineers, two of whom were promoted within the year.) Tj
+T*
+() Tj
+T*
+(Senior Software Engineer, Calder Logistics) Tj
+T*
+(June 2018 - February 2021, Manchester) Tj
+T*
+(- Built the route optimisation service handling 40,000 daily shipments.) Tj
+T*
+(- Reduced cloud spend 34% by rewriting the batch pipeline in Go.) Tj
+T*
+() Tj
+T*
+(SKILLS) Tj
+T*
+(Python, Go, PostgreSQL, Kafka, Kubernetes, Terraform, gRPC, Redis) Tj
+T*
+() Tj
+T*
+(EDUCATION) Tj
+T*
+(BSc Computer Science, University of Manchester, 2014 - 2017, First Class Honours) Tj
+T*
+() Tj
+T*
+(CERTIFICATIONS) Tj
+T*
+(Certified Kubernetes Administrator, Cloud Native Computing Foundation, 2022) Tj
+T*
+() Tj
+T*
+(LANGUAGES) Tj
+T*
+(English \(native\), Spanish \(professional working proficiency\)) Tj
+T*
+ET
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000001865 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+1962
+%%EOF

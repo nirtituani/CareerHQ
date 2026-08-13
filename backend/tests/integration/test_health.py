@@ -14,7 +14,7 @@ from sqlalchemy.exc import OperationalError
 
 from careerhq.api.routes import health
 
-DEPENDENCIES = ("database", "cache", "object_storage")
+DEPENDENCIES = ("database", "cache", "object_storage", "ai_provider")
 
 
 async def test_health_returns_ok(client: httpx.AsyncClient) -> None:
@@ -182,13 +182,20 @@ async def test_failure_discloses_the_kind_and_not_the_detail(
 # -- helpers ----------------------------------------------------------------
 
 
-def _configure(monkeypatch: pytest.MonkeyPatch, *, cache: bool, object_storage: bool) -> None:
+def _configure(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    cache: bool,
+    object_storage: bool,
+    ai_provider: bool = True,
+) -> None:
     """Present a settings object reporting the dependencies as (un)configured."""
     real = health.get_settings()
 
     class _Configured:
         cache_configured = cache
         object_storage_configured = object_storage
+        ai_provider_configured = ai_provider
 
         def __getattr__(self, name: str) -> object:
             return getattr(real, name)
@@ -228,3 +235,50 @@ async def _hangs() -> None:
     import asyncio
 
     await asyncio.sleep(10)
+
+
+# ---------------------------------------------------------------------------
+# Slice 003 — the AI provider joins the report (T009)
+# ---------------------------------------------------------------------------
+
+
+async def test_ai_provider_absent_is_reported_not_configured(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """T009 — the same three-state contract slice 002 established.
+
+    `not_configured` neither fails the check nor masks a real failure. That
+    property was the most important thing slice 002's readiness work proved,
+    and adding a fourth dependency is exactly the change that could quietly
+    break it.
+    """
+    monkeypatch.setattr(health, "probe_database", _reachable)
+    _configure(monkeypatch, cache=False, object_storage=False, ai_provider=False)
+
+    response = await client.get("/api/health/ready")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "ok"
+    assert body["dependencies"]["ai_provider"]["status"] == "not_configured"
+    assert "latency_ms" not in body["dependencies"]["ai_provider"]
+
+
+async def test_absent_ai_provider_does_not_mask_a_real_failure(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The T013 property, re-proved for the dependency added this slice.
+
+    A new `not_configured` entry must not become a way for a genuine outage to
+    stop counting.
+    """
+    monkeypatch.setattr(health, "probe_database", _unreachable)
+    _configure(monkeypatch, cache=False, object_storage=False, ai_provider=False)
+
+    response = await client.get("/api/health/ready")
+
+    assert response.status_code == 503
+    body = response.json()
+    assert body["status"] == "degraded"
+    assert body["dependencies"]["database"]["status"] == "error"
+    assert body["dependencies"]["ai_provider"]["status"] == "not_configured"

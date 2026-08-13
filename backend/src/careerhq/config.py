@@ -99,10 +99,29 @@ class Settings(BaseSettings):
     google_client_id: str | None = None
     google_client_secret: SecretStr | None = None
 
-    # -- AI: configuration seam only. No client code exists in this slice. ---
-    # LiteLLM provider/model naming.
+    # -- AI ------------------------------------------------------------------
+    # Slice 003 turns the seam slice 001 declared into a real dependency: CV
+    # extraction is one structured-output call through the gateway.
+    #
+    # `anthropic` is the default provider, so supplying a key is usually all
+    # that is needed. `fixture` returns canned content for demos and must be
+    # chosen EXPLICITLY — never selected by the absence of a key, because
+    # silently returning canned content would mean a user uploads their real CV
+    # and reviews someone else's career history (research.md R3).
+    ai_provider: str = "anthropic"
+
+    # LiteLLM provider/model naming. The default when a task has no specific
+    # model configured.
     llm_provider_model: str = "anthropic/claude-opus-5"
     anthropic_api_key: SecretStr | None = None
+
+    # Per-task model selection. Read by `model_for_task`, which is how the
+    # gateway resolves a model from a task NAME rather than from the caller —
+    # the property that lets slice 004 express docs/08 §3.2.3 (Sonnet to
+    # analyze/draft/revise, Opus for the Reviewer and for a revision that has
+    # already failed once) as configuration instead of as branches inside
+    # workflow code.
+    llm_model_cv_extraction: str | None = None
     # Local by default so the stack runs with no API key. Anthropic has no
     # embeddings endpoint, which is why this is not an Anthropic model.
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
@@ -120,6 +139,34 @@ class Settings(BaseSettings):
     # reported as `not_configured` — never probed, and never reported healthy,
     # which would make the endpoint claim a result it did not produce.
     # See specs/002-deployment/contracts/readiness.md.
+
+    @property
+    def ai_provider_configured(self) -> bool:
+        """Whether extraction can run at all.
+
+        Fixture mode needs no credentials; every real provider does. Absence is
+        a legitimate deployment state — readiness reports `not_configured` and
+        the import endpoint fails at the point of use naming the setting, which
+        is what keeps `docker compose up` working on a clean clone before any
+        provider account exists (docs/06 §7, FR-028).
+        """
+        if self.ai_provider == "fixture":
+            return True
+        return self.anthropic_api_key is not None
+
+    def model_for_task(self, task: str) -> str:
+        """Resolve the model for a named task.
+
+        Callers name what they are doing, never which model does it. An unknown
+        task falls back to the default rather than raising, so a new task name
+        works before someone remembers to configure one for it — the failure
+        mode of raising here would be a workflow that breaks on a name it has
+        never seen (contracts/extraction-seam.md O3).
+        """
+        configured = getattr(self, f"llm_model_{task}", None)
+        if isinstance(configured, str) and configured:
+            return configured
+        return self.llm_provider_model
 
     @property
     def cache_configured(self) -> bool:

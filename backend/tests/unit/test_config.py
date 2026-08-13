@@ -130,9 +130,19 @@ def test_google_oauth_is_optional_so_the_platform_starts_without_it(
 
 
 def test_ai_configuration_seam_has_working_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
-    """No AI code exists yet; the settings it will read do (research.md R-008)."""
+    """The AI settings have usable defaults and require no key (research.md R-008).
+
+    Slice 001 wrote this when nothing set `ANTHROPIC_API_KEY`, so "no key" was
+    incidentally true. Slice 003 puts a placeholder in the test environment, so
+    the key is now removed explicitly — the property under test is unchanged and
+    is now actually being tested rather than assumed.
+
+    It matters because docs/06 §7 commits to the stack running on a clean clone
+    before any provider account exists.
+    """
     for key, value in TEST_ENV.items():
         monkeypatch.setenv(key, value)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
 
     settings = Settings(_env_file=None)  # type: ignore[call-arg]
 
@@ -246,3 +256,88 @@ def test_secrets_are_not_exposed_by_repr(monkeypatch: pytest.MonkeyPatch) -> Non
 
     assert TEST_ENV["SESSION_SECRET"] not in repr(settings)
     assert TEST_ENV["S3_SECRET_KEY"] not in repr(settings)
+
+
+# ---------------------------------------------------------------------------
+# Slice 003 — the AI provider becomes a real dependency (T008)
+# ---------------------------------------------------------------------------
+
+
+def test_ai_provider_configured_reports_what_is_actually_set(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """T008 — the sole input to whether extraction can run.
+
+    Mirrors `google_oauth_configured` and the two dependency properties slice
+    002 added, for the same reason: readiness must follow configuration rather
+    than a hardcoded assumption about which environments have what.
+    """
+    for key, value in TEST_ENV.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-value")
+
+    configured = Settings(_env_file=None)  # type: ignore[call-arg]
+    assert configured.ai_provider_configured is True
+
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    absent = Settings(_env_file=None)  # type: ignore[call-arg]
+    assert absent.ai_provider_configured is False, (
+        "a missing key must read as unconfigured, not as a broken configuration"
+    )
+
+
+def test_fixture_provider_is_configured_without_a_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Fixture mode needs no credentials — but must be chosen explicitly.
+
+    The inverse is the dangerous one and is asserted in the test below: absence
+    of a key must never *select* fixture mode.
+    """
+    for key, value in TEST_ENV.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv("AI_PROVIDER", "fixture")
+
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+    assert settings.ai_provider_configured is True
+    assert settings.ai_provider == "fixture"
+
+
+def test_absent_key_does_not_select_fixture_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    """research.md R3 — the failure that would matter most.
+
+    Silently falling back to canned content when no key is set would mean a
+    user uploads their real CV and reviews someone else's career history. The
+    default provider stays `anthropic` and simply reports itself unconfigured.
+    """
+    for key, value in TEST_ENV.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("AI_PROVIDER", raising=False)
+
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+    assert settings.ai_provider == "anthropic"
+    assert settings.ai_provider_configured is False
+
+
+def test_model_resolves_from_task_name_not_from_the_caller(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """contracts/extraction-seam.md obligation O3.
+
+    Model choice is keyed by task so slice 004 can express docs/08 §3.2.3 as
+    configuration — the escalation from Sonnet to Opus on a second failed
+    revision is a different task name, not a branch inside workflow code.
+    Asserted now, while the seam has one caller and is cheap to change.
+    """
+    for key, value in TEST_ENV.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setenv("LLM_MODEL_CV_EXTRACTION", "anthropic/claude-sonnet-5")
+
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+    assert settings.model_for_task("cv_extraction") == "anthropic/claude-sonnet-5"
+
+    # An unknown task falls back to the default model rather than raising: a new
+    # task name should work before someone remembers to configure it.
+    assert settings.model_for_task("some_future_task") == settings.llm_provider_model
