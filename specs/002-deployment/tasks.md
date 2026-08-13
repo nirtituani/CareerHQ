@@ -227,7 +227,14 @@ again creates neither.
       `SESSION_SECRET`, `GOOGLE_CLIENT_SECRET` and the database password, covering startup and at
       least one completed sign-in. **Failure looks like**: any occurrence at all (FR-017). Slice
       001 found a crash that printed `SESSION_SECRET` in full precisely because it was the code
-      meant to protect it — deployed logging is new ground and has never been checked this way
+      meant to protect it — deployed logging is new ground and has never been checked this way.
+      **Half done.** All five retained log corpora — backend deploy/build/http, frontend
+      deploy/build — contain zero occurrences of the literal `SESSION_SECRET`,
+      `GOOGLE_CLIENT_SECRET`, `GOOGLE_CLIENT_ID` or database-password values, read from the
+      deployed configuration so the comparison is against what is actually set. Startup and both
+      image builds are clean. The sign-in half is **not** covered: Railway retains logs only for
+      the current deployment, and the sign-in that T031–T033 verified ran against a deployment now
+      `REMOVED`. Needs one fresh sign-in, then a re-scan
 
 **Checkpoint**: The deployed system authenticates real users under production security settings
 that have now been seen working rather than assumed.
@@ -243,19 +250,31 @@ a theory.
 action. Separately merge a change that fails a gate and confirm the site is unchanged.
 
 - [ ] T040 🔧 **MANUAL** [US3] Enable **Wait for CI** on both services in Railway. Without it a
-      merge deploys immediately and CI results arrive too late to prevent anything (FR-020)
+      merge deploys immediately and CI results arrive too late to prevent anything (FR-020).
+      **Dashboard only** — confirmed unscriptable: `waitForCI` does not exist in Railway's public
+      GraphQL schema, and `ServiceInstanceUpdateInput` exposes no equivalent field, so the CLI
+      cannot set it
 - [ ] T041 [US3] Merge a trivial, visible change to `main` and confirm it reaches the public site
       with no manual step. Watch with `gh run watch` (SC-005)
 - [ ] T042 [US3] **Watch the gate fail.** On a branch, deliberately break a test, merge it, and
       confirm the public site is **unchanged** and the failure is visible in Actions. Then revert.
       A gate nobody has watched fail is not a gate — this is the same discipline CLAUDE.md
       requires when adding any gate (SC-006)
-- [ ] T043 👁 **OBSERVE** [US3] Confirm the pre-deploy command ran by finding `alembic upgrade
+- [x] T043 👁 **OBSERVE** [US3] Confirm the pre-deploy command ran by finding `alembic upgrade
       head` output in the deployment logs. On the first deploy it will report nothing to apply,
       because the deployed database is already current — that is the expected result, not a
-      skipped step (data-model.md)
-- [ ] T044 👁 **OBSERVE** [US3] Practise a rollback: redeploy the previous deployment and confirm
-      the site returns to it. Do this before an incident requires it (FR-023, SC-007)
+      skipped step (data-model.md). **Confirmed** — both the pre-deploy run and the entrypoint's
+      appear, neither applies anything, and `Starting API on :8000` follows. Recorded in
+      observations.md, including that alembic logs to stderr so Railway tags a successful
+      migration `level: error`
+- [x] T044 👁 **OBSERVE** [US3] Practise a rollback: redeploy the previous deployment and confirm
+      the site returns to it. Do this before an incident requires it (FR-023, SC-007). **Done on
+      the live frontend**, rolling `beeadaf` → `cfc7369` → `beeadaf`. The site served 200 with all
+      four security headers at every poll across both transitions, and finished byte-identical to
+      baseline. Two corrections came out of it, now in README: `railway deployment redeploy`
+      redeploys the *latest* deployment and is therefore a restart, not a rollback; and a rollback
+      creates a **new** deployment id carrying the old commit, so which version is live must be
+      read from the commit, never the id
 
 **Checkpoint**: Every later slice now ships continuously rather than accumulating an undeployed
 backlog.
@@ -283,17 +302,31 @@ backlog.
 - [x] T049 [P] Update `docs/08_Technical_Spec.md`: close Q2 (readiness following configuration),
       mark the production security path as verified rather than unproven in §4.2, and record the
       deployed URL in §1.2
-- [ ] T050 Confirm the scope guards held: no user-visible behaviour changed other than the address
+- [x] T050 Confirm the scope guards held: no user-visible behaviour changed other than the address
       the system is reached at (FR-025, SC-009). Review the full diff against `main` — if it
-      contains an application feature, the slice drifted
-- [ ] T051 Run every gate from the host and confirm green: `ruff format --check .`, `ruff check .`,
+      contains an application feature, the slice drifted. **Held.** The full diff
+      (`ff604f7~1..main`, 27 files) is deployment configuration, documentation and the spec
+      artifacts. Two changes are user-observable and both are required by this slice rather than
+      drift: readiness reporting `not_configured` for absent dependencies (FR-006), and the
+      frontend sending the same four security headers as the backend (FR-015). No route, no
+      schema change, no application feature
+- [x] T051 Run every gate from the host and confirm green: `ruff format --check .`, `ruff check .`,
       `mypy src`, `pytest` from `backend/`; `npm run lint`, `npm run typecheck`, `npm test`,
       `npm run build` from `frontend/`
 - [ ] T052 Walk `README.md`'s deployment section end to end **as written**, and correct it against
       what actually happens — deploy, find the status of that deployment, and return to the
       previous version, using only the documentation (SC-007, FR-022). This is the slice-002
       equivalent of slice 001's T069, which corrected the quickstart against a real clean-clone run
-      and found genuine errors. Documentation nobody has followed is a claim, not a procedure
+      and found genuine errors. Documentation nobody has followed is a claim, not a procedure.
+      **Half done.** Reading it as written found three errors, now corrected: (1) *Reading logs*
+      opened with `railway logs`, and nothing anywhere in the repository said the CLI had to be
+      installed or authenticated — an operator following it mid-incident gets `command not found`;
+      (2) *Deploying* asserted Wait for CI holds deployments, stated as a property the project has
+      rather than a setting someone must switch on, which it still is not (T040); (3) the OAuth
+      section said "must contain exactly" and then gave `<frontend-domain>`, when FR-012 asked for
+      the exact URI. The executable half — deploy, read that deployment's status, and return to
+      the previous version using only this document — needs the Railway dashboard and rides on
+      T041/T044
 
 ---
 

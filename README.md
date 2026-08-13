@@ -132,22 +132,60 @@ Merge to `main`. That is the whole procedure. CI runs the same gates listed abov
 **Wait for CI** setting holds the deployment until they pass — so a failing gate leaves the
 public site untouched rather than rolling back after the fact.
 
+**That setting is not on by default** — enable it on *both* services under Settings → Deploy. And
+it waits on every GitHub check suite reporting on the commit, not only this repository's CI, so a
+third-party check that never completes leaves a merge permanently undeployed while Actions looks
+entirely green.
+
 Database migrations run as a pre-deploy step (`alembic upgrade head`). If a migration fails, the
 deployment does not proceed and the previous version keeps serving.
 
 ### Reading logs
 
+Start with the **Deployments** tab in Railway. It needs nothing installed, and it shows which
+commit is live, whether the last deployment succeeded, why it failed, and the pre-deploy step's
+output — which is where a failed migration appears.
+
+The CLI is quicker once set up, but it is a separate install and **not** a dependency of this
+repository, so an operator reaching for it mid-incident starts here:
+
 ```bash
+brew install railway                # not `npm i -g` — Homebrew's node_modules is root-owned
+                                    # on this setup and the npm install fails with EACCES
+railway login                       # opens a browser; may already be authenticated
+railway link --project CareerHQ --environment production --service backend
+
 railway logs --service backend      # one JSON object per line, each with a request id
-railway logs --service frontend
+railway logs --service backend --build       # build logs, a separate stream
+railway deployment list             # which deployments exist, and which succeeded
 ```
 
-Or the **Deployments** tab in Railway, which also shows which commit is live and why a deployment
-failed. A failed migration appears there, in the pre-deploy step's output.
+Two things that will otherwise mislead you:
+
+- **Alembic writes to stderr**, so Railway tags every migration line `"level":"error"`. A
+  successful migration looks like a failure in any search filtered by level.
+- **Only the current deployment's logs are retained.** Once a deployment is superseded it goes
+  `REMOVED` and its logs go with it, so evidence about a past deploy has to be captured while it
+  is still live.
+
+Walking this section as written is what found that gap: `railway logs` used to be the first
+instruction an operator met, and nothing above it said the command had to be installed first.
 
 ### Rolling back
 
-Deployments tab → the last known-good deployment → **Redeploy**.
+Deployments tab → the last known-good deployment → **Redeploy**. This has been drilled against
+the live site, and it is zero-downtime: the site served 200 throughout both the rollback and the
+restore.
+
+Two traps, both found by doing it:
+
+- **`railway deployment redeploy` is not a rollback.** It redeploys the *latest* deployment, which
+  during an incident means restarting the version that is broken. Rolling back is a different
+  operation — the dashboard's Redeploy on an *older* deployment, or `deploymentRollback(id)`
+  through `railway api`.
+- **A rollback creates a new deployment id carrying the old commit**, and the previously live id
+  flips to `REMOVED`. So read which version is live from the deployment's **commit**, never its
+  id — the id you rolled back to is not the id you end up running.
 
 **What that does and does not undo:**
 
@@ -174,7 +212,7 @@ ENVIRONMENT=production
 DATABASE_URL=postgresql+psycopg://${{pgvector.PGUSER}}:${{pgvector.PGPASSWORD}}@${{pgvector.PGHOST_PRIVATE}}:${{pgvector.PGPORT_PRIVATE}}/${{pgvector.PGDATABASE}}
 PORT=8000
 SESSION_SECRET=…
-PUBLIC_BASE_URL=https://<frontend-domain>
+PUBLIC_BASE_URL=https://frontend-production-02ac.up.railway.app
 GOOGLE_CLIENT_ID=…
 GOOGLE_CLIENT_SECRET=…
 ```
@@ -201,7 +239,7 @@ In the Google Cloud console, on the OAuth 2.0 client, **Authorized redirect URIs
 exactly:
 
 ```
-https://<frontend-domain>/api/auth/google/callback
+https://frontend-production-02ac.up.railway.app/api/auth/google/callback
 ```
 
 No trailing slash, and byte-identical to `PUBLIC_BASE_URL` plus that path. Google matches by

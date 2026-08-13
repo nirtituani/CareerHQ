@@ -114,11 +114,105 @@ than only discoverable as a provider-side error.
 
 ---
 
+## FR-021 / T043 — the pre-deploy migration ran
+
+Read from the deployed backend's logs. Both alembic runs appear, which is what
+`backend/railway.toml` describes and what a single run would have left ambiguous:
+
+```
+20:45:20  INFO [alembic.runtime.migration] Context impl PostgresqlImpl.   <- preDeployCommand
+20:45:27  Applying database migrations...                                 <- entrypoint.sh
+20:45:28  INFO [alembic.runtime.migration] Will assume transactional DDL.
+20:45:28  Starting API on :8000
+```
+
+No `Running upgrade` line, because the deployed database was already current — the expected
+result, not a skipped step. `Starting API on :8000` is also the first direct confirmation that
+the `${PORT:-8000}` change resolves to the pinned port in the deployed environment.
+
+One detail worth knowing before it is mistaken for a fault: alembic writes to stderr, so Railway
+tags every migration line `"level":"error"`. A successful migration therefore looks like an error
+in a log search filtered by level.
+
+## FR-017 / T039 — secrets in deployed logs: startup covered, sign-in not
+
+Every retained log corpus was searched for the **literal values** of `SESSION_SECRET`,
+`GOOGLE_CLIENT_SECRET`, `GOOGLE_CLIENT_ID` and the database password, read from the deployed
+configuration so the comparison is against what is actually set:
+
+| Corpus | Lines | Result |
+|---|---|---|
+| backend deploy | 20 | clean |
+| backend build | 49 | clean |
+| backend http | 0 | clean |
+| frontend deploy | 6 | clean |
+| frontend build | 55 | clean |
+
+Zero occurrences. **But this is not yet the evidence FR-017 asks for.** The task requires startup
+*and at least one completed sign-in*, and Railway retains logs only for the current deployment —
+the deployment the sign-in verification ran against is now `REMOVED` and its logs are gone. What
+is proven is that startup and both image builds leak nothing. The sign-in path is unproven, and
+that is the half where a secret is most likely to be logged, because it is the half that handles
+one.
+
+## An anomaly worth recording: the service domain the CLI reports is not the one that serves
+
+`railway domain list` reports exactly one domain for the `frontend` service:
+
+```
+fronted-production-02ac.up.railway.app   service   Sync: UPDATING
+```
+
+That hostname returns **404**. The hostname that actually serves CareerHQ is
+`frontend-production-02ac.up.railway.app`, which returns 200 — and it is the value in
+`PUBLIC_BASE_URL`, in the README, and registered with Google.
+
+The reading that fits: Railway generates a service domain from the service *name*, the service
+was first created misspelled, and renaming it to `frontend` started a domain sync that has sat in
+`UPDATING` since 2026-08-12T14:12Z. The new hostname routes; the record still displays the old
+one.
+
+Nothing is broken, and the documented URL is the correct one. It is recorded because the failure
+mode is nasty: an operator who trusts `railway domain list` over the running system would
+"correct" `PUBLIC_BASE_URL` to a 404 and break sign-in at the same time, since the OAuth redirect
+URI must match it byte for byte.
+
+## FR-023 / SC-007 / T044 — the rollback drill, performed
+
+Run against the live `frontend` service before any incident required it. The target was chosen so
+the mechanism could be proven without risking a regression: `beeadaf` (live) and `cfc7369` (one
+step back) differ only in documentation, and the security-headers fix is in both.
+
+| Time (UTC) | Step | Live deployment | Commit | Site |
+|---|---|---|---|---|
+| 08:03:25 | baseline | `04f1da7f` | `beeadaf` | 200, 4/4 headers |
+| 08:03:41 | `deploymentRollback` → previous | — | — | — |
+| 08:04:14 | rolled back | `eda5c647` | `cfc7369` | 200, 4/4 headers |
+| 08:06:44 | `deploymentRollback` → original | — | — | — |
+| 08:07:16 | restored | `28cab4db` | `beeadaf` | 200, 4/4 headers |
+
+**The site returned 200 at every poll across both transitions** — the rollback is genuinely
+zero-downtime, which is what the readiness healthcheck in `backend/railway.toml` buys. Final
+headers and readiness are byte-identical to baseline.
+
+Two things the drill established that the documentation had wrong or silent:
+
+1. **`railway deployment redeploy` is not a rollback.** It redeploys the *latest* deployment —
+   effectively a restart. Rolling back to an earlier version is a different operation:
+   `deploymentRollback(id)` in the API, or Redeploy on an older deployment in the dashboard.
+   Reaching for the obvious command during an incident would restart the broken version.
+2. **A rollback creates a *new* deployment id carrying the *old* commit**, and the previous live
+   id flips to `REMOVED`. Restoring `04f1da7f` produced `28cab4db`, not `04f1da7f`. So "which
+   version is live" must be read from the deployment's **commit**, never its id — and a rolled-back
+   deployment id never becomes live again under its own name.
+
 ## Not yet observed
 
-- **T034** — declined consent creating nothing. Not exercised.
-- **T039** — deployed logs searched for secret values. Not yet run.
-- **T042/T043** — deliberate gate failure and rollback drill (User Story 3).
+- **T034** — declined consent creating nothing. Needs a browser.
+- **T039** — the sign-in half, per above. Needs a sign-in on the *current* deployment.
+- **T040/T041/T042** — Wait for CI and the deliberate gate failure. `waitForCI` is absent from
+  the public GraphQL schema and from `ServiceInstanceUpdateInput`, so this cannot be scripted —
+  it is a dashboard setting.
 
 ## What observation caught that review could not
 
