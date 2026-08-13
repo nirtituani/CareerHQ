@@ -14,6 +14,7 @@ import {
   type ExtractionItem,
   type ImportedResume,
   SECTIONS,
+  bulletsOf,
   describe,
 } from "@/lib/imports";
 
@@ -121,7 +122,11 @@ export function ImportReview({
       <div className="flex min-h-0 flex-1 gap-8">
         <nav aria-label="Sections" className="w-52 shrink-0 space-y-0.5">
           {sections.map((s) => {
-            const inSection = items.filter((i) => i.kind === s.kind);
+            const inSection = items.filter(
+              (i) =>
+                i.kind === s.kind ||
+                (s.kind === "work_experience" && i.kind === "bullet"),
+            );
             const done = inSection.filter((i) => i.decision !== "pending").length;
             return (
               <button
@@ -151,6 +156,7 @@ export function ImportReview({
           {visible.map((item, index) => {
             const settled = item.decision !== "pending";
             const described = describe(item);
+            const bullets = item.kind === "work_experience" ? bulletsOf(items, item.id) : [];
             return (
               <li
                 key={item.id}
@@ -186,6 +192,45 @@ export function ImportReview({
                           {detail}
                         </p>
                       ))}
+
+                    {/* Bullets sit under their role. Reviewing one in isolation
+                        cannot answer the only question that matters about it —
+                        whether it belongs to this job. */}
+                    {bullets.length > 0 && (
+                      <ul className="mt-2 space-y-1">
+                        {bullets.map((bullet) => (
+                          <li
+                            key={bullet.id}
+                            className="py-0.5 text-sm"
+                            style={{
+                              ...provenanceStyle(bullet.source),
+                              opacity: bullet.decision === "discarded" ? 0.45 : 1,
+                              textDecoration:
+                                bullet.decision === "discarded" ? "line-through" : undefined,
+                            }}
+                          >
+                            <span className="flex items-start justify-between gap-3">
+                              <span className="min-w-0">{describe(bullet).primary}</span>
+                              <span className="flex shrink-0 items-center gap-2">
+                                <ConfidenceMeter value={bullet.confidence} />
+                                <button
+                                  className="text-xs underline underline-offset-2"
+                                  style={{ color: "var(--muted)" }}
+                                  onClick={() =>
+                                    void decide(
+                                      bullet,
+                                      bullet.decision === "discarded" ? "accepted" : "discarded",
+                                    )
+                                  }
+                                >
+                                  {bullet.decision === "discarded" ? "Keep" : "Discard"}
+                                </button>
+                              </span>
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </div>
 
                   <div className="flex shrink-0 items-center gap-3">
