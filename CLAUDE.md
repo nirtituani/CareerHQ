@@ -320,6 +320,15 @@ Recorded so they are not rediscovered.
   Otherwise the push is rejected outright, with the commit still safe locally.
 - **A comment beginning `# noqa` is parsed as a blanket lint suppression.** Do not start an
   explanatory comment with that word.
+- **`docker compose up -d backend` does not pick up backend *code* changes.** The frontend mounts
+  `./frontend/src:/app/src`, so its dev server hot-reloads; **the backend mounts nothing** and runs
+  the baked image. `up -d` recreates the container from that same image, so it restarts happily
+  with the old code. Use `docker compose build backend && docker compose up -d backend`.
+  The symptom is nasty because everything looks healthy: readiness passes, the API answers, and
+  only the *new* behaviour is missing — during slice 003 an extraction kept filing military service
+  as employment after the schema had been fixed, and a page 500'd on a field the rebuilt code
+  returns. Same family as the `.env` gotcha above: verify with
+  `docker compose exec backend python -c "..."` rather than assuming.
 - **`psql` in the deployed pgvector Console talks to a stranger's database.** The running
   container still carries `PGHOST=yamabiko.proxy.rlwy.net` and `PGPORT=58953` from before the
   public TCP proxy was deleted — environment variables are injected at container *creation*, so
