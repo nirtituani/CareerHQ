@@ -296,10 +296,15 @@ produces exactly one profile and one Master Resume.
       staging is not staging
 - [ ] T058 👁 **OBSERVE** [US1] Upload a scanned/image-only PDF against the running stack and
       confirm it reads as a **failure**, not an empty form (FR-008, docs/09 §5)
-- [ ] T059 [US1] Measure SC-002 against a real CV: at least 80% of work-experience bullets
+- [x] T059 [US1] Measure SC-002 against a real CV: at least 80% of work-experience bullets
       extracted and attributed to the correct role. **Do this now, not at the end** — if it misses,
       the honest responses are a better prompt or a stronger model, both configuration under R1,
-      and both cheaper to discover here than after the UI is built
+      and both cheaper to discover here than after the UI is built. **Measured: 5 of 5 bullets
+      attributed to the correct role — 100% against an 80% target**, with skills, education,
+      certification, languages and contact all correct. Scheduling it here paid for itself twice:
+      the first run failed validation entirely because the prompt described a schema without
+      sending one, and the second revealed extraction silently running on Opus at $0.041 rather
+      than Sonnet at $0.017 for identical output
 
 **Checkpoint**: a user can turn their existing CV into a reviewed, populated profile. This is the
 MVP and slice 004's input.
