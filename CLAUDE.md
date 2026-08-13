@@ -39,11 +39,11 @@ real Google sign-in taking the database from `0|0` to `1|1`, and a second sign-i
 
 Working: Docker Compose stack, Google sign-in end to end, per-user isolation, health checks
 reporting each dependency by name, and CI green on every gate. 55 backend tests at 89% coverage,
-3 component tests, 6 Playwright smoke tests.
+3 component tests, 6 Playwright smoke tests. (58 backend tests as of slice 002.)
 
 Merged to `main` and pushed; CI green on the merge commit. Working branch is now `main`.
 
-**Slice 002 — Deployment is live and mostly done: 37 of 52 tasks.**
+**Slice 002 — Deployment is complete. All 52 tasks done.**
 
 **CareerHQ is deployed at https://frontend-production-02ac.up.railway.app** — publicly
 reachable over HTTPS, with a real Google sign-in working end to end and taking the deployed
@@ -85,22 +85,42 @@ to get wrong and each failed at least once during slice 002:
 reports them as `not_configured` rather than failing. Setting placeholder values would make the
 application believe it has a cache and fail at first use.
 
-### What remains in slice 002
+### What the deployment gate and rollback drills established
 
-- **T040–T044** — enable Wait for CI, merge a trivial change and watch it deploy, then
-  **deliberately break a test, merge it, and confirm the site does not move**. A gate nobody has
-  watched fail is not a gate. Plus a rollback drill.
-- **T034, T039** — declined consent creating nothing; deployed logs searched for secret values.
-- **T050–T052** — final gates, scope-guard check, and walking the README deployment section as
-  written.
+All of it is in `specs/002-deployment/observations.md`, which is worth reading before touching
+deployment again. The short version:
+
+- **The gate was watched in both directions.** A good commit's deployment sat at `WAITING` until
+  CI reported success, then went `SUCCESS`. A deliberately broken commit's deployment went
+  `WAITING` → **`SKIPPED`** and stayed there, while the site kept serving the previous commit.
+  Deployment status, not CI status, is the honest signal — `SKIPPED` is visible only from the
+  deployment record, and Actions alone shows a red run without saying whether anything shipped.
+- **Rollback is drilled and zero-downtime.** But `railway deployment redeploy` redeploys the
+  *latest* deployment, so during an incident it restarts the broken version rather than rolling
+  back. And a rollback creates a **new** deployment id carrying the **old** commit, so which
+  version is live must be read from the commit, never the id.
+- **Railway blanks the `message` field** of parsed JSON logs. Structured fields survive; the
+  human-readable text does not, with or without `--json`, and the same code logs messages fine
+  locally. Put anything you will need to debug a production problem in `extra={…}` fields, not in
+  the message string — only the fields survive. This is silent: the records look well-formed.
+- **Declining Google consent cannot be tested without revoking access first.** The OAuth request
+  sends no `prompt=consent`, so an already-authorised account is signed straight in and there is
+  no consent screen to decline. Revoke at `myaccount.google.com/connections`.
+- **A low-entropy secret cannot be scanned for.** Local `POSTGRES_PASSWORD` is `careerhq`, which
+  collides with the project name in 2000 log lines. Use high-entropy values even in development,
+  or secret-scanning the logs is meaningless.
 
 ### Two things worth doing when convenient
 
-- **Rotate the database password.** It was visible on screen during setup while the public TCP
-  proxy was still open. The proxy is gone now, so this is hygiene rather than urgent — but a
-  known password becomes live again the moment anyone re-adds a proxy. `DATABASE_URL` references
-  `${{pgvector.PGPASSWORD}}`, so rotating propagates with nothing to hand-edit. Note that changing
-  the variable alone does **not** change the password: run `ALTER USER … WITH PASSWORD` first.
+- **Rotate the database password**, and restart `pgvector` while you are there. It was visible on
+  screen during setup while the public TCP proxy was still open. That proxy is gone — `tcpProxies`
+  returns `[]`, so the database is not reachable from the internet — but the stale `PGHOST` in the
+  *running* container has since sent an authentication attempt to whichever tenant now owns the
+  recycled proxy port (see the `psql` gotcha below). That moves this from hygiene to worth doing.
+  Restarting the service recreates the container and clears the stale pointer, so the next person
+  to open that Console does not repeat it. `DATABASE_URL` references `${{pgvector.PGPASSWORD}}`,
+  so rotating propagates with nothing to hand-edit. Note that changing the variable alone does
+  **not** change the password: run `ALTER USER … WITH PASSWORD` first.
 - **The deployed domain says `frontend`, and three misspellings of it cost real time** (`fronted`,
   `frontned`). Copy it from Railway rather than typing it, and remember `PUBLIC_BASE_URL` must
   match the Google redirect URI byte for byte.
@@ -300,6 +320,27 @@ Recorded so they are not rediscovered.
   Otherwise the push is rejected outright, with the commit still safe locally.
 - **A comment beginning `# noqa` is parsed as a blanket lint suppression.** Do not start an
   explanatory comment with that word.
+- **`psql` in the deployed pgvector Console talks to a stranger's database.** The running
+  container still carries `PGHOST=yamabiko.proxy.rlwy.net` and `PGPORT=58953` from before the
+  public TCP proxy was deleted — environment variables are injected at container *creation*, so
+  clearing the service variables (both are empty now) does not touch a container that is still
+  running. It is the same rule as the `docker compose restart` gotcha above, one layer up. Railway
+  recycles proxy ports, so that address now serves **another tenant's** database: it answers the
+  PostgreSQL protocol and rejects your credentials, which reads as `FATAL: password
+  authentication failed` and looks like a password problem when it is a wrong-server problem.
+  Override both variables — one is not enough, and `su postgres -c` does not help because `su`
+  without a dash preserves the environment:
+
+  ```bash
+  PGHOST=localhost PGPORT=5432 psql -U postgres -d railway \
+    -c "SELECT (SELECT count(*) FROM users) || '|' || (SELECT count(*) FROM professional_profiles);"
+  ```
+
+  `PGPASSWORD` is already correct in that container; it only failed because it was being offered
+  to the wrong server. **This sends an authentication attempt to a third party** — SCRAM-SHA-256
+  means the plaintext never crosses the wire, but a hostile server can capture the client proof
+  and attack it offline. See the password-rotation note above, which this makes concrete.
+  The database itself is **not** exposed: `tcpProxies` on the service returns `[]`.
 
 ---
 

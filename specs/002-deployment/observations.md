@@ -262,10 +262,85 @@ Two things worth keeping:
   from the deployment record. Reading Actions alone shows a red run and leaves open whether
   anything reached production.
 
+## FR-013 / T034 — declining consent
+
+Exercised for real at Google's consent screen rather than simulated. The page returned to sign-in
+reading:
+
+> Sign-in was cancelled. Nothing was saved.
+
+That is the part that could have failed quietly. The route redirects to `/login?error=…` on a
+declined consent, and a redirect alone would have dumped the user on an ordinary sign-in page with
+no indication anything had happened — technically correct, and indistinguishable from a bug.
+
+The claim was then checked rather than taken:
+
+```
+SELECT (SELECT count(*) FROM users) || '|' || (SELECT count(*) FROM professional_profiles);
+ 1|1
+```
+
+Unchanged. The page says nothing was saved and nothing was.
+
+**Reproducing this requires a step the task did not anticipate.** The OAuth request sets
+`client_kwargs={"scope": "openid email profile"}` and no `prompt=consent`, so Google skips the
+consent screen entirely for an account that has already authorised the app — there is nothing to
+decline. Access must first be revoked at `myaccount.google.com/connections`.
+
+## FR-017 / T039 — secrets in deployed logs, completed
+
+Re-run against a corpus that provably contains the events it needed to cover. Establishing that
+first matters more than the result: the earlier attempt was clean only because the sign-in was not
+in the logs at all, which is not evidence of anything.
+
+The deployed backend log now contains, on one deployment:
+
+| Time | Logger | What |
+|---|---|---|
+| 08:45 | — | process startup |
+| 08:51 | `careerhq.auth` | `error="access_denied"` — the declined consent |
+| 08:59 | `httpx` ×2 | the OAuth token exchange with Google |
+| 08:59 | `careerhq.provisioning`, `careerhq.auth` | `user_id=…` — the completed sign-in |
+
+Scanned for the literal values of `SESSION_SECRET`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_CLIENT_ID` and
+the database password — full values **and** 12-character prefixes, so a truncated secret would
+still register — across backend deploy/build/http and both frontend streams. **139 records, zero
+occurrences.**
+
+### Railway consumes the `message` field, and that limits the scan
+
+The deployed records look like this:
+
+```json
+{"message":"","level":"info","logger":"careerhq.auth","request_id":"959e2b27…","user_id":"83dfe3b5…"}
+```
+
+`message` is **empty**, while every structured field survives. The application is not at fault:
+the same code locally produces 400 of 400 records with a non-empty message. Railway parses the
+JSON log line, hoists the recognised keys, and blanks the message in what it re-emits — so
+`railway logs` cannot show message text at all, with or without `--json`.
+
+Two consequences, and the second is the one to remember:
+
+1. **The deployed scan covers structured attributes, not message text.** A secret interpolated
+   into a message string would be invisible to it.
+2. **Deployed logs are much less useful for debugging than the local ones**, and the failure is
+   silent — you get well-formed records with the human-readable part missing. Any later slice
+   diagnosing a production problem should put the meaning in `extra={…}` fields rather than in the
+   message, because only the fields survive.
+
+Gap (1) was closed against the local stack, which runs identical code with messages intact: 4114
+lines, zero occurrences of the three high-entropy secrets.
+
+Two apparent hits there were both false positives, and they make a point worth keeping: local
+`POSTGRES_PASSWORD` is `careerhq`, identical to the project name, so it "appears" 2007 times in
+strings like `careerhq-frontend`; and `S3_SECRET_KEY` is `minioadmin`, whose only two hits are
+MinIO's own warning that it is running on default credentials. **A low-entropy secret cannot be
+scanned for** — it collides with ordinary text. That is an argument for high-entropy values even
+in development, where they are otherwise assumed not to matter.
+
 ## Not yet observed
 
-- **T034** — declined consent creating nothing. Needs a browser.
-- **T039** — the sign-in half, per above. Needs a sign-in on the *current* deployment.
 
 ## What observation caught that review could not
 

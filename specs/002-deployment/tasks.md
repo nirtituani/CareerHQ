@@ -205,8 +205,13 @@ again creates neither.
 - [x] T033 👁 **OBSERVE** [US2] Sign out, sign in again, and confirm counts are **still** `1|1`.
       **Failure looks like**: `1|2` — the UNIQUE constraint did not deploy, which is a
       Principle I violation and a release blocker
-- [ ] T034 👁 **OBSERVE** [US2] Decline consent at Google and confirm the outcome is explained and
-      no account or profile is created
+- [x] T034 👁 **OBSERVE** [US2] Decline consent at Google and confirm the outcome is explained and
+      no account or profile is created. **Both halves confirmed.** Cancelling at Google's consent
+      screen returns to sign-in showing "Sign-in was cancelled. Nothing was saved." — an
+      explanation, not a bare redirect — and the deployed counts stayed `1|1`. Note for anyone
+      repeating it: the OAuth request sends no `prompt=consent`, so a previously-authorised account
+      is signed straight in with no consent screen to decline. Access has to be revoked at
+      myaccount.google.com/connections first
 
 ### Verify production security — FR-015, the first execution ever (SC-004)
 
@@ -223,7 +228,7 @@ again creates neither.
 - [x] T038 [US2] Record what was actually observed in T035–T037 in `specs/002-deployment/`, not
       what was expected. This configuration had never executed before this slice; the observation
       is the evidence FR-015 requires
-- [ ] T039 👁 **OBSERVE** [US2] Search the deployed backend logs for the literal values of
+- [x] T039 👁 **OBSERVE** [US2] Search the deployed backend logs for the literal values of
       `SESSION_SECRET`, `GOOGLE_CLIENT_SECRET` and the database password, covering startup and at
       least one completed sign-in. **Failure looks like**: any occurrence at all (FR-017). Slice
       001 found a crash that printed `SESSION_SECRET` in full precisely because it was the code
@@ -234,7 +239,12 @@ again creates neither.
       deployed configuration so the comparison is against what is actually set. Startup and both
       image builds are clean. The sign-in half is **not** covered: Railway retains logs only for
       the current deployment, and the sign-in that T031–T033 verified ran against a deployment now
-      `REMOVED`. Needs one fresh sign-in, then a re-scan
+      `REMOVED`. **Now complete.** Re-run against a corpus proven to contain startup, a declined
+      consent and a completed sign-in including the Google token exchange: 139 records across five
+      streams, zero occurrences of any secret value or 12-character prefix. One limitation is
+      recorded rather than glossed — Railway blanks the `message` field of parsed JSON logs, so the
+      deployed scan covers structured attributes only; that gap was closed against the local stack,
+      which runs identical code with messages intact
 
 **Checkpoint**: The deployed system authenticates real users under production security settings
 that have now been seen working rather than assumed.
