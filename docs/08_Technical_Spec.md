@@ -41,7 +41,7 @@ carries an explicit status marker so that planned work is never mistaken for shi
 | | |
 |---|---|
 | **Live at** | **https://frontend-production-02ac.up.railway.app** |
-| **Built and verified** | Slice 001 — Platform Foundation; Slice 002 — Deployment (37/52, User Stories 1–2 verified) |
+| **Built and verified** | Slice 001 — Platform Foundation; Slice 002 — Deployment (52/52, all three user stories verified) |
 | **Next** | Slice 003 — Data Foundation |
 | **Evidence** | 58 backend tests at 89% coverage, 3 component tests, 6 Playwright smoke tests, CI green on `main` |
 | **Verified how** | Locally: full quickstart from a fresh clone on wiped volumes. **On the deployed system**: a real Google sign-in taking the database from `0\|0` to `1\|1` and leaving it there on a second sign-in, with security headers, cookie flags and readiness confirmed by observation — see [`specs/002-deployment/observations.md`](../specs/002-deployment/observations.md) |
@@ -700,8 +700,8 @@ identified gaps demonstrably narrow over time.
 | # | Slice | Delivers | Depends on | Status |
 |---|---|---|---|---|
 | 001 | Platform Foundation | Containers, Google sign-in, authenticated shell, CI | — | ✅ **Complete** |
-| 002 | Deployment | Public HTTPS URL, redeploy on merge | 001 | ⏭️ **Next** |
-| 003 | Data Foundation | CV import and parsing, profile, applications, JobTracker import | 001 | 📋 Planned |
+| 002 | Deployment | Public HTTPS URL, redeploy on merge | 001 | ✅ Complete |
+| 003 | Data Foundation | CV import and parsing, profile, applications, JobTracker import | 001 | ⏭️ **Next** — specified and planned |
 | 004 | **Resume Tailoring Agent** | LangGraph workflow, RAG, Reviewer, item-level approval, PDF | 003 | 📋 Planned |
 | 005 | Evaluation & Benchmark | Test set, metrics, LLM-as-judge, results view | 004 | 📋 Planned |
 | 006 | Company Research | Research agent over web search MCP | 003 | 📋 Planned |
