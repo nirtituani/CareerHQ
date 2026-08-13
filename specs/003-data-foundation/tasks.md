@@ -264,26 +264,26 @@ produces exactly one profile and one Master Resume.
 
 ### Frontend
 
-- [ ] T050 [P] [US1] Build the upload screen and its states in
+- [x] T050 [P] [US1] Build the upload screen and its states in
       `frontend/src/app/import/page.tsx` per docs/09 §6.6 — `idle → uploading → extracting →
       extracted | failed`. **Failure must name a likely cause** ("looks like a scan with no text
       layer"), never present an empty review form
-- [ ] T051 [US1] Build the review interface in `frontend/src/components/import-review/` per
+- [x] T051 [US1] Build the review interface in `frontend/src/components/import-review/` per
       docs/09 §6.5: two panes, per-section progress, per-item accept/correct/discard, provenance
       rules and confidence meters, reviewed items collapsing, and the persistent bottom bar
-- [ ] T052 [P] [US1] Implement the provenance and confidence primitives in
+- [x] T052 [P] [US1] Implement the provenance and confidence primitives in
       `frontend/src/components/provenance.tsx` per docs/09 §5 — **dashed rule for extracted, solid
       for corrected/added**. Colour is never the only channel, so the rule style is the primary
       carrier
-- [ ] T053 [P] [US1] Keyboard navigation for the review list: `A` accept, `E` edit, `D` discard,
+- [x] T053 [P] [US1] Keyboard navigation for the review list: `A` accept, `E` edit, `D` discard,
       `J`/`K` to move. This is the difference between reviewing sixty items and abandoning the
       import, not a nicety (docs/09 §6.5)
-- [ ] T054 [P] [US1] Persistent fixture banner in `--color-fixture` whenever `is_fixture` is set,
+- [x] T054 [P] [US1] Persistent fixture banner in `--color-fixture` whenever `is_fixture` is set,
       visible for the whole review. The one unacceptable outcome is approving invented content into
       a real profile (R3)
-- [ ] T055 [P] [US1] Component tests in `frontend/src/components/__tests__/` for the provenance
+- [x] T055 [P] [US1] Component tests in `frontend/src/components/__tests__/` for the provenance
       primitives and the review item states
-- [ ] T056 [US1] Build the Profile screen at `frontend/src/app/profile/page.tsx` per docs/09 §6.4,
+- [x] T056 [US1] Build the Profile screen at `frontend/src/app/profile/page.tsx` per docs/09 §6.4,
       carrying provenance rules into the profile — FR-004 requires the distinction *after* approval,
       not only during review. Its empty state routes to import rather than reporting emptiness
 
