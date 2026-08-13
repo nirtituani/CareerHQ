@@ -143,19 +143,104 @@ schema. Rejection is a value of the normalized status. This is the one constrain
 is a release blocker, so its absence is the thing to check in review — a column that does not
 exist cannot fall out of sync with the status that does.
 
-## R8 — JobTracker export shape: an unresolved input, and it does not block the slice
+## R8 — JobTracker export shape: **resolved from the source**
 
-**Status: unknown.** There is no local checkout of `nirtituani/job-tracker-web`, and the field
-mapping for FR-015 and FR-016 cannot be written truthfully without seeing a real export.
+**Status: resolved.** `nirtituani/job-tracker-web` was read directly. The mapping below is written
+against the actual schema rather than a guess.
 
-**Decision**: treat a real export file as a **required input to User Story 3**, obtained before
-those tasks begin, and write the importer against the observed shape rather than a guessed one.
-US3 is P3 — the critical path (P1 CV import, P2 recording a job) does not depend on it, so this
-does not stall the slice.
+### The source schema
 
-Recording it here rather than guessing a schema is the point: a mapping invented now would be
-discovered wrong during implementation, and FR-016 is a release-blocking invariant that has to be
-mapped against reality.
+Flask over raw SQL. One table, `applications`, with three columns added later by `ALTER TABLE`
+(hence their position at the end — the export is `SELECT *`, so column order matters):
+
+```
+id, user_id, company, title, location, date_applied, status, salary_range,
+job_link, contact_person, contact_email, applied_via, match_rating, notes,
+last_updated, job_desc_link, rejected, company_domain
+```
+
+`GET /api/export` writes exactly these columns as a CSV header, so the export format is the table
+definition. D2's file upload has a known shape.
+
+### Finding 1 — the `rejected` flag is a live inconsistency, not a hypothetical one
+
+FR-016 forbids importing `rejected` as an independent source of truth. The source confirms why in
+its own dashboard query:
+
+```sql
+SELECT COUNT(*) FROM applications
+ WHERE user_id=:uid AND (rejected IS TRUE OR status='Rejected')
+```
+
+It **ORs the boolean with the status** because the two can disagree, and the active-applications
+query has to defend the same way (`status NOT IN (...) AND (rejected IS NOT TRUE)`). Two fields
+encoding one fact, reconciled at every read site. This is the exact failure docs/03 §14 anticipated.
+
+**The reconciliation rule**, which loses nothing:
+
+| Source | CareerHQ label | CareerHQ normalized |
+|---|---|---|
+| `status = 'Rejected'` | `Rejected` | `rejected` |
+| `rejected IS TRUE`, status anything else | **the original status preserved** | `rejected` |
+| otherwise | the status | derived from the status |
+
+Row 2 is the interesting one. `rejected=true, status='Interview Round 2'` becomes the label
+"Interview Round 2" with normalized status `rejected` — the label records *how far they got*, the
+normalized status records *the outcome*. That is strictly **more** information than JobTracker
+could express, obtained by removing a field rather than adding one.
+
+### Finding 2 — JobTracker has no job description text. At all
+
+`grep -c description backend/app.py` → **0**. There is only `job_link` and `job_desc_link`, both
+URLs. Imported applications therefore arrive **without anything for slice 004 to tailor against**.
+
+This promotes a plan assumption to a fact: "US1 + US2 is the smallest combination that unblocks
+slice 004" is not a judgment call — US3 *cannot* unblock it, because the data does not exist in the
+source. The spec and docs/05 both need to say so, since docs/05 §5.3's stated benefit of the import
+("makes the tailoring demo realistic") is only half right: it supplies **history** for the slice 007
+Career Advisor, not tailoring inputs.
+
+### Finding 3 — statuses and source options live in `localStorage`, not the database
+
+`useSettings.js` keeps the vocabulary in the browser:
+
+```
+Pre-Applied, Applied, Online Assessment, Phone Screen, Interview Round 1,
+Interview Round 2, Interview Round 3, Final Interview, Offer Received,
+Rejected, Ghosted, Withdrawn
+```
+
+Because they are client-side, a user's **customised** statuses never reach the database — but the
+strings they produced are in `applications.status`. An export can therefore contain any label at
+all, and for anyone who customised, it will.
+
+So an unrecognised status is the **common case, not an edge case**. It must not reject the row:
+the label is preserved verbatim, the normalized status falls back to `other`, and the row is listed
+in the import report as needing attention. FR-018's "cannot be mapped" is reserved for rows missing
+something structural — a company or title — not for an unfamiliar label.
+
+### Finding 4 — dates are day-first text
+
+Written as `%d/%m/%Y %H:%M` and stored as `TEXT`. `03/04/2026` is **3 April**, not 4 March. Parsed
+day-first explicitly; an ambiguous or unparseable value is preserved raw and reported rather than
+silently guessed, because a wrong date is worse than an absent one for a Career Advisor reasoning
+over timelines.
+
+### The mapping
+
+| JobTracker | CareerHQ | Note |
+|---|---|---|
+| `id` | `import_source_id` (with `import_source='jobtracker'`) | The idempotency key for constraint C3 |
+| `user_id` | **discarded** | Ownership comes from the session (FR-019). Importing a foreign user id is exactly the vulnerability that rule exists to prevent |
+| `company`, `company_domain` | `Company.name` / `.domain` | Deduplicated by `normalized_name` (C2) |
+| `title`, `location`, `notes` | direct | |
+| `date_applied`, `last_updated` | parsed day-first | Finding 4 |
+| `status` + `rejected` | `status` label + `normalized_status` | Finding 1. **No `rejected` column is created** |
+| `salary_range` | `salary_text` — **free text** | Not min/max/currency. `"90-110k"`, `"competitive"` and `""` all occur; parsing it into numbers would invent precision |
+| `job_link`, `job_desc_link` | `job_url`, `job_description_url` | Both URLs. Neither is a description (Finding 2) |
+| `contact_person`, `contact_email` | `contact_name`, `contact_email` | |
+| `applied_via` | `source` | Also localStorage-customisable — same treatment as status |
+| `match_rating` | preserved as `imported_match_rating` | Integer, `0` meaning unset. Kept rather than dropped so slice 004's MatchAnalysis (docs/03 §14) can build on real data; discarding a user's own ratings on import would be silent data loss |
 
 ## R9 — No embeddings, no vector retrieval
 

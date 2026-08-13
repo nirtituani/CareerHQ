@@ -70,8 +70,10 @@ where it came from. It can exist before any resume is submitted — a wishlist e
 state, not an incomplete one.
 
 **Why this priority**: Slice 004 needs a job description to tailor against, and this is the
-minimal path to one. It does not depend on the user having any JobTracker history, which US3 does.
-US1 plus US2 is the smallest combination that unblocks the flagship slice.
+**only** path to one. Reading the JobTracker source (research R8) established that it has no job
+description field at all — only `job_link` and `job_desc_link`, both URLs. So US3 cannot supply
+tailoring inputs even in principle, and "US1 plus US2 is the smallest combination that unblocks the
+flagship" is a fact about the source data rather than a judgement about priorities.
 
 **Independent Test**: As a signed-in user, create an application with a job description and no
 submitted resume. Confirm it persists, is visible only to that user, and is retrievable with its
@@ -96,9 +98,11 @@ The user imports their real application history from JobTracker. Roughly twenty 
 in the system, each with its company, status, dates, and notes — mapped onto CareerHQ's normalized
 statuses rather than JobTracker's own representation.
 
-**Why this priority**: It makes the tailoring demo realistic and, more importantly, gives the
-slice 007 Career Advisor genuine history to analyze rather than waiting months for data to
-accumulate. Valuable, but nothing downstream is blocked without it.
+**Why this priority**: It gives the slice 007 Career Advisor genuine history — statuses, dates and
+outcomes — rather than waiting months for data to accumulate. It does **not** make the tailoring
+demo realistic, which is what docs/05 §5.3 claimed: imported applications carry no job description
+(R8), so nothing imported here can be tailored against. Valuable for history, and nothing
+downstream is blocked without it.
 
 **Independent Test**: Run the import against real JobTracker data and confirm the resulting
 applications carry correct normalized statuses, that rejection is derived rather than stored
@@ -116,6 +120,13 @@ independently, and that re-running it does not duplicate anything.
    one company record rather than several
 5. **Given** a record that cannot be mapped, **When** the import runs, **Then** it is reported
    with enough detail to fix, and the remaining records still import
+6. **Given** a record whose `rejected` flag is true but whose status is not `Rejected`, **When** it
+   is imported, **Then** its original status is preserved as the label and its normalized status is
+   `rejected` — recording both how far the application got and how it ended
+7. **Given** a record with a status label CareerHQ does not recognise, **When** it is imported,
+   **Then** the label is preserved, the normalized status is `other`, and the row is flagged for
+   attention rather than rejected — JobTracker keeps custom statuses in browser storage, so
+   unrecognised labels are expected rather than exceptional
 
 ---
 
@@ -183,7 +194,9 @@ independently, and that re-running it does not duplicate anything.
 - **FR-016**: JobTracker's `rejected` boolean MUST NOT be stored as an independent source of
   truth. Rejection MUST be derived from the normalized status (docs/03 §14, Constitution
   Technology Constraints). **This is a release blocker if violated** — two sources of truth for
-  one fact is the inconsistent-state class the constitution exists to prevent
+  one fact is the inconsistent-state class the constitution exists to prevent. The source system
+  demonstrates the failure directly: its own dashboard counts rejections as
+  `rejected IS TRUE OR status='Rejected'`, because the two fields can disagree (research R8)
 - **FR-017**: Re-running the import with the same source data MUST NOT create duplicates
 - **FR-018**: Records that cannot be mapped MUST be reported individually with enough detail to
   correct them, and MUST NOT prevent the remaining records from importing

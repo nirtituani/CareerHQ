@@ -152,12 +152,25 @@ future work in [01_Functional_Product_Requirements.md](01_Functional_Product_Req
 and because the data model is identical it will be a pure interface addition (ADR-013).
 
 **Why the JobTracker import matters**: It puts roughly twenty real applications in the database on
-day one. That makes the tailoring demo realistic and, more importantly, gives the Career Advisor
-genuine history to analyze rather than waiting for data to accumulate.
+day one, giving the Career Advisor genuine history — statuses, dates and outcomes — rather than
+waiting for data to accumulate.
+
+It does **not** make the tailoring demo realistic, which an earlier version of this line claimed.
+Reading the source (slice 003 research R8) established that JobTracker has no job description
+field at all — only `job_link` and `job_desc_link`, both URLs. Imported applications therefore
+carry nothing to tailor against, and the manual job-entry story is the only source of tailorable
+input for slice 004.
 
 **Migration note**: JobTracker's `rejected` boolean must not survive as an independent source of
 truth. Rejection is derived from the normalized status, per
 [03_Domain_Model.md](03_Domain_Model.md) §14.
+
+The source system shows why this is not theoretical: its own dashboard counts rejections as
+`rejected IS TRUE OR status='Rejected'`, reconciling two fields that encode one fact at every read
+site. The import's rule loses nothing — a row flagged rejected while sitting at "Interview Round 2"
+keeps that label and takes a normalized status of `rejected`, recording both how far the
+application got and how it ended. That is more information than the source could express, obtained
+by removing a field rather than adding one.
 
 ---
 

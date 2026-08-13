@@ -96,13 +96,14 @@ and does not duplicate them (Principle I, docs/03 §4.3).
 | `id`, `user_id` | FK, NOT NULL (FR-019) |
 | `company_id` | FK, NOT NULL — exactly one company (FR-014) |
 | `job_title`, `location` | |
-| `job_description` | The text slice 004 tailors against — the reason US2 exists |
+| `job_description` | The text slice 004 tailors against — the reason US2 exists. **NULL for every imported application**: JobTracker has no description field, only URLs (R8, Finding 2) |
 | `job_url`, `job_description_url` | Optional |
 | `status` | User-facing label |
 | `normalized_status` | The analytics category (FR-013) |
 | `date_added`, `date_applied` | |
 | `source` | How it was applied for |
-| `salary_min`, `salary_max`, `salary_currency` | Optional |
+| `salary_text` | **Free text**, not min/max/currency. The source stores `"90-110k"`, `"competitive"` and `""` interchangeably (R8); parsing that into numbers would invent precision the data does not have |
+| `imported_match_rating` | Integer, `0` = unset. Preserved from JobTracker so slice 004's MatchAnalysis builds on real ratings rather than discarding them on import |
 | `contact_name`, `contact_email` | Optional |
 | `notes` | |
 | `import_source`, `import_source_id` | Provenance for idempotency (C3). NULL for manual entries |
@@ -115,6 +116,25 @@ review question is "does a rejected flag exist anywhere?" rather than "is it kep
 
 There is deliberately **no `submitted_resume_id`** either: Submitted Resumes arrive in slice 004,
 and an application in a pre-submission status must be valid without one (FR-011).
+
+### Normalized status vocabulary
+
+The label is whatever the user calls it; the normalized value is what analytics and the Career
+Advisor reason over (FR-013).
+
+| Normalized | JobTracker labels that map to it |
+|---|---|
+| `wishlist` | Pre-Applied |
+| `applied` | Applied |
+| `interviewing` | Online Assessment, Phone Screen, Interview Round 1/2/3, Final Interview |
+| `offer` | Offer Received |
+| `rejected` | Rejected — **and any row whose `rejected` flag was true**, whatever its label (R8, Finding 1) |
+| `withdrawn` | Withdrawn |
+| `ghosted` | Ghosted |
+| `other` | Anything unrecognised — the **common** case, since JobTracker keeps custom statuses in `localStorage` and they never reach the database (R8, Finding 3) |
+
+An unrecognised label is preserved verbatim and normalized to `other`. It does not reject the row:
+FR-018's "cannot be mapped" is for rows missing something structural, like a company or title.
 
 ### ApplicationStatusHistory
 

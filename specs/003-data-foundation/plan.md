@@ -162,7 +162,8 @@ how Principle V stops depending on reviewer vigilance.
 
 | Risk | Handling |
 |---|---|
-| **JobTracker export shape is unknown** (R8) | A real export is a required input to User Story 3. US3 is P3, so the critical path is unaffected — but the mapping is not written until the file exists, because FR-016 is a release blocker and cannot be mapped against a guess |
+| ~~JobTracker export shape unknown~~ — **resolved** (R8) | The source was read directly. The export is `SELECT *` over one table, so its columns are the schema. The mapping is written, including the `rejected`/`status` reconciliation, day-first date parsing, and unrecognised labels normalizing to `other`. A real export file is still wanted as a test fixture, but nothing is now guessed |
+| **Imported applications carry no job description** (R8, Finding 2) | JobTracker has no such field — only URLs. US3 therefore cannot feed slice 004; US2 is the only source of tailorable jobs. Already corrected in the spec and docs/05 |
 | **Extraction quality is the slice's main uncertainty** | SC-002 (80% of bullets attributed to the right role) is measured against a real CV early, not at the end. If it misses, the honest responses are a better prompt or a stronger model — both configuration under R1 — not a lowered criterion |
 | **Two new deployment prerequisites** | Bucket and provider credentials. Both surface through readiness as `not_configured` before they are set (FR-021, FR-028), so the failure is named rather than mysterious. Slice 002's lesson: an unstated deployment assumption appears as a five-minute health-check timeout with no application error |
 | **Railway bucket endpoint form unverified** | `storage.py` already passes `endpoint_url`; path-style addressing is a configuration flag if needed. Verified during implementation, not assumed |
