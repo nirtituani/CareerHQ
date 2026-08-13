@@ -29,6 +29,9 @@ Rules:
 - Keep each achievement or responsibility as its own bullet, worded as written.
 - Keep dates exactly as they appear — do not normalise them.
 - Omit anything you cannot find rather than guessing.
+- Military service belongs in military_service, not work_experience. Volunteer
+  and leadership roles belong in volunteering. Paid employment only in
+  work_experience.
 - Set confidence per item: high when the document states it plainly, low when
   you had to interpret layout or infer a boundary.
 
@@ -178,6 +181,8 @@ def _stage(extraction: ResumeExtraction) -> list[ExtractionItem]:
         (extraction.education, "education"),
         (extraction.certifications, "certification"),
         (extraction.languages, "language"),
+        (extraction.military_service, "military_service"),
+        (extraction.volunteering, "volunteer"),
     ):
         for entry in collection:
             add(kind, entry.model_dump(), entry.confidence)

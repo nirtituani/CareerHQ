@@ -21,12 +21,14 @@ from careerhq.domain.models import (
     ContactInformation,
     Education,
     Language,
+    MilitaryService,
     ProfessionalProfile,
     ProfessionalTitle,
     Project,
     ResumeProfile,
     Skill,
     SummaryBlock,
+    VolunteerExperience,
     WorkExperience,
 )
 from careerhq.domain.schemas import ProfileOut
@@ -130,6 +132,28 @@ async def read_profile_content(profile: CurrentProfile, session: DbSession) -> d
                 "source": lang.source,
             }
             for lang in await _all(Language, Language.profile_id)
+        ],
+        "military_service": [
+            {
+                "id": str(m.id),
+                "branch": m.branch,
+                "role": m.role,
+                "start_date": m.start_date,
+                "end_date": m.end_date,
+                "source": m.source,
+            }
+            for m in await _all(MilitaryService, MilitaryService.profile_id)
+        ],
+        "volunteering": [
+            {
+                "id": str(v.id),
+                "organisation": v.organisation,
+                "role": v.role,
+                "start_date": v.start_date,
+                "end_date": v.end_date,
+                "source": v.source,
+            }
+            for v in await _all(VolunteerExperience, VolunteerExperience.profile_id)
         ],
         "master_resume": (
             {"id": str(m.id), "name": m.name}

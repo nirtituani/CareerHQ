@@ -46,6 +46,8 @@ export const SECTIONS: { kind: string; label: string }[] = [
   { kind: "education", label: "Education" },
   { kind: "certification", label: "Certifications" },
   { kind: "language", label: "Languages" },
+  { kind: "volunteer", label: "Volunteering" },
+  { kind: "military_service", label: "Military service" },
 ];
 
 /** Bullets belonging to a role, in CV order. */
@@ -121,7 +123,38 @@ export function describe(item: ExtractionItem): Described {
       };
     case "language":
       return { primary: join(str("name"), str("proficiency")), details: [] };
+    case "military_service":
+      return {
+        primary: join(str("role"), str("branch")),
+        details: [join(dates(p)), str("details") ?? ""].filter(Boolean),
+      };
+    case "volunteer":
+      return {
+        primary: join(str("role"), str("organisation")),
+        details: [join(dates(p)), str("description") ?? ""].filter(Boolean),
+      };
     default:
       return { primary: JSON.stringify(item.payload), details: [] };
   }
+}
+
+
+/**
+ * Skills grouped by the category the CV used.
+ *
+ * A real CV listed 22 skills under six headings — Programming Languages,
+ * Databases, Development Tools, AI Tools, Cloud, Distributed Systems. Rendering
+ * them as one flat list of 22 discards the structure the author wrote and makes
+ * the section a wall to be skimmed rather than reviewed. The categories were
+ * being extracted correctly the whole time; only the display ignored them.
+ */
+export function groupByCategory(items: ExtractionItem[]): [string, ExtractionItem[]][] {
+  const groups = new Map<string, ExtractionItem[]>();
+
+  for (const item of items) {
+    const category = ((item.payload as Record<string, unknown>).category as string) || "Other";
+    groups.set(category, [...(groups.get(category) ?? []), item]);
+  }
+
+  return [...groups.entries()];
 }

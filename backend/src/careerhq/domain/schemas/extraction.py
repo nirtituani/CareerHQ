@@ -100,6 +100,34 @@ class ExtractedLanguage(_Extracted):
     proficiency: str | None = None
 
 
+class ExtractedMilitaryService(_Extracted):
+    """Military service.
+
+    Its own type rather than a job, because it is not one. Without somewhere to
+    put it the model files it under work experience — observed on a real CV,
+    where "Military Service - Israeli Navy / Electrician" arrived as employment
+    at 0.30 confidence. The low score was the model saying it had nowhere better
+    to go, and the profile would otherwise have claimed the person was employed
+    as an electrician by a navy.
+    """
+
+    branch: str
+    role: str | None = None
+    start_date: str | None = None
+    end_date: str | None = None
+    details: str | None = None
+
+
+class ExtractedVolunteering(_Extracted):
+    """Volunteer or leadership experience — docs/03 §4.2 owned information."""
+
+    organisation: str
+    role: str | None = None
+    start_date: str | None = None
+    end_date: str | None = None
+    description: str | None = None
+
+
 class ResumeExtraction(BaseModel):
     """Everything recovered from one CV.
 
@@ -120,6 +148,8 @@ class ResumeExtraction(BaseModel):
     education: list[ExtractedEducation] = Field(default_factory=list)
     certifications: list[ExtractedCertification] = Field(default_factory=list)
     languages: list[ExtractedLanguage] = Field(default_factory=list)
+    military_service: list[ExtractedMilitaryService] = Field(default_factory=list)
+    volunteering: list[ExtractedVolunteering] = Field(default_factory=list)
 
     @property
     def is_empty(self) -> bool:
@@ -139,6 +169,8 @@ class ResumeExtraction(BaseModel):
                 self.education,
                 self.certifications,
                 self.languages,
+                self.military_service,
+                self.volunteering,
             )
         )
 
@@ -156,6 +188,8 @@ class ResumeExtraction(BaseModel):
             + len(self.education)
             + len(self.certifications)
             + len(self.languages)
+            + len(self.military_service)
+            + len(self.volunteering)
         )
 
 
@@ -165,10 +199,12 @@ __all__ = [
     "ExtractedContact",
     "ExtractedEducation",
     "ExtractedLanguage",
+    "ExtractedMilitaryService",
     "ExtractedProject",
     "ExtractedRole",
     "ExtractedSkill",
     "ExtractedSummary",
     "ExtractedTitle",
+    "ExtractedVolunteering",
     "ResumeExtraction",
 ]

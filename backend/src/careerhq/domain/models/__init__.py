@@ -24,11 +24,13 @@ from careerhq.domain.models.profile import (
     Education,
     ExperienceBullet,
     Language,
+    MilitaryService,
     ProfessionalTitle,
     Project,
     ResumeProfile,
     Skill,
     SummaryBlock,
+    VolunteerExperience,
     WorkExperience,
 )
 from careerhq.domain.models.provenance import ImportStatus, ItemDecision, Source
@@ -43,6 +45,7 @@ __all__ = [
     "ImportedResume",
     "ItemDecision",
     "Language",
+    "MilitaryService",
     "ProfessionalProfile",
     "ProfessionalTitle",
     "Project",
@@ -51,5 +54,6 @@ __all__ = [
     "Source",
     "SummaryBlock",
     "User",
+    "VolunteerExperience",
     "WorkExperience",
 ]

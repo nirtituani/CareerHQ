@@ -202,3 +202,36 @@ class ResumeProfile(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+
+class MilitaryService(Base):
+    """Military service — not employment.
+
+    Separate from `WorkExperience` because conflating them makes the profile
+    assert something untrue, and because a tailoring agent reasoning about
+    career progression should not read a conscript posting as a job move.
+    """
+
+    __tablename__ = "military_service"
+
+    id: Mapped[uuid.UUID] = _pk()
+    profile_id: Mapped[uuid.UUID] = _profile_fk()
+    branch: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[str | None] = mapped_column(String(255))
+    start_date: Mapped[str | None] = mapped_column(String(64))
+    end_date: Mapped[str | None] = mapped_column(String(64))
+    details: Mapped[str | None] = mapped_column(Text)
+    source: Mapped[Source] = _source()
+
+
+class VolunteerExperience(Base):
+    __tablename__ = "volunteer_experiences"
+
+    id: Mapped[uuid.UUID] = _pk()
+    profile_id: Mapped[uuid.UUID] = _profile_fk()
+    organisation: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[str | None] = mapped_column(String(255))
+    start_date: Mapped[str | None] = mapped_column(String(64))
+    end_date: Mapped[str | None] = mapped_column(String(64))
+    description: Mapped[str | None] = mapped_column(Text)
+    source: Mapped[Source] = _source()

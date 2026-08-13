@@ -30,6 +30,18 @@ type Content = {
   education: (Item & { institution: string; qualification: string | null })[];
   certifications: (Item & { name: string; issuer: string | null })[];
   languages: (Item & { name: string; proficiency: string | null })[];
+  military_service: (Item & {
+    branch: string;
+    role: string | null;
+    start_date: string | null;
+    end_date: string | null;
+  })[];
+  volunteering: (Item & {
+    organisation: string;
+    role: string | null;
+    start_date: string | null;
+    end_date: string | null;
+  })[];
   master_resume: { id: string; name: string } | null;
 };
 
@@ -206,6 +218,26 @@ export default async function ProfilePage() {
               {content.certifications.map((c) => (
                 <Entry key={c.id} source={c.source}>
                   {[c.name, c.issuer].filter(Boolean).join(" — ")}
+                </Entry>
+              ))}
+            </Section>
+          )}
+
+          {content.volunteering.length > 0 && (
+            <Section title="Volunteering">
+              {content.volunteering.map((v) => (
+                <Entry key={v.id} source={v.source}>
+                  {[v.role, v.organisation].filter(Boolean).join(" — ")}
+                </Entry>
+              ))}
+            </Section>
+          )}
+
+          {content.military_service.length > 0 && (
+            <Section title="Military service">
+              {content.military_service.map((m) => (
+                <Entry key={m.id} source={m.source}>
+                  {[m.role, m.branch].filter(Boolean).join(" — ")}
                 </Entry>
               ))}
             </Section>
