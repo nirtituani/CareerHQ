@@ -16,6 +16,7 @@ import {
   SECTIONS,
   bulletsOf,
   describe,
+  groupByCategory,
 } from "@/lib/imports";
 
 /**
@@ -153,7 +154,53 @@ export function ImportReview({
         </nav>
 
         <ul className="min-w-0 flex-1 space-y-2">
-          {visible.map((item, index) => {
+          {/* Skills keep the grouping the CV used. Twenty-two in a flat list is
+              a wall; six labelled groups is the structure the author wrote. */}
+          {section === "skill" &&
+            groupByCategory(visible).map(([category, group]) => (
+              <li key={category} className="pt-2 first:pt-0">
+                <p
+                  className="mb-1 text-xs tracking-wider uppercase"
+                  style={{ fontFamily: "var(--font-mono)", color: "var(--faint)" }}
+                >
+                  {category}
+                </p>
+                <ul className="space-y-1">
+                  {group.map((item) => (
+                    <li
+                      key={item.id}
+                      className="flex items-center justify-between gap-3 py-1 text-sm"
+                      style={{
+                        ...provenanceStyle(item.source),
+                        opacity: item.decision === "discarded" ? 0.45 : 1,
+                        textDecoration:
+                          item.decision === "discarded" ? "line-through" : undefined,
+                      }}
+                    >
+                      <span className="min-w-0">{describe(item).primary}</span>
+                      <span className="flex shrink-0 items-center gap-2">
+                        <ConfidenceMeter value={item.confidence} />
+                        <button
+                          className="text-xs underline underline-offset-2"
+                          style={{ color: "var(--muted)" }}
+                          onClick={() =>
+                            void decide(
+                              item,
+                              item.decision === "discarded" ? "accepted" : "discarded",
+                            )
+                          }
+                        >
+                          {item.decision === "discarded" ? "Keep" : "Discard"}
+                        </button>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            ))}
+
+          {section !== "skill" &&
+            visible.map((item, index) => {
             const settled = item.decision !== "pending";
             const described = describe(item);
             const bullets = item.kind === "work_experience" ? bulletsOf(items, item.id) : [];

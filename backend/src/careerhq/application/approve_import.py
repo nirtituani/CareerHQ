@@ -26,12 +26,14 @@ from careerhq.domain.models import (
     ImportStatus,
     ItemDecision,
     Language,
+    MilitaryService,
     ProfessionalTitle,
     Project,
     ResumeProfile,
     Skill,
     Source,
     SummaryBlock,
+    VolunteerExperience,
     WorkExperience,
 )
 
@@ -159,6 +161,30 @@ async def approve_import(
                         name=payload["name"],
                         issuer=payload.get("issuer"),
                         year=payload.get("year"),
+                        source=source,
+                    )
+                )
+            case "military_service":
+                session.add(
+                    MilitaryService(
+                        profile_id=profile_id,
+                        branch=payload["branch"],
+                        role=payload.get("role"),
+                        start_date=payload.get("start_date"),
+                        end_date=payload.get("end_date"),
+                        details=payload.get("details"),
+                        source=source,
+                    )
+                )
+            case "volunteer":
+                session.add(
+                    VolunteerExperience(
+                        profile_id=profile_id,
+                        organisation=payload["organisation"],
+                        role=payload.get("role"),
+                        start_date=payload.get("start_date"),
+                        end_date=payload.get("end_date"),
+                        description=payload.get("description"),
                         source=source,
                     )
                 )
