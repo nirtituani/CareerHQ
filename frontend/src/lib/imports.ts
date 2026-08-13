@@ -27,19 +27,31 @@ export type ImportedResume = {
   items: ExtractionItem[];
 };
 
-/** Sections in the order a CV reads, which is the order review should follow. */
+/**
+ * Sections in the order a CV reads, which is the order review should follow.
+ *
+ * **Bullets are not a section.** They are shown nested under the role they
+ * belong to, because a bullet reviewed on its own cannot be checked: the whole
+ * question is whether it was attached to the right job, and an "Achievements"
+ * list strips exactly the context that would answer it. Nine bullets from two
+ * roles, listed flat, are nine claims you have to take on trust.
+ */
 export const SECTIONS: { kind: string; label: string }[] = [
   { kind: "contact", label: "Contact" },
   { kind: "title", label: "Titles" },
   { kind: "summary", label: "Summary" },
   { kind: "work_experience", label: "Work experience" },
-  { kind: "bullet", label: "Achievements" },
   { kind: "skill", label: "Skills" },
   { kind: "project", label: "Projects" },
   { kind: "education", label: "Education" },
   { kind: "certification", label: "Certifications" },
   { kind: "language", label: "Languages" },
 ];
+
+/** Bullets belonging to a role, in CV order. */
+export function bulletsOf(items: ExtractionItem[], roleId: string): ExtractionItem[] {
+  return items.filter((i) => i.kind === "bullet" && i.parent_id === roleId);
+}
 
 /**
  * How one item is rendered for review.
