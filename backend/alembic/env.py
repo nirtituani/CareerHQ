@@ -15,6 +15,15 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from sqlalchemy.pool import NullPool
 
 from careerhq.config import get_settings
+
+# Importing the models package is what populates `Base.metadata`, and therefore
+# what autogenerate compares the database against. Without it every existing
+# table looks *removed* and a generated migration would drop the schema.
+#
+# Slice 001 left a comment here saying there was nothing to import yet; its two
+# migrations were hand-written, so the omission stayed invisible until slice 003
+# ran autogenerate for the first time and it proposed dropping `users`.
+from careerhq.domain import models  # noqa: F401  (imported for its side effect)
 from careerhq.infrastructure.database import Base
 
 config = context.config
@@ -24,8 +33,6 @@ if config.config_file_name is not None:
 
 config.set_main_option("sqlalchemy.url", get_settings().database_url)
 
-# Import model modules here so that autogenerate sees them. Nothing to import
-# yet — models arrive with User Story 2.
 target_metadata = Base.metadata
 
 

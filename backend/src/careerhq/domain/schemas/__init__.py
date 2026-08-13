@@ -9,10 +9,34 @@ crosses a boundary, and nothing registers them globally — the re-exports here
 are a convenience, not a requirement of any framework.
 """
 
+from careerhq.domain.schemas.extraction import (
+    ExtractedBullet,
+    ExtractedCertification,
+    ExtractedContact,
+    ExtractedEducation,
+    ExtractedLanguage,
+    ExtractedProject,
+    ExtractedRole,
+    ExtractedSkill,
+    ExtractedSummary,
+    ExtractedTitle,
+    ResumeExtraction,
+)
 from careerhq.domain.schemas.identity import GoogleClaims, ProfileOut, UserOut
 
 __all__ = [
+    "ExtractedBullet",
+    "ExtractedCertification",
+    "ExtractedContact",
+    "ExtractedEducation",
+    "ExtractedLanguage",
+    "ExtractedProject",
+    "ExtractedRole",
+    "ExtractedSkill",
+    "ExtractedSummary",
+    "ExtractedTitle",
     "GoogleClaims",
     "ProfileOut",
+    "ResumeExtraction",
     "UserOut",
 ]

@@ -71,3 +71,22 @@ async def ensure_bucket() -> None:
             client.create_bucket(Bucket=settings.s3_bucket)
 
     await asyncio.to_thread(_create)
+
+
+async def put_object(key: str, data: bytes, *, content_type: str) -> None:
+    """Store the uploaded file under `key`.
+
+    The retained original exists to satisfy FR-006 and for nothing else: no
+    downstream capability reads it, and the structured extraction is the source
+    of truth (ADR-013). A test asserts `storage_key` is read by exactly one
+    module, because "nothing reads this" is a claim about absence and would
+    otherwise decay silently.
+    """
+    settings = get_settings()
+    await asyncio.to_thread(
+        get_s3_client().put_object,
+        Bucket=settings.s3_bucket,
+        Key=key,
+        Body=data,
+        ContentType=content_type,
+    )

@@ -99,3 +99,43 @@ def test_the_application_layer_imports_no_provider_sdk() -> None:
             offenders[str(path.relative_to(SRC))] = hits
 
     assert offenders == {}, f"application/ must depend on ports, not adapters: {offenders}"
+
+
+def test_the_uploaded_file_is_read_by_exactly_one_module() -> None:
+    """T033 — FR-006 and ADR-013 both rest on an absence.
+
+    "The uploaded file is retained for reference but is not the source of truth
+    for any downstream capability. No downstream feature reads the original
+    file." That is a claim about what does **not** read it, so nothing fails
+    when a second reader appears — the feature works, and the architectural
+    claim quietly stops being true.
+
+    `extract_resume` writes the key; `imports.py` returns the record. Neither
+    reads the bytes back, and nothing else may.
+    """
+    permitted = {
+        "domain/models/imports.py",  # declares the column
+        "application/extract_resume.py",  # writes it
+    }
+    readers: set[str] = set()
+
+    # Parsed rather than grepped: a mention in a docstring or a comment is not a
+    # read, and a text search would have counted this test's own explanation of
+    # itself. What matters is `something.storage_key` appearing in real code.
+    for path in SRC.rglob("*.py"):
+        tree = ast.parse(path.read_text(), filename=str(path))
+        for node in ast.walk(tree):
+            names: list[str] = []
+            if isinstance(node, ast.Attribute):
+                names.append(node.attr)
+            elif isinstance(node, ast.Name):
+                names.append(node.id)
+            elif isinstance(node, ast.keyword) and node.arg:
+                names.append(node.arg)
+            if "storage_key" in names:
+                readers.add(str(path.relative_to(SRC)))
+
+    assert readers <= permitted, (
+        "the retained upload must stay write-only; unexpected readers: "
+        f"{sorted(readers - permitted)}"
+    )

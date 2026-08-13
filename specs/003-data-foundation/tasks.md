@@ -168,32 +168,32 @@ produces exactly one profile and one Master Resume.
 
 ### Document text extraction
 
-- [ ] T023 [P] [US1] Test in `backend/tests/unit/test_documents.py`: text is recovered from the
+- [x] T023 [P] [US1] Test in `backend/tests/unit/test_documents.py`: text is recovered from the
       sample PDF and DOCX fixtures. **Correct red**: `ImportError`
-- [ ] T024 [P] [US1] Test in `backend/tests/unit/test_documents.py`: a PDF with no text layer
+- [x] T024 [P] [US1] Test in `backend/tests/unit/test_documents.py`: a PDF with no text layer
       yields empty text and is reported as such, **not** as an empty successful extraction (FR-008)
-- [ ] T025 [P] [US1] Create `backend/src/careerhq/infrastructure/documents/pdf.py` using pdfplumber
-- [ ] T026 [P] [US1] Create `backend/src/careerhq/infrastructure/documents/docx.py` using python-docx
+- [x] T025 [P] [US1] Create `backend/src/careerhq/infrastructure/documents/pdf.py` using pdfplumber
+- [x] T026 [P] [US1] Create `backend/src/careerhq/infrastructure/documents/docx.py` using python-docx
 
 ### Data model
 
-- [ ] T027 [US1] Define the extraction schema in
+- [x] T027 [US1] Define the extraction schema in
       `backend/src/careerhq/domain/schemas/extraction.py` — the Pydantic model the LLM must fill,
       covering contact, titles, summary, work experience with per-bullet granularity, skills,
       projects, education, certifications and languages. **Bullets are separate items**, because
       slice 004 tailors and approves at bullet granularity and a text blob makes that impossible
-- [ ] T028 [US1] Add `ImportedResume` and `ExtractionItem` to
+- [x] T028 [US1] Add `ImportedResume` and `ExtractionItem` to
       `backend/src/careerhq/domain/models/imports.py` per data-model.md §1, including the usage
       audit columns and `is_fixture`
-- [ ] T029 [US1] Add profile child entities and `ResumeProfile` to
+- [x] T029 [US1] Add profile child entities and `ResumeProfile` to
       `backend/src/careerhq/domain/models/profile.py` per data-model.md §2, each carrying `source`
       so FR-004's provenance survives approval rather than being discarded at it
-- [ ] T030 [US1] Write migration `backend/alembic/versions/0003_*.py` for the staging and profile
+- [x] T030 [US1] Write migration `backend/alembic/versions/0003_*.py` for the staging and profile
       tables, including **constraint C4** — `UNIQUE (profile_id) WHERE is_master`
 
 ### Behaviour — tests first
 
-- [ ] T031 [P] [US1] Test in `backend/tests/integration/test_import_flow.py`: after upload and
+- [x] T031 [P] [US1] Test in `backend/tests/integration/test_import_flow.py`: after upload and
       extraction, the profile is still **empty**. This is the whole point of staging — if it fails,
       Principle II is not being enforced (FR-003, FR-007)
 - [x] T032 [US1] Test in `backend/tests/unit/test_architecture.py`: **`litellm` is imported by
@@ -203,61 +203,61 @@ produces exactly one profile and one Master Resume.
       failing**: a `litellm` import planted in `application/provision_user.py` was caught by two
       tests naming the offending file, then removed. Also asserts `domain/` imports no framework or
       provider code, and `application/` imports no adapter
-- [ ] T033 [US1] Test in `backend/tests/unit/test_architecture.py`: `storage_key` is read by
+- [x] T033 [US1] Test in `backend/tests/unit/test_architecture.py`: `storage_key` is read by
       exactly one module. FR-006 and ADR-013 both rest on the uploaded file never becoming a source
       of truth, and that is a claim about what does **not** read it — so it needs asserting the same
       way T032 asserts the provider boundary, and for the same reason
-- [ ] T034 [P] [US1] Test in `backend/tests/integration/test_import_flow.py`: approving creates
+- [x] T034 [P] [US1] Test in `backend/tests/integration/test_import_flow.py`: approving creates
       exactly one Master Resume, and **approving twice still yields one** — constraint C4 refuses
       the second. A double-clicked button is the realistic path to this bug (SC-004)
-- [ ] T035 [P] [US1] Test in `backend/tests/integration/test_import_flow.py`: a corrected item is
+- [x] T035 [P] [US1] Test in `backend/tests/integration/test_import_flow.py`: a corrected item is
       stored with the user's value and `source = user_corrected`, and the original extraction is
       not stored as a profile fact (Scenario 2, FR-004)
-- [ ] T036 [P] [US1] Test in `backend/tests/integration/test_import_flow.py`: an abandoned import
+- [x] T036 [P] [US1] Test in `backend/tests/integration/test_import_flow.py`: an abandoned import
       leaves the profile empty and is discardable (Scenario 6, FR-007)
-- [ ] T037 [P] [US1] Test in `backend/tests/integration/test_import_flow.py`: a file that is
+- [x] T037 [P] [US1] Test in `backend/tests/integration/test_import_flow.py`: a file that is
       neither PDF nor DOCX is rejected with a message naming accepted formats, and nothing is
       stored (FR-001, Scenario 5)
-- [ ] T038 [P] [US1] Test in `backend/tests/integration/test_import_flow.py`: extraction yielding
+- [x] T038 [P] [US1] Test in `backend/tests/integration/test_import_flow.py`: extraction yielding
       nothing returns 422 with `extraction_error` set — **not** 202 with an empty item list
       (FR-008)
-- [ ] T039 [P] [US1] Test in `backend/tests/integration/test_import_flow.py`: with no provider
+- [x] T039 [P] [US1] Test in `backend/tests/integration/test_import_flow.py`: with no provider
       configured the import endpoint returns **503 naming the missing setting** — not a crash, and
       not a successful response with empty extraction (FR-028, obligation O7). This is the first-run
       path: before credentials are set, every user hits it, and it is the only seam obligation with
       no test until now
-- [ ] T040 [P] [US1] Test in `backend/tests/integration/test_import_flow.py`: a second import for a
+- [x] T040 [P] [US1] Test in `backend/tests/integration/test_import_flow.py`: a second import for a
       user who already has a profile does **not** create a second profile, and does not overwrite a
       verified fact without approval (FR-009, constraint C1)
-- [ ] T041 [P] [US1] Test in `backend/tests/integration/test_import_flow.py`: a high confidence
+- [x] T041 [P] [US1] Test in `backend/tests/integration/test_import_flow.py`: a high confidence
       value does **not** auto-accept an item — every item arrives `pending` regardless (FR-029).
       Principle II admits no threshold, and this is the test that keeps it that way
-- [ ] T042 [P] [US1] Test in `backend/tests/integration/test_import_flow.py`: a failed approval
+- [x] T042 [P] [US1] Test in `backend/tests/integration/test_import_flow.py`: a failed approval
       leaves nothing behind — no partial profile, no orphaned Master Resume (FR-023)
-- [ ] T043 [P] [US1] Extend the route-enumeration test in
+- [x] T043 [P] [US1] Extend the route-enumeration test in
       `backend/tests/integration/test_auth.py` so every new import route returns 401 unauthenticated
       and 404 — **not 403** — for another user's import (FR-019, contracts/http-api.md)
 
 ### Behaviour — implementation
 
-- [ ] T044 [US1] Create `backend/src/careerhq/application/extract_resume.py`: store the upload,
+- [x] T044 [US1] Create `backend/src/careerhq/application/extract_resume.py`: store the upload,
       extract text, call the seam, persist the staged `ImportedResume` and its items with the usage
       record
-- [ ] T045 [US1] Create `backend/src/careerhq/application/approve_import.py`: write accepted items
+- [x] T045 [US1] Create `backend/src/careerhq/application/approve_import.py`: write accepted items
       to the profile and create the Master Resume **in one transaction** (FR-023, R6)
-- [ ] T046 [US1] Create `backend/src/careerhq/api/routes/imports.py` with the endpoints in
+- [x] T046 [US1] Create `backend/src/careerhq/api/routes/imports.py` with the endpoints in
       [contracts/http-api.md](./contracts/http-api.md), including the 503 that names the missing
       provider setting (FR-028)
-- [ ] T047 [US1] Test in `backend/tests/unit/test_logging.py`: an import failure's log record
+- [x] T047 [US1] Test in `backend/tests/unit/test_logging.py`: an import failure's log record
       carries its diagnostic detail in **structured fields**, and the message string carries none of
       it (FR-022). Slice 002 established that the deployed platform discards message text entirely,
       so anything needed to debug a production import failure has to survive in `extra={…}`.
       **Correct red**: the fields are absent because nothing populates them yet
-- [ ] T048 [US1] Confirm backend gates pass and coverage holds at ≥80%
+- [x] T048 [US1] Confirm backend gates pass and coverage holds at ≥80%
 
 ### The check that keeps the suite honest
 
-- [ ] T049 [US1] **Run the full suite with `ANTHROPIC_API_KEY` and `AI_PROVIDER` unset**, and
+- [x] T049 [US1] **Run the full suite with `ANTHROPIC_API_KEY` and `AI_PROVIDER` unset**, and
       confirm it passes. Verify by unsetting them rather than by assuming the fake was used —
       FR-027 exists so CI never depends on a provider being reachable, and the only way to know is
       to remove the key and watch. **Failure looks like**: a hang, a network error, or a skip

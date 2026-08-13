@@ -65,11 +65,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         max_age=600,  # the sign-in round trip, not the user's session
     )
 
-    from careerhq.api.routes import auth, health, profile
+    from careerhq.api.routes import auth, health, imports, profile
 
     app.include_router(health.router, prefix="/api")
     app.include_router(auth.router, prefix="/api")
     app.include_router(profile.router, prefix="/api")
+    app.include_router(imports.router, prefix="/api")
 
     return app
 

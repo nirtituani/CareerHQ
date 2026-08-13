@@ -17,8 +17,39 @@ why the re-exports are load-bearing rather than a convenience.
 """
 
 from careerhq.domain.models.identity import ProfessionalProfile, User
+from careerhq.domain.models.imports import ExtractionItem, ImportedResume
+from careerhq.domain.models.profile import (
+    Certification,
+    ContactInformation,
+    Education,
+    ExperienceBullet,
+    Language,
+    ProfessionalTitle,
+    Project,
+    ResumeProfile,
+    Skill,
+    SummaryBlock,
+    WorkExperience,
+)
+from careerhq.domain.models.provenance import ImportStatus, ItemDecision, Source
 
 __all__ = [
+    "Certification",
+    "ContactInformation",
+    "Education",
+    "ExperienceBullet",
+    "ExtractionItem",
+    "ImportStatus",
+    "ImportedResume",
+    "ItemDecision",
+    "Language",
     "ProfessionalProfile",
+    "ProfessionalTitle",
+    "Project",
+    "ResumeProfile",
+    "Skill",
+    "Source",
+    "SummaryBlock",
     "User",
+    "WorkExperience",
 ]
