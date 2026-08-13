@@ -136,8 +136,14 @@ minimal Application entity holds jobs and their descriptions, seeded by importin
 [JobTracker](https://github.com/nirtituani/job-tracker-web).
 
 **Why third**: The tailoring agent needs a structured profile to tailor and a job description to
-tailor against. This slice produces both, and nothing in it requires an agent loop — it is the
-last purely deterministic work before the flagship.
+tailor against. This slice produces both, and nothing in it requires an agent loop.
+
+It is **not**, however, purely deterministic — an earlier version of this line said it was.
+Slice 003's spec (D1) resolved CV extraction to a single structured-output LLM call behind an AI
+Gateway seam, because deterministic parsing of a PDF would have forced the extraction-quality
+target down rather than met it, and would likely have been rebuilt in 004 regardless. One typed,
+schema-validated call is not an agent loop: no planning, no tool use, no self-critique, no
+iteration. The seam it introduces is the one slice 004 extends rather than invents.
 
 **Why import rather than a builder**: A guided from-scratch resume builder is roughly forty
 settings and several weeks of interface work that demonstrates none of the project requirements.
