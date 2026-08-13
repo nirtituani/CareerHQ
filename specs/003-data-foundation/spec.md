@@ -89,6 +89,11 @@ description intact.
    or retrieve the other's
 4. **Given** an application, **When** its status changes, **Then** the change is recorded in an
    append-only history
+5. **Given** an application in the list, **When** the user opens it, **Then** a detail view shows
+   every stored field — including the full job description text, not a link to it
+6. **Given** the detail view, **When** the user looks for analysis that later slices produce,
+   **Then** the panels for it are present and visibly empty with an explanation, rather than
+   absent — the view is the destination those slices fill
 
 ---
 
@@ -185,6 +190,12 @@ independently, and that re-running it does not duplicate anything.
 - **FR-013**: User-facing status labels MUST map to normalized analytics categories
 - **FR-014**: Applications MUST reference exactly one company, and repeated references to the same
   company MUST resolve to one company record rather than duplicates
+- **FR-030**: The system MUST provide an application detail view rendering every stored field,
+  including the job description text in full. It MUST include **named, visibly empty slots** for
+  the analysis later slices produce — job-requirement extraction and match score (slice 004/005)
+  and company research (slice 006) — each explaining that the capability is not built yet.
+  The slots MUST be empty in this slice: rendering stored data is deterministic, and producing
+  that analysis is not (see Out of Scope)
 
 **JobTracker import**
 
@@ -363,6 +374,15 @@ Stated so the slice cannot drift into the flagship.
 - Any LangGraph workflow, self-critique, Reviewer, or multi-step agent loop — slice 004. The
   single extraction call of FR-024 is the **only** model call in this slice; a second one, or any
   iteration over the first, is slice 004 work arriving early
+- **Summarizing a job description, or extracting its requirements** — that is slice 004's
+  "Analyze Job Description" node, and doing it here would be the second model call the line above
+  forbids. FR-030's detail view holds the slot; slice 004 fills it
+- **Fetching a job description from its URL.** JobTracker stores `job_desc_link`, and retrieving
+  it would turn imported applications into tailorable ones — but postings expire, the major boards
+  block automated fetching, and web retrieval belongs to slice 006, where it runs over an MCP and
+  produces citation-preserving snapshots. The best-targeted version, if wanted later, is an
+  on-demand fetch for `Pre-Applied` rows, whose postings are most likely still live and which are
+  exactly the ones worth tailoring for
 - Tailoring a resume to a job description, diffing, or item-level approval of AI output — slice 004
 - Embeddings, chunking, pgvector retrieval, or the Knowledge Context — slice 004
 - PDF export of a resume, and the Submitted Resume immutability path — slice 004

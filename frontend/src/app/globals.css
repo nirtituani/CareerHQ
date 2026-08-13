@@ -1,39 +1,133 @@
 @import "tailwindcss";
 
 /*
+ * CareerHQ design tokens. See docs/09_Design_Language.md for the reasoning —
+ * this file is the implementation, that document is the argument.
+ *
  * Tailwind 4 configures the design system in CSS via @theme — there is no
  * tailwind.config.js. Each custom property here generates the matching utility
  * classes (e.g. --color-brand-600 produces bg-brand-600, text-brand-600, …).
+ *
+ * Two rules this file exists to enforce:
+ *   1. Colour is never the only carrier of meaning. Provenance and confidence
+ *      each have a non-colour channel — see the --rule-* and --provenance-*
+ *      tokens, and the patterns in the design document.
+ *   2. A rejected application is NOT an error. It is one of the commonest
+ *      outcomes of a job search, and painting a third of the list red would
+ *      make an ordinary week look like a catastrophe. Outcome colours are
+ *      neutral; red is reserved for things that actually failed.
  */
-@theme {
-  --color-brand-50: oklch(0.977 0.013 180);
-  --color-brand-100: oklch(0.947 0.03 180);
-  --color-brand-200: oklch(0.895 0.055 180);
-  --color-brand-300: oklch(0.825 0.083 180);
-  --color-brand-400: oklch(0.74 0.098 180);
-  --color-brand-500: oklch(0.66 0.1 180);
-  --color-brand-600: oklch(0.56 0.09 180);
-  --color-brand-700: oklch(0.46 0.075 180);
-  --color-brand-800: oklch(0.38 0.06 180);
-  --color-brand-900: oklch(0.32 0.048 180);
 
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+@theme {
+  /* -- Typeface roles -------------------------------------------------------
+   * Wired up with next/font in layout.tsx, which sets these variables.
+   *   display — Fraunces. A variable serif with real character, used for page
+   *             titles, the wordmark and large figures. Sparing: it supplies
+   *             warmth to a tool that is otherwise about records, because the
+   *             records happen to be someone's career.
+   *   sans    — IBM Plex Sans. Drawn for technical work, legible at the small
+   *             sizes a 96-row table needs, and unlike Inter it has a voice.
+   *   mono    — IBM Plex Mono. Same family, so it sits beside the body text
+   *             without argument. Used for data quoted verbatim: dates, ids,
+   *             confidence values, provenance labels.
+   */
+  /* Each var() carries its own fallback: until layout.tsx wires next/font the
+     variables are undefined, and a bare var() would be invalid at computed-value
+     time — which silently drops font-family altogether rather than falling back. */
+  --font-display: var(--font-fraunces, Georgia), "Times New Roman", serif;
+  --font-sans: var(--font-plex-sans, ui-sans-serif), system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono, ui-monospace), "SF Mono", Menlo, monospace;
+
+  /* -- Brand ----------------------------------------------------------------
+   * Deep teal. Carried over from slice 001 and refined: hue nudged off pure
+   * cyan and chroma raised through the mid range so it reads as considered
+   * rather than default-bootstrap.
+   */
+  --color-brand-50: oklch(0.979 0.014 186);
+  --color-brand-100: oklch(0.949 0.033 186);
+  --color-brand-200: oklch(0.897 0.062 186);
+  --color-brand-300: oklch(0.826 0.09 186);
+  --color-brand-400: oklch(0.735 0.104 186);
+  --color-brand-500: oklch(0.641 0.108 186);
+  --color-brand-600: oklch(0.548 0.098 186);
+  --color-brand-700: oklch(0.458 0.082 186);
+  --color-brand-800: oklch(0.378 0.066 186);
+  --color-brand-900: oklch(0.312 0.052 186);
+
+  /* -- Outcome colours ------------------------------------------------------
+   * One per normalized application status. Deliberately low-drama: these
+   * appear ~96 times on one screen, and a palette that shouts at that
+   * frequency is unusable. Rejected/ghosted/withdrawn are neutral by
+   * intent — see the header note.
+   */
+  --color-outcome-wishlist: oklch(0.62 0.12 62);    /* amber — not yet acted on */
+  --color-outcome-applied: oklch(0.58 0.1 186);     /* brand teal — in flight  */
+  --color-outcome-interviewing: oklch(0.56 0.15 295); /* violet — the good part */
+  --color-outcome-offer: oklch(0.58 0.14 155);      /* green — the best part   */
+  --color-outcome-closed: oklch(0.55 0.012 250);    /* neutral — rejected,
+                                                       ghosted, withdrawn     */
+  --color-outcome-other: oklch(0.55 0.012 250);     /* unrecognised label      */
+
+  /* -- Signal colours -------------------------------------------------------
+   * Reserved. `failure` means something broke; it never describes an outcome
+   * of a job search.
+   */
+  --color-attention: oklch(0.72 0.14 75);
+  --color-failure: oklch(0.58 0.19 27);
+  --color-fixture: oklch(0.6 0.16 320);  /* demo/canned data — must never be
+                                            mistaken for a real extraction   */
+
+  /* -- Density --------------------------------------------------------------
+   * A 96-row table is a reading surface, not a form. These are the two heights
+   * everything in a table row is measured against.
+   */
+  --spacing-row: 2.75rem;      /* 44px — comfortable at a glance, still dense */
+  --spacing-row-compact: 2rem; /* 32px — a reviewed, collapsed import item    */
 }
 
+/* -- Semantic surface layer ---------------------------------------------------
+ * Light is the default and the one designed first: this is a tool people use
+ * in daylight, at work, for long sessions. Dark follows the system setting.
+ */
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.21 0.006 285);
-  --muted: oklch(0.55 0.014 285);
-  --border: oklch(0.92 0.004 285);
+  --background: oklch(0.986 0.003 200);   /* faintly cool paper, not pure white */
+  --surface: oklch(1 0 0);                /* cards and table bodies lift off it  */
+  --surface-sunken: oklch(0.965 0.004 210); /* wells, code, job description text */
+  --foreground: oklch(0.22 0.012 250);
+  --muted: oklch(0.52 0.012 250);
+  --faint: oklch(0.68 0.01 250);
+  --border: oklch(0.915 0.005 240);
+  --border-strong: oklch(0.84 0.008 240);
+  --focus: oklch(0.548 0.098 186);
+
+  /* Provenance line treatment. The non-colour channel: dashed reads as
+     provisional, solid as affirmed, and that distinction survives greyscale,
+     colour blindness and a bad monitor. */
+  --rule-extracted: 2px dashed var(--border-strong);
+  --rule-corrected: 2px solid var(--color-brand-600);
+  --rule-added: 2px solid var(--muted);
+
+  --shadow-card: 0 1px 2px oklch(0.22 0.012 250 / 0.05),
+                 0 1px 3px oklch(0.22 0.012 250 / 0.04);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: oklch(0.16 0.004 285);
-    --foreground: oklch(0.97 0.001 285);
-    --muted: oklch(0.65 0.012 285);
-    --border: oklch(0.28 0.006 285);
+    --background: oklch(0.168 0.008 250);
+    --surface: oklch(0.208 0.009 250);
+    --surface-sunken: oklch(0.145 0.007 250);
+    --foreground: oklch(0.96 0.002 250);
+    --muted: oklch(0.68 0.01 250);
+    --faint: oklch(0.55 0.012 250);
+    --border: oklch(0.29 0.01 250);
+    --border-strong: oklch(0.38 0.012 250);
+    --focus: oklch(0.641 0.108 186);
+
+    --rule-extracted: 2px dashed var(--border-strong);
+    --rule-corrected: 2px solid var(--color-brand-400);
+    --rule-added: 2px solid var(--muted);
+
+    --shadow-card: 0 1px 2px oklch(0 0 0 / 0.3), 0 1px 3px oklch(0 0 0 / 0.2);
   }
 }
 
@@ -42,4 +136,29 @@ body {
   color: var(--foreground);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Numerals line up in columns. Non-negotiable for a table of dates and
+   percentages — proportional figures make a numeric column look broken. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* One focus treatment everywhere, visible against both grounds. Radix handles
+   focus *behaviour*; this is what it looks like. */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
