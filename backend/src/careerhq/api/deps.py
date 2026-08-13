@@ -10,9 +10,11 @@ from fastapi import Cookie, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from careerhq.config import Settings, get_settings
+from careerhq.application.ports import StructuredCompletion
+from careerhq.config import DependencyNotConfiguredError, Settings, get_settings
 from careerhq.domain.models import ProfessionalProfile, User
 from careerhq.domain.schemas import GoogleClaims
+from careerhq.infrastructure.ai import build_completion_client
 from careerhq.infrastructure.database import get_db
 from careerhq.infrastructure.security import SESSION_COOKIE, read_session_token
 
@@ -106,6 +108,48 @@ async def get_verified_google_claims(
 
 
 VerifiedClaims = Annotated[GoogleClaims | None, Depends(get_verified_google_claims)]
+
+
+def get_structured_completion() -> StructuredCompletion:
+    """Resolve the completion adapter — **the seam** for slice 003 and 004.
+
+    Deliberately the same shape as `get_verified_google_claims` above, and for
+    the same reason: overriding one dependency lets the whole flow be exercised
+    with only the provider call removed. That is what makes the suite run with
+    no API key and no network (FR-027, obligation O6), and it is why slice 001's
+    sign-in tests are deterministic.
+
+    An unconfigured provider raises 503 naming the setting rather than crashing
+    at startup or degrading to an empty extraction (FR-028, O7). Absence is a
+    legitimate deployment state — `docker compose up` works on a clean clone
+    before any provider account exists — so it must fail here, at the point of
+    use, and say what is missing.
+    """
+    try:
+        provider = build_completion_client()
+    except DependencyNotConfiguredError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+
+    if provider == "fixture":
+        # Imported here rather than at module scope so the fixture adapter is
+        # not part of the import graph of a production process that never uses
+        # it.
+        from careerhq.infrastructure.ai.fixture_gateway import FixtureGateway
+
+        return FixtureGateway()
+
+    # Lazily imported because it pulls in litellm, which is heavy. Readiness
+    # imports this module on every check and must not pay for a provider SDK it
+    # is not going to call.
+    from careerhq.infrastructure.ai.litellm_gateway import LiteLLMGateway
+
+    return LiteLLMGateway()
+
+
+CompletionClient = Annotated[StructuredCompletion, Depends(get_structured_completion)]
 
 
 async def get_current_user(

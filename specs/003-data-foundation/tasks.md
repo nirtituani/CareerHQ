@@ -131,37 +131,37 @@ produces exactly one profile and one Master Resume.
 
 ### The seam — tests first (contracts/extraction-seam.md)
 
-- [ ] T014 [P] [US1] Test in `backend/tests/unit/test_ports.py`: `StructuredCompletion.complete`
+- [x] T014 [P] [US1] Test in `backend/tests/unit/test_ports.py`: `StructuredCompletion.complete`
       requires a `schema` and returns a `Completion` whose `.value` is an instance of it.
       **Correct red**: `ImportError` — `application/ports.py` does not exist (obligation O1)
-- [ ] T015 [P] [US1] Test in `backend/tests/unit/test_ports.py`: the returned `Completion.usage`
+- [x] T015 [P] [US1] Test in `backend/tests/unit/test_ports.py`: the returned `Completion.usage`
       carries model, input tokens, output tokens and cost. **Correct red**: `ImportError` (O4,
       FR-026)
-- [ ] T016 [P] [US1] Test in `backend/tests/unit/test_extraction_gateway.py`: output failing schema
+- [x] T016 [P] [US1] Test in `backend/tests/unit/test_extraction_gateway.py`: output failing schema
       validation raises rather than returning partial data. **Correct red**: `ImportError` (O2,
       FR-025)
-- [ ] T017 [P] [US1] Test in `backend/tests/unit/test_extraction_gateway.py`: model selection
+- [x] T017 [P] [US1] Test in `backend/tests/unit/test_extraction_gateway.py`: model selection
       resolves from the **task name**, and two different task names can resolve to two different
       models. This is what makes docs/08 §3.2.3 expressible in slice 004 — assert it now, while the
       seam has one caller and is cheap to change (O3)
-- [ ] T018 [P] [US1] Test in `backend/tests/unit/test_extraction_gateway.py`: `FixtureGateway`
+- [x] T018 [P] [US1] Test in `backend/tests/unit/test_extraction_gateway.py`: `FixtureGateway`
       returns `usage.is_fixture = True`, and the real adapter returns `False`. **Correct red**:
       `ImportError` (R3)
 
 ### The seam — implementation
 
-- [ ] T019 [US1] Create `backend/src/careerhq/application/ports.py` with the
+- [x] T019 [US1] Create `backend/src/careerhq/application/ports.py` with the
       `StructuredCompletion` Protocol, `Completion[T]` and `Usage`, exactly as
       [contracts/extraction-seam.md](./contracts/extraction-seam.md) specifies. This file is what
       slice 004 inherits — the contract document is the spec, not this task's description
-- [ ] T020 [US1] Create `backend/src/careerhq/infrastructure/ai/litellm_gateway.py` implementing the
+- [x] T020 [US1] Create `backend/src/careerhq/infrastructure/ai/litellm_gateway.py` implementing the
       Protocol over LiteLLM. **This must be the only module in the codebase that imports
       `litellm`** (O5)
-- [ ] T021 [P] [US1] Create `backend/src/careerhq/infrastructure/ai/fixture_gateway.py` returning
+- [x] T021 [P] [US1] Create `backend/src/careerhq/infrastructure/ai/fixture_gateway.py` returning
       canned structured values with `is_fixture = True`. Selected **only** by an explicit
       `AI_PROVIDER=fixture` — never by the absence of a key, because silently returning canned data
       would mean a user uploads their real CV and reviews invented content (R3)
-- [ ] T022 [US1] Add `get_structured_completion` to `backend/src/careerhq/api/deps.py`, resolving
+- [x] T022 [US1] Add `get_structured_completion` to `backend/src/careerhq/api/deps.py`, resolving
       the adapter from configuration and raising a named error when unconfigured. Follow the
       `get_verified_google_claims` pattern — its docstring already calls itself "the seam", and this
       is the same shape for the same reason (O6, O7)
@@ -196,10 +196,13 @@ produces exactly one profile and one Master Resume.
 - [ ] T031 [P] [US1] Test in `backend/tests/integration/test_import_flow.py`: after upload and
       extraction, the profile is still **empty**. This is the whole point of staging — if it fails,
       Principle II is not being enforced (FR-003, FR-007)
-- [ ] T032 [US1] Test in `backend/tests/unit/test_architecture.py`: **`litellm` is imported by
+- [x] T032 [US1] Test in `backend/tests/unit/test_architecture.py`: **`litellm` is imported by
       exactly one module**, `infrastructure/ai/litellm_gateway.py`. Walk the source tree and assert
       it. Principle V says business domains must not call AI providers; this is what turns that from
-      a rule someone remembers into a property of the import graph (O5)
+      a rule someone remembers into a property of the import graph (O5). **Done, and watched
+      failing**: a `litellm` import planted in `application/provision_user.py` was caught by two
+      tests naming the offending file, then removed. Also asserts `domain/` imports no framework or
+      provider code, and `application/` imports no adapter
 - [ ] T033 [US1] Test in `backend/tests/unit/test_architecture.py`: `storage_key` is read by
       exactly one module. FR-006 and ADR-013 both rest on the uploaded file never becoming a source
       of truth, and that is a claim about what does **not** read it — so it needs asserting the same
