@@ -493,3 +493,67 @@ async def test_a_new_achievement_attaches_to_the_role_already_on_the_profile(
         "Led the ledger migration.",
         "Shipped the reconciliation service.",
     ]
+
+
+async def test_a_corrected_summary_survives_a_later_import(
+    app: Any, client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    """FR-009: a verified fact is never silently overwritten.
+
+    Contact and summary are single-valued, so a later CV replaces them — which
+    is right when the value came from an extraction nobody checked, and wrong
+    when the user rewrote it. A summary is among the most likely things a person
+    edits by hand and the least likely thing they expect a stale CV to erase.
+
+    Before this, re-importing replaced a corrected summary silently and the user
+    had no way to know it had happened.
+    """
+    from careerhq.domain.models import SummaryBlock
+
+    await _sign_in(db_session, client)
+    _stub_completion(
+        app, _Stub(payload={**RICH_EXTRACTION, "summary": {"text": "First", "confidence": 0.9}})
+    )
+    first = (await _upload(client)).json()["id"]
+    await client.post(f"/api/imports/{first}/approve")
+
+    stored = (await db_session.scalars(select(SummaryBlock))).all()
+    stored[0].text = "The summary I wrote myself"
+    stored[0].source = Source.USER_CORRECTED
+    await db_session.commit()
+
+    _stub_completion(
+        app, _Stub(payload={**RICH_EXTRACTION, "summary": {"text": "Second", "confidence": 0.9}})
+    )
+    second = (await _upload(client)).json()["id"]
+    assert (await client.post(f"/api/imports/{second}/approve")).status_code == 200
+
+    after = (await db_session.scalars(select(SummaryBlock))).all()
+    assert [s.text for s in after] == ["The summary I wrote myself"]
+    assert after[0].source == Source.USER_CORRECTED
+
+
+async def test_an_untouched_summary_is_replaced_by_a_newer_cv(
+    app: Any, client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    """The other half: replacing is correct when nobody verified the old value.
+
+    Otherwise the first CV ever imported would pin the summary forever.
+    """
+    from careerhq.domain.models import SummaryBlock
+
+    await _sign_in(db_session, client)
+    _stub_completion(
+        app, _Stub(payload={**RICH_EXTRACTION, "summary": {"text": "First", "confidence": 0.9}})
+    )
+    first = (await _upload(client)).json()["id"]
+    await client.post(f"/api/imports/{first}/approve")
+
+    _stub_completion(
+        app, _Stub(payload={**RICH_EXTRACTION, "summary": {"text": "Second", "confidence": 0.9}})
+    )
+    second = (await _upload(client)).json()["id"]
+    await client.post(f"/api/imports/{second}/approve")
+
+    after = (await db_session.scalars(select(SummaryBlock))).all()
+    assert [s.text for s in after] == ["Second"]
