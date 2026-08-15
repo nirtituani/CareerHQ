@@ -73,6 +73,9 @@ async def read_profile_content(profile: CurrentProfile, session: DbSession) -> d
                 "email": c.email,
                 "phone": c.phone,
                 "location": c.location,
+                # Stored as newline-separated text; returned as a list so the
+                # interface does not have to know that.
+                "links": [line for line in (c.links or "").splitlines() if line.strip()],
                 "source": c.source,
             }
             for c in await _all(ContactInformation, ContactInformation.profile_id)
@@ -115,13 +118,21 @@ async def read_profile_content(profile: CurrentProfile, session: DbSession) -> d
                 "institution": e.institution,
                 "qualification": e.qualification,
                 "field_of_study": e.field_of_study,
+                "start_date": e.start_date,
                 "end_date": e.end_date,
+                "grade": e.grade,
                 "source": e.source,
             }
             for e in await _all(Education, Education.profile_id)
         ],
         "certifications": [
-            {"id": str(c.id), "name": c.name, "issuer": c.issuer, "source": c.source}
+            {
+                "id": str(c.id),
+                "name": c.name,
+                "issuer": c.issuer,
+                "year": c.year,
+                "source": c.source,
+            }
             for c in await _all(Certification, Certification.profile_id)
         ],
         "languages": [
