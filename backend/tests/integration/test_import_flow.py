@@ -557,3 +557,81 @@ async def test_an_untouched_summary_is_replaced_by_a_newer_cv(
 
     after = (await db_session.scalars(select(SummaryBlock))).all()
     assert [s.text for s in after] == ["Second"]
+
+
+# -- The second import: what is new, and what "add" then means ---------------
+
+
+async def test_a_second_import_marks_what_the_profile_already_holds(
+    app: Any, client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    """On a re-import, most items already exist and only the new ones matter.
+
+    Without this the second review is thirty-nine rows the user approved once
+    already, which is how a review stops being read.
+    """
+    await _sign_in(db_session, client)
+    _stub_completion(app, _Stub())
+    first = (await _upload(client)).json()["id"]
+    await client.post(f"/api/imports/{first}/approve")
+
+    updated = {
+        **RICH_EXTRACTION,
+        "skills": [{"name": "Python", "confidence": 0.9}, {"name": "Rust", "confidence": 0.9}],
+    }
+    _stub_completion(app, _Stub(payload=updated))
+    body = (await _upload(client)).json()
+
+    by_name = {
+        item["payload"].get("name"): item for item in body["items"] if item["kind"] == "skill"
+    }
+    assert by_name["Python"]["already_present"] is True
+    assert by_name["Rust"]["already_present"] is False
+
+
+async def test_an_untouched_review_adds_everything_not_discarded(
+    app: Any, client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    """First-import behaviour: thirty-nine confirmations of the obvious is not consent."""
+    await _sign_in(db_session, client)
+    _stub_completion(app, _Stub())
+    import_id = (await _upload(client)).json()["id"]
+
+    await client.post(f"/api/imports/{import_id}/approve")
+
+    assert (await db_session.scalar(select(func.count()).select_from(Skill))) == 1
+
+
+async def test_explicitly_adding_items_narrows_approval_to_those(
+    app: Any, client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    """Second-import behaviour: picking any item means "only these".
+
+    The mode is chosen by what the user did rather than by a setting, and the
+    interface names it in the button so the choice is visible rather than
+    inferred.
+    """
+    await _sign_in(db_session, client)
+    _stub_completion(
+        app,
+        _Stub(
+            payload={
+                **RICH_EXTRACTION,
+                "skills": [
+                    {"name": "Python", "confidence": 0.9},
+                    {"name": "Rust", "confidence": 0.9},
+                ],
+            }
+        ),
+    )
+    body = (await _upload(client)).json()
+    import_id = body["id"]
+    rust = next(i for i in body["items"] if i["payload"].get("name") == "Rust")
+
+    await client.patch(
+        f"/api/imports/{import_id}/items/{rust['id']}", json={"decision": "accepted"}
+    )
+    await client.post(f"/api/imports/{import_id}/approve")
+
+    names = sorted(s.name for s in (await db_session.scalars(select(Skill))).all())
+    assert names == ["Rust"], "only the explicitly added item lands"

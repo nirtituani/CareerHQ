@@ -13,6 +13,8 @@ export type ExtractionItem = {
   decision: Decision;
   ordinal: number;
   parent_id: string | null;
+  /** Whether the profile already holds this fact (second-import diff). */
+  already_present?: boolean;
 };
 
 export type ImportedResume = {
