@@ -24,6 +24,8 @@ from careerhq.application.approve_import import (
     AlreadyApprovedError,
     NothingAcceptedError,
     approve_import,
+    duplicate_key,
+    existing_keys,
 )
 from careerhq.application.extract_resume import ExtractionProducedNothingError, extract_resume
 from careerhq.domain.models import (
@@ -41,8 +43,14 @@ router = APIRouter(prefix="/imports", tags=["imports"])
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 
 
-def _item_out(item: ExtractionItem) -> dict[str, Any]:
+def _item_out(item: ExtractionItem, existing: set[str]) -> dict[str, Any]:
+    key = duplicate_key(item.kind, dict(item.payload))
     return {
+        # Whether the profile already holds this fact. On a second import most
+        # items are already there, and the few that are not are the only ones
+        # worth the reviewer's attention — showing thirty-nine rows they have
+        # approved once already is how a review stops being read.
+        "already_present": key is not None and key in existing,
         "id": str(item.id),
         "kind": item.kind,
         "payload": item.payload,
@@ -54,7 +62,7 @@ def _item_out(item: ExtractionItem) -> dict[str, Any]:
     }
 
 
-def _import_out(record: ImportedResume) -> dict[str, Any]:
+def _import_out(record: ImportedResume, existing: set[str]) -> dict[str, Any]:
     return {
         "id": str(record.id),
         "filename": record.filename,
@@ -66,7 +74,7 @@ def _import_out(record: ImportedResume) -> dict[str, Any]:
         "is_fixture": record.is_fixture,
         "model": record.model,
         "created_at": record.created_at.isoformat() if record.created_at else None,
-        "items": [_item_out(item) for item in record.items],
+        "items": [_item_out(item, existing) for item in record.items],
     }
 
 
@@ -91,6 +99,7 @@ async def upload_resume(
     session: DbSession,
     user: CurrentUser,
     completion: CompletionClient,
+    profile: Annotated[ProfessionalProfile, Depends(get_current_profile)],
     file: Annotated[UploadFile, File()],
 ) -> dict[str, Any]:
     """Stage an uploaded CV for review. **Writes nothing to the profile.**"""
@@ -126,12 +135,18 @@ async def upload_resume(
 
     await session.commit()
     await session.refresh(record, attribute_names=["items"])
-    return _import_out(record)
+    return _import_out(record, await existing_keys(session, profile.id))
 
 
 @router.get("/{import_id}", summary="A staged import, for review")
-async def get_import(import_id: uuid.UUID, session: DbSession, user: CurrentUser) -> dict[str, Any]:
-    return _import_out(await _owned(session, user, import_id))
+async def get_import(
+    import_id: uuid.UUID,
+    session: DbSession,
+    user: CurrentUser,
+    profile: Annotated[ProfessionalProfile, Depends(get_current_profile)],
+) -> dict[str, Any]:
+    record = await _owned(session, user, import_id)
+    return _import_out(record, await existing_keys(session, profile.id))
 
 
 @router.patch("/{import_id}/items/{item_id}", summary="Correct, accept or discard one item")
@@ -141,6 +156,7 @@ async def patch_item(
     body: dict[str, Any],
     session: DbSession,
     user: CurrentUser,
+    profile: Annotated[ProfessionalProfile, Depends(get_current_profile)],
 ) -> dict[str, Any]:
     """Update one staged item.
 
@@ -160,7 +176,7 @@ async def patch_item(
         item.decision = ItemDecision(body["decision"])
 
     await session.commit()
-    return _item_out(item)
+    return _item_out(item, await existing_keys(session, profile.id))
 
 
 @router.post("/{import_id}/approve", summary="Approve — the only path that writes the profile")

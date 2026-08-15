@@ -2,13 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { ItemActions } from "@/components/import-review/item-actions";
 import { ItemEditor } from "@/components/import-review/item-editor";
-import {
-  ConfidenceMeter,
-  LOW_CONFIDENCE,
-  ProvenanceLabel,
-  provenanceStyle,
-} from "@/components/provenance";
+import { ConfidenceMeter, LOW_CONFIDENCE, provenanceStyle } from "@/components/provenance";
 import { Button } from "@/components/ui/button";
 import {
   type Decision,
@@ -115,6 +111,15 @@ export function ImportReview({
     return () => window.removeEventListener("keydown", onKey);
   }, [cursor, decide, visible]);
 
+  const alreadyPresent = items.filter((i) => i.already_present).length;
+  const isRepeat = alreadyPresent > 0;
+  const newItems = items.filter((i) => !i.already_present);
+  //: Explicitly added items narrow approval to those; otherwise everything not
+  //: discarded is added. The button names whichever applies, so the mode is
+  //: read rather than inferred.
+  const selected = items.filter((i) => i.decision === "accepted").length;
+  const willAdd = selected > 0 ? selected : items.filter((i) => i.decision !== "discarded").length;
+
   const reviewed = items.filter((i) => i.decision !== "pending").length;
   const attention = items.filter(
     (i) => i.decision === "pending" && i.confidence < LOW_CONFIDENCE,
@@ -166,7 +171,9 @@ export function ImportReview({
               >
                 <span>{s.label}</span>
                 <span className="tabular text-xs" style={{ fontFamily: "var(--font-mono)" }}>
-                  {done}/{inSection.length}
+                  {isRepeat
+                    ? `${inSection.filter((i) => !i.already_present).length} new`
+                    : `${done}/${inSection.length}`}
                 </span>
               </button>
             );
@@ -207,33 +214,12 @@ export function ImportReview({
                         >
                           {describe(item).primary}
                         </span>
-                        <span className="flex shrink-0 items-center gap-2">
-                          <ConfidenceMeter value={item.confidence} />
-                          <ProvenanceLabel source={item.source} />
-                          {/* Grouped skills lost this when the grouping was
-                              added — a correction has to be possible wherever an
-                              item is shown, or the affordance depends on which
-                              section you happen to be in. */}
-                          <button
-                            className="text-xs underline underline-offset-2"
-                            style={{ color: "var(--muted)" }}
-                            onClick={() => setEditing(editing === item.id ? null : item.id)}
-                          >
-                            Edit
-                          </button>
-                          <button
-                            className="text-xs underline underline-offset-2"
-                            style={{ color: "var(--muted)" }}
-                            onClick={() =>
-                              void decide(
-                                item,
-                                item.decision === "discarded" ? "accepted" : "discarded",
-                              )
-                            }
-                          >
-                            {item.decision === "discarded" ? "Keep" : "Discard"}
-                          </button>
-                        </span>
+                        <ItemActions
+                          item={item}
+                          isRepeat={isRepeat}
+                          onDecide={(decision) => void decide(item, decision)}
+                          onEdit={() => setEditing(editing === item.id ? null : item.id)}
+                        />
                       </span>
                       {editing === item.id && (
                         <ItemEditor
@@ -261,7 +247,8 @@ export function ImportReview({
                 style={{
                   ...provenanceStyle(item.source),
                   background: index === cursor ? "var(--surface)" : undefined,
-                  opacity: item.decision === "discarded" ? 0.45 : 1,
+                  opacity:
+                    item.decision === "discarded" ? 0.45 : item.already_present ? 0.55 : 1,
                 }}
               >
                 <div className="flex items-start justify-between gap-4">
@@ -353,24 +340,12 @@ export function ImportReview({
                     )}
                   </div>
 
-                  <div className="flex shrink-0 items-center gap-3">
-                    <ConfidenceMeter value={item.confidence} />
-                    <ProvenanceLabel source={item.source} />
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => setEditing(editing === item.id ? null : item.id)}
-                    >
-                      Edit
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => void decide(item, "discarded")}
-                    >
-                      Discard
-                    </Button>
-                  </div>
+                  <ItemActions
+                    item={item}
+                    isRepeat={isRepeat}
+                    onDecide={(decision) => void decide(item, decision)}
+                    onEdit={() => setEditing(editing === item.id ? null : item.id)}
+                  />
                 </div>
               </li>
             );
@@ -383,10 +358,28 @@ export function ImportReview({
         style={{ borderColor: "var(--border)" }}
       >
         <p className="text-sm" style={{ color: "var(--muted)" }}>
-          <span className="tabular" style={{ fontFamily: "var(--font-mono)" }}>
-            {reviewed} of {items.length}
-          </span>{" "}
-          reviewed
+          {isRepeat ? (
+            <>
+              <span className="tabular" style={{ fontFamily: "var(--font-mono)" }}>
+                {alreadyPresent}
+              </span>{" "}
+              already in your profile ·{" "}
+              <span
+                className="tabular"
+                style={{ fontFamily: "var(--font-mono)", color: "var(--foreground)" }}
+              >
+                {newItems.length}
+              </span>{" "}
+              new
+            </>
+          ) : (
+            <>
+              <span className="tabular" style={{ fontFamily: "var(--font-mono)" }}>
+                {reviewed} of {items.length}
+              </span>{" "}
+              reviewed
+            </>
+          )}
           {attention > 0 && (
             <>
               {" · "}
@@ -407,7 +400,11 @@ export function ImportReview({
             void onApprove().finally(() => setBusy(false));
           }}
         >
-          {busy ? "Adding to profile…" : "Add to my profile"}
+          {busy
+            ? "Adding to profile…"
+            : selected > 0
+              ? `Add ${willAdd} selected to my profile`
+              : `Add ${willAdd} to my profile`}
         </Button>
       </div>
     </div>

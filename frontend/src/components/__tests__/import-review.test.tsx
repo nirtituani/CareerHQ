@@ -138,3 +138,58 @@ describe("correcting an item", () => {
     expect(screen.getByRole("button", { name: /save correction/i })).toBeInTheDocument();
   });
 });
+
+describe("a second import", () => {
+  function repeat(): ImportedResume {
+    const base = record();
+    return {
+      ...base,
+      items: [
+        { ...base.items[0], already_present: true },
+        { ...base.items[1], already_present: false },
+      ],
+    };
+  }
+
+  it("says what is already yours and what is new", () => {
+    // The phrase appears twice by design — once on each already-held row, once
+    // in the summary — so this asserts the rendered text rather than trying to
+    // single out an element, which was matching a section badge that happened
+    // to share a number.
+    const { container } = render(
+      <ImportReview record={repeat()} onPatch={vi.fn()} onApprove={vi.fn()} />,
+    );
+
+    const text = container.textContent ?? "";
+    expect(text).toMatch(/1\s*already in your profile/i);
+    expect(text).toMatch(/1\s*new/i);
+  });
+
+  it("offers Add only on items the profile does not have", () => {
+    // Showing Add on something already yours would invite a click that changes
+    // nothing, which is the contradiction the old Keep button had.
+    render(<ImportReview record={repeat()} onPatch={vi.fn()} onApprove={vi.fn()} />);
+
+    expect(screen.getAllByRole("button", { name: "Add" })).toHaveLength(1);
+  });
+
+  it("narrows the approval button once something is added", async () => {
+    const onPatch = vi.fn().mockResolvedValue(undefined);
+    render(<ImportReview record={repeat()} onPatch={onPatch} onApprove={vi.fn()} />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Add" }));
+
+    expect(
+      screen.getByRole("button", { name: /add 1 selected to my profile/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("offers no per-item Add on a first import", () => {
+    // On a first import people want the whole CV; thirty-nine confirmations of
+    // the obvious is an obstacle rather than consent.
+    render(<ImportReview record={record()} onPatch={vi.fn()} onApprove={vi.fn()} />);
+
+    expect(screen.queryByRole("button", { name: "Add" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /add 2 to my profile/i })).toBeInTheDocument();
+  });
+});

@@ -82,7 +82,20 @@ async def approve_import(
     if imported_resume.status == ImportStatus.APPROVED:
         raise AlreadyApprovedError("This import has already been approved.")
 
-    accepted = [item for item in imported_resume.items if item.decision != ItemDecision.DISCARDED]
+    # Two modes, and which one applies is decided by what the user actually did.
+    #
+    # On a first import people want the whole CV, so an untouched review means
+    # "add everything I did not discard" — thirty-nine confirmations of the
+    # obvious is not consent, it is an obstacle. On a second import the
+    # interesting items are the few that are new, so explicitly adding any of
+    # them switches the meaning to "only these".
+    #
+    # The interface names the active mode in the button rather than leaving it
+    # to be inferred: "Add all 39" or "Add 5 selected".
+    explicit = [i for i in imported_resume.items if i.decision == ItemDecision.ACCEPTED]
+    accepted = explicit or [
+        i for i in imported_resume.items if i.decision != ItemDecision.DISCARDED
+    ]
     if not accepted:
         raise NothingAcceptedError("Nothing was accepted, so there is nothing to approve.")
 
@@ -90,7 +103,7 @@ async def approve_import(
     # appending to it (FR-009): re-importing an updated CV is normal, and
     # without this every approval duplicated the entire profile — observed at
     # 66 skills, 27 bullets and three contact rows after three imports.
-    existing = await _existing_keys(session, profile_id)
+    existing = await existing_keys(session, profile_id)
 
     roles: dict[uuid.UUID, WorkExperience] = {}
     #: Roles already in the profile, so a re-import's bullets attach to the row
@@ -102,7 +115,7 @@ async def approve_import(
         payload = dict(item.payload)
         source = _source_of(item)
 
-        duplicate = _duplicate_key(item.kind, payload)
+        duplicate = duplicate_key(item.kind, payload)
         if duplicate is not None and duplicate in existing:
             skipped += 1
             if item.kind == "work_experience" and duplicate in known_roles:
@@ -336,7 +349,7 @@ async def _ensure_master_resume(session: AsyncSession, profile_id: uuid.UUID) ->
     return master
 
 
-def _duplicate_key(kind: str, payload: dict[str, object]) -> str | None:
+def duplicate_key(kind: str, payload: dict[str, object]) -> str | None:
     """The identity of a fact, for deciding whether the profile already has it.
 
     Returns `None` for kinds that are single-valued and handled by replacement
@@ -374,7 +387,7 @@ def _duplicate_key(kind: str, payload: dict[str, object]) -> str | None:
             return None
 
 
-async def _existing_keys(session: AsyncSession, profile_id: uuid.UUID) -> set[str]:
+async def existing_keys(session: AsyncSession, profile_id: uuid.UUID) -> set[str]:
     """Keys for everything the profile already holds."""
     keys: set[str] = set()
 
