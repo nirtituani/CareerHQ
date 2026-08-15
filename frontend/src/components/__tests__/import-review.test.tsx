@@ -18,7 +18,11 @@ function record(overrides: Partial<ImportedResume> = {}): ImportedResume {
       {
         id: "item-1",
         kind: "skill",
-        payload: { name: "Python" },
+        // Real payloads carry confidence inside, because they come from the
+        // extraction schema's model_dump(). The fixture matched the renderer
+        // rather than the data until a test needed a field the editor does not
+        // expose.
+        payload: { name: "Python", category: "Languages", confidence: 0.99 },
         confidence: 0.99,
         source: "extracted",
         decision: "pending",
@@ -28,7 +32,7 @@ function record(overrides: Partial<ImportedResume> = {}): ImportedResume {
       {
         id: "item-2",
         kind: "skill",
-        payload: { name: "Go" },
+        payload: { name: "Go", category: "Languages", confidence: 0.3 },
         confidence: 0.3,
         source: "extracted",
         decision: "pending",
@@ -88,5 +92,49 @@ describe("ImportReview", () => {
     await userEvent.type(screen.getByLabelText("somewhere to type"), "ad");
 
     expect(onPatch).not.toHaveBeenCalled();
+  });
+});
+
+describe("correcting an item", () => {
+  it("sends the edited payload and marks it corrected", async () => {
+    // FR-003 asks for review, *correction* and approval. Until this existed the
+    // screen offered only keep and discard, so `user_corrected` was unreachable
+    // and every fact in a profile reported the same provenance forever.
+    const onPatch = vi.fn().mockResolvedValue(undefined);
+    render(<ImportReview record={record()} onPatch={onPatch} onApprove={vi.fn()} />);
+
+    await userEvent.click(screen.getAllByRole("button", { name: "Edit" })[0]);
+
+    const field = screen.getByLabelText("Skill");
+    await userEvent.clear(field);
+    await userEvent.type(field, "Rust");
+    await userEvent.click(screen.getByRole("button", { name: /save correction/i }));
+
+    expect(onPatch).toHaveBeenCalledWith(
+      "item-1",
+      expect.objectContaining({ payload: expect.objectContaining({ name: "Rust" }) }),
+    );
+    expect(screen.getByText("CORRECTED")).toBeInTheDocument();
+  });
+
+  it("preserves fields the editor does not expose", async () => {
+    // Confidence is not the user's to rewrite, and dropping it on save would
+    // lose something the extraction produced.
+    const onPatch = vi.fn().mockResolvedValue(undefined);
+    render(<ImportReview record={record()} onPatch={onPatch} onApprove={vi.fn()} />);
+
+    await userEvent.click(screen.getAllByRole("button", { name: "Edit" })[0]);
+    await userEvent.click(screen.getByRole("button", { name: /save correction/i }));
+
+    const [, body] = onPatch.mock.calls[0] as [string, { payload: Record<string, unknown> }];
+    expect(body.payload).toHaveProperty("confidence");
+  });
+
+  it("opens the editor from the keyboard", async () => {
+    render(<ImportReview record={record()} onPatch={vi.fn()} onApprove={vi.fn()} />);
+
+    await userEvent.keyboard("e");
+
+    expect(screen.getByRole("button", { name: /save correction/i })).toBeInTheDocument();
   });
 });

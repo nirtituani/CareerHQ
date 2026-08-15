@@ -163,3 +163,74 @@ export function groupByCategory(items: ExtractionItem[]): [string | null, Extrac
   // The caller renders a null category as no heading at all.
   return [...groups.entries()];
 }
+
+/**
+ * The fields a reviewer can correct, per kind.
+ *
+ * FR-003 asks for "review, **correction**, and approval". Until this existed
+ * the screen offered only keep and discard, so a wrong value could be thrown
+ * away but never fixed — and `user_corrected` was unreachable, which made the
+ * whole provenance system report the same answer for every fact ever imported.
+ *
+ * Confidence and internal keys are deliberately absent: the model's own
+ * certainty is not the user's to rewrite, and a corrected value carries its own
+ * meaning through provenance instead.
+ */
+export type EditableField = { key: string; label: string; multiline?: boolean };
+
+export const EDITABLE_FIELDS: Record<string, EditableField[]> = {
+  contact: [
+    { key: "full_name", label: "Name" },
+    { key: "email", label: "Email" },
+    { key: "phone", label: "Phone" },
+    { key: "location", label: "Location" },
+  ],
+  title: [{ key: "title", label: "Title" }],
+  summary: [{ key: "text", label: "Summary", multiline: true }],
+  work_experience: [
+    { key: "title", label: "Job title" },
+    { key: "company", label: "Company" },
+    { key: "location", label: "Location" },
+    { key: "start_date", label: "Start" },
+    { key: "end_date", label: "End" },
+  ],
+  bullet: [{ key: "text", label: "Achievement", multiline: true }],
+  skill: [
+    { key: "name", label: "Skill" },
+    { key: "category", label: "Category" },
+  ],
+  project: [
+    { key: "name", label: "Project" },
+    { key: "description", label: "Description", multiline: true },
+    { key: "url", label: "Link" },
+  ],
+  education: [
+    { key: "qualification", label: "Qualification" },
+    { key: "field_of_study", label: "Field of study" },
+    { key: "institution", label: "Institution" },
+    { key: "start_date", label: "Start" },
+    { key: "end_date", label: "End" },
+    { key: "grade", label: "Grade" },
+  ],
+  certification: [
+    { key: "name", label: "Certification" },
+    { key: "issuer", label: "Issuer" },
+    { key: "year", label: "Year" },
+  ],
+  language: [
+    { key: "name", label: "Language" },
+    { key: "proficiency", label: "Proficiency" },
+  ],
+  military_service: [
+    { key: "role", label: "Role" },
+    { key: "branch", label: "Branch" },
+    { key: "start_date", label: "Start" },
+    { key: "end_date", label: "End" },
+  ],
+  volunteer: [
+    { key: "role", label: "Role" },
+    { key: "organisation", label: "Organisation" },
+    { key: "start_date", label: "Start" },
+    { key: "end_date", label: "End" },
+  ],
+};
