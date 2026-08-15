@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from careerhq.api.deps import get_structured_completion
 from careerhq.application.ports import Completion, Usage
 from careerhq.domain.models import (
+    ExperienceBullet,
     ImportedResume,
     ImportStatus,
     ResumeProfile,
@@ -377,3 +378,118 @@ async def test_import_routes_require_authentication(client: httpx.AsyncClient) -
     client.cookies.clear()
     assert (await _upload(client)).status_code == 401
     assert (await client.get(f"/api/imports/{uuid.uuid4()}")).status_code == 401
+
+
+# -- FR-009: a second import merges, it does not duplicate -------------------
+
+
+async def test_reimporting_the_same_cv_adds_nothing(
+    app: Any, client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    """The bug this file most needed and did not have.
+
+    Approving three imports of one CV produced 66 skills, 27 bullets and three
+    contact rows on a real profile. FR-009 requires a subsequent import to be
+    merged rather than appended, and only the "no second profile" half had been
+    implemented — so nothing failed, and the profile quietly became three copies
+    of itself.
+    """
+    await _sign_in(db_session, client)
+    _stub_completion(app, _Stub())
+
+    first = (await _upload(client)).json()["id"]
+    await client.post(f"/api/imports/{first}/approve")
+    after_first = await _profile_counts(db_session)
+
+    second = (await _upload(client)).json()["id"]
+    assert (await client.post(f"/api/imports/{second}/approve")).status_code == 200
+
+    assert await _profile_counts(db_session) == after_first, (
+        "re-importing the same CV must add nothing"
+    )
+
+    bullets = await db_session.scalar(select(func.count()).select_from(ExperienceBullet))
+    assert bullets == 2, "the same achievements must not be recorded twice"
+
+
+async def test_a_second_import_adds_only_what_is_new(
+    app: Any, client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    """An updated CV is the realistic case, not an identical one."""
+    await _sign_in(db_session, client)
+    _stub_completion(app, _Stub())
+    first = (await _upload(client)).json()["id"]
+    await client.post(f"/api/imports/{first}/approve")
+
+    updated = {
+        **RICH_EXTRACTION,
+        "skills": [
+            {"name": "Python", "confidence": 0.99},
+            {"name": "Rust", "confidence": 0.9},
+        ],
+    }
+    _stub_completion(app, _Stub(payload=updated))
+    second = (await _upload(client)).json()["id"]
+    await client.post(f"/api/imports/{second}/approve")
+
+    names = sorted(s.name for s in (await db_session.scalars(select(Skill))).all())
+    assert names == ["Python", "Rust"], "the new skill lands, the existing one is not doubled"
+
+
+async def test_contact_and_summary_are_single_valued(
+    app: Any, client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    """A person has one set of contact details. A newer CV supersedes the older."""
+    from careerhq.domain.models import ContactInformation, SummaryBlock
+
+    await _sign_in(db_session, client)
+    _stub_completion(app, _Stub())
+    for _ in range(2):
+        import_id = (await _upload(client)).json()["id"]
+        await client.post(f"/api/imports/{import_id}/approve")
+
+    contacts = await db_session.scalar(select(func.count()).select_from(ContactInformation))
+    summaries = await db_session.scalar(select(func.count()).select_from(SummaryBlock))
+    assert (contacts, summaries) == (1, 1)
+
+
+async def test_a_new_achievement_attaches_to_the_role_already_on_the_profile(
+    app: Any, client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    """The case that would otherwise orphan a bullet.
+
+    An updated CV repeats the job you are still in and adds an achievement to
+    it. The role is skipped as a duplicate, so its new bullet needs the role
+    already on the profile to attach to — or it is silently dropped.
+    """
+    await _sign_in(db_session, client)
+    _stub_completion(app, _Stub())
+    first = (await _upload(client)).json()["id"]
+    await client.post(f"/api/imports/{first}/approve")
+
+    grown = {
+        **RICH_EXTRACTION,
+        "work_experience": [
+            {
+                **RICH_EXTRACTION["work_experience"][0],  # type: ignore[index]
+                "bullets": [
+                    {"text": "Led the ledger migration.", "confidence": 0.88},
+                    {"text": "Designed the idempotency layer.", "confidence": 0.3},
+                    {"text": "Shipped the reconciliation service.", "confidence": 0.9},
+                ],
+            }
+        ],
+    }
+    _stub_completion(app, _Stub(payload=grown))
+    second = (await _upload(client)).json()["id"]
+    await client.post(f"/api/imports/{second}/approve")
+
+    roles = (await db_session.scalars(select(WorkExperience))).all()
+    assert len(roles) == 1, "the same job must not appear twice"
+
+    texts = sorted(b.text for b in (await db_session.scalars(select(ExperienceBullet))).all())
+    assert texts == [
+        "Designed the idempotency layer.",
+        "Led the ledger migration.",
+        "Shipped the reconciliation service.",
+    ]
