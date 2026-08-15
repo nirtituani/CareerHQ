@@ -15,6 +15,7 @@ import uuid
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import InstrumentedAttribute
 
 from careerhq.domain.models import (
     Certification,
@@ -114,8 +115,19 @@ async def approve_import(
 
         match item.kind:
             case "contact":
-                # Single-valued. A person has one set of contact details; a
-                # newer CV supersedes the older one rather than adding to it.
+                # Single-valued: a person has one set of contact details, so a
+                # newer CV supersedes the older rather than adding a second row.
+                # But never over a value the user corrected — FR-009 forbids
+                # silently overwriting a verified fact, and losing an edited
+                # phone number to a stale CV is exactly that.
+                if not await _replaceable(
+                    session,
+                    ContactInformation.source,
+                    ContactInformation.profile_id,
+                    profile_id,
+                ):
+                    skipped += 1
+                    continue
                 await session.execute(
                     delete(ContactInformation).where(ContactInformation.profile_id == profile_id)
                 )
@@ -140,6 +152,14 @@ async def approve_import(
                     )
                 )
             case "summary":
+                if not await _replaceable(
+                    session,
+                    SummaryBlock.source,
+                    SummaryBlock.profile_id,
+                    profile_id,
+                ):
+                    skipped += 1
+                    continue
                 await session.execute(
                     delete(SummaryBlock).where(SummaryBlock.profile_id == profile_id)
                 )
@@ -415,3 +435,24 @@ async def _existing_roles(
         select(WorkExperience).where(WorkExperience.profile_id == profile_id)
     )
     return {_key("role", r.company, r.title, r.start_date): r for r in roles}
+
+
+async def _replaceable(
+    session: AsyncSession,
+    source_column: InstrumentedAttribute[Source],
+    owner_column: InstrumentedAttribute[uuid.UUID],
+    profile_id: uuid.UUID,
+) -> bool:
+    """Whether a single-valued field may be replaced by an incoming import.
+
+    Yes when it is absent, or when what is there came from an earlier extraction
+    and the user never touched it. **No when the user corrected or wrote it**:
+    FR-009 forbids silently overwriting a verified fact, and a rewritten summary
+    is among the most likely things a person edits by hand and the least likely
+    thing they expect a later CV to erase.
+
+    The incoming value is not lost — the import record keeps it — but it does
+    not take effect on its own.
+    """
+    sources = await session.scalars(select(source_column).where(owner_column == profile_id))
+    return all(source == Source.EXTRACTED for source in sources)
