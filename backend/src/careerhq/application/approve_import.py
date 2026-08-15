@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from careerhq.domain.models import (
@@ -40,6 +40,15 @@ from careerhq.domain.models import (
 logger = logging.getLogger("careerhq.import")
 
 MASTER_RESUME_NAME = "Master Resume"
+
+
+def _key(*parts: object) -> str:
+    """A comparison key for deciding whether the profile already holds a fact.
+
+    Case- and whitespace-insensitive, because "C++" and "c++ " are the same
+    skill and a second import should not add both.
+    """
+    return "|".join(str(p or "").strip().casefold() for p in parts)
 
 
 class AlreadyApprovedError(RuntimeError):
@@ -76,14 +85,40 @@ async def approve_import(
     if not accepted:
         raise NothingAcceptedError("Nothing was accepted, so there is nothing to approve.")
 
+    # What the profile already holds. A second import merges into it rather than
+    # appending to it (FR-009): re-importing an updated CV is normal, and
+    # without this every approval duplicated the entire profile — observed at
+    # 66 skills, 27 bullets and three contact rows after three imports.
+    existing = await _existing_keys(session, profile_id)
+
     roles: dict[uuid.UUID, WorkExperience] = {}
+    #: Roles already in the profile, so a re-import's bullets attach to the row
+    #: that is already there instead of creating a second copy of the job.
+    known_roles = await _existing_roles(session, profile_id)
+    skipped = 0
 
     for item in accepted:
         payload = dict(item.payload)
         source = _source_of(item)
 
+        duplicate = _duplicate_key(item.kind, payload)
+        if duplicate is not None and duplicate in existing:
+            skipped += 1
+            if item.kind == "work_experience" and duplicate in known_roles:
+                # Point this import's bullets at the role already on the
+                # profile, so an updated CV adds only its new achievements.
+                roles[item.id] = known_roles[duplicate]
+            continue
+        if duplicate is not None:
+            existing.add(duplicate)
+
         match item.kind:
             case "contact":
+                # Single-valued. A person has one set of contact details; a
+                # newer CV supersedes the older one rather than adding to it.
+                await session.execute(
+                    delete(ContactInformation).where(ContactInformation.profile_id == profile_id)
+                )
                 session.add(
                     ContactInformation(
                         profile_id=profile_id,
@@ -105,6 +140,9 @@ async def approve_import(
                     )
                 )
             case "summary":
+                await session.execute(
+                    delete(SummaryBlock).where(SummaryBlock.profile_id == profile_id)
+                )
                 session.add(
                     SummaryBlock(profile_id=profile_id, text=payload["text"], source=source)
                 )
@@ -208,9 +246,14 @@ async def approve_import(
             # The role was discarded; its bullets go with it rather than being
             # orphaned onto the profile with no context.
             continue
+        text = dict(item.payload)["text"]
+        if any(_key(b.text) == _key(text) for b in parent_role.bullets):
+            skipped += 1
+            continue
+
         parent_role.bullets.append(
             ExperienceBullet(
-                text=dict(item.payload)["text"],
+                text=text,
                 ordinal=item.ordinal,
                 source=_source_of(item),
             )
@@ -227,6 +270,7 @@ async def approve_import(
             "import_id": str(imported_resume.id),
             "accepted_items": len(accepted),
             "discarded_items": len(imported_resume.items) - len(accepted),
+            "skipped_as_duplicate": skipped,
         },
     )
     return master
@@ -270,3 +314,104 @@ async def _ensure_master_resume(session: AsyncSession, profile_id: uuid.UUID) ->
     master = ResumeProfile(profile_id=profile_id, name=MASTER_RESUME_NAME, is_master=True)
     session.add(master)
     return master
+
+
+def _duplicate_key(kind: str, payload: dict[str, object]) -> str | None:
+    """The identity of a fact, for deciding whether the profile already has it.
+
+    Returns `None` for kinds that are single-valued and handled by replacement
+    (contact, summary), and for bullets, which are compared within their role
+    rather than across the profile — the same sentence under two different jobs
+    is two different claims.
+
+    The keys are deliberately conservative. A role is identified by company,
+    title *and* start date, so a promotion at the same employer stays a separate
+    entry; two spellings of one job would rather be duplicated and discarded by
+    hand than silently merged into one.
+    """
+    match kind:
+        case "title":
+            return _key("title", payload.get("title"))
+        case "work_experience":
+            return _key(
+                "role", payload.get("company"), payload.get("title"), payload.get("start_date")
+            )
+        case "skill":
+            return _key("skill", payload.get("name"))
+        case "project":
+            return _key("project", payload.get("name"))
+        case "education":
+            return _key("education", payload.get("institution"), payload.get("qualification"))
+        case "certification":
+            return _key("certification", payload.get("name"), payload.get("issuer"))
+        case "language":
+            return _key("language", payload.get("name"))
+        case "military_service":
+            return _key("military", payload.get("branch"), payload.get("role"))
+        case "volunteer":
+            return _key("volunteer", payload.get("organisation"), payload.get("role"))
+        case _:
+            return None
+
+
+async def _existing_keys(session: AsyncSession, profile_id: uuid.UUID) -> set[str]:
+    """Keys for everything the profile already holds."""
+    keys: set[str] = set()
+
+    for title in await session.scalars(
+        select(ProfessionalTitle).where(ProfessionalTitle.profile_id == profile_id)
+    ):
+        keys.add(_key("title", title.title))
+
+    for role in await session.scalars(
+        select(WorkExperience).where(WorkExperience.profile_id == profile_id)
+    ):
+        keys.add(_key("role", role.company, role.title, role.start_date))
+
+    for skill in await session.scalars(select(Skill).where(Skill.profile_id == profile_id)):
+        keys.add(_key("skill", skill.name))
+
+    for project in await session.scalars(select(Project).where(Project.profile_id == profile_id)):
+        keys.add(_key("project", project.name))
+
+    for education in await session.scalars(
+        select(Education).where(Education.profile_id == profile_id)
+    ):
+        keys.add(_key("education", education.institution, education.qualification))
+
+    for cert in await session.scalars(
+        select(Certification).where(Certification.profile_id == profile_id)
+    ):
+        keys.add(_key("certification", cert.name, cert.issuer))
+
+    for language in await session.scalars(
+        select(Language).where(Language.profile_id == profile_id)
+    ):
+        keys.add(_key("language", language.name))
+
+    for service in await session.scalars(
+        select(MilitaryService).where(MilitaryService.profile_id == profile_id)
+    ):
+        keys.add(_key("military", service.branch, service.role))
+
+    for volunteering in await session.scalars(
+        select(VolunteerExperience).where(VolunteerExperience.profile_id == profile_id)
+    ):
+        keys.add(_key("volunteer", volunteering.organisation, volunteering.role))
+
+    return keys
+
+
+async def _existing_roles(
+    session: AsyncSession, profile_id: uuid.UUID
+) -> dict[str, WorkExperience]:
+    """Roles already on the profile, keyed the same way as an incoming one.
+
+    An updated CV usually repeats the job you are still in and adds a new
+    achievement to it. Without this the bullet would be orphaned — its role
+    skipped as a duplicate, and nothing for it to attach to.
+    """
+    roles = await session.scalars(
+        select(WorkExperience).where(WorkExperience.profile_id == profile_id)
+    )
+    return {_key("role", r.company, r.title, r.start_date): r for r in roles}
