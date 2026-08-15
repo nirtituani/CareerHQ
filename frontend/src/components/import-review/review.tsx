@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { ItemEditor } from "@/components/import-review/item-editor";
 import {
   ConfidenceMeter,
   LOW_CONFIDENCE,
@@ -45,6 +46,7 @@ export function ImportReview({
   const [items, setItems] = useState(record.items);
   const [cursor, setCursor] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState<string | null>(null);
 
   const sections = useMemo(
     () => SECTIONS.filter((s) => items.some((i) => i.kind === s.kind)),
@@ -68,6 +70,21 @@ export function ImportReview({
     [onPatch, visible.length],
   );
 
+  const correct = useCallback(
+    async (item: ExtractionItem, payload: Record<string, unknown>) => {
+      // Optimistic, and it flips provenance locally too: the label changing
+      // from EXTRACTED to CORRECTED is the feedback that the edit took.
+      setItems((prev) =>
+        prev.map((i) =>
+          i.id === item.id ? { ...i, payload, source: "user_corrected" as const } : i,
+        ),
+      );
+      setEditing(null);
+      await onPatch(item.id, { payload });
+    },
+    [onPatch],
+  );
+
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
       const target = event.target as HTMLElement | null;
@@ -88,6 +105,9 @@ export function ImportReview({
         void decide(item, "accepted");
       } else if (event.key === "d") {
         void decide(item, "discarded");
+      } else if (event.key === "e") {
+        event.preventDefault();
+        setEditing(item.id);
       }
     }
 
@@ -171,30 +191,57 @@ export function ImportReview({
                   {group.map((item) => (
                     <li
                       key={item.id}
-                      className="flex items-center justify-between gap-3 py-1 text-sm"
+                      className="py-1 text-sm"
                       style={{
                         ...provenanceStyle(item.source),
                         opacity: item.decision === "discarded" ? 0.45 : 1,
-                        textDecoration:
-                          item.decision === "discarded" ? "line-through" : undefined,
                       }}
                     >
-                      <span className="min-w-0">{describe(item).primary}</span>
-                      <span className="flex shrink-0 items-center gap-2">
-                        <ConfidenceMeter value={item.confidence} />
-                        <button
-                          className="text-xs underline underline-offset-2"
-                          style={{ color: "var(--muted)" }}
-                          onClick={() =>
-                            void decide(
-                              item,
-                              item.decision === "discarded" ? "accepted" : "discarded",
-                            )
-                          }
+                      <span className="flex items-center justify-between gap-3">
+                        <span
+                          className="min-w-0"
+                          style={{
+                            textDecoration:
+                              item.decision === "discarded" ? "line-through" : undefined,
+                          }}
                         >
-                          {item.decision === "discarded" ? "Keep" : "Discard"}
-                        </button>
+                          {describe(item).primary}
+                        </span>
+                        <span className="flex shrink-0 items-center gap-2">
+                          <ConfidenceMeter value={item.confidence} />
+                          <ProvenanceLabel source={item.source} />
+                          {/* Grouped skills lost this when the grouping was
+                              added — a correction has to be possible wherever an
+                              item is shown, or the affordance depends on which
+                              section you happen to be in. */}
+                          <button
+                            className="text-xs underline underline-offset-2"
+                            style={{ color: "var(--muted)" }}
+                            onClick={() => setEditing(editing === item.id ? null : item.id)}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            className="text-xs underline underline-offset-2"
+                            style={{ color: "var(--muted)" }}
+                            onClick={() =>
+                              void decide(
+                                item,
+                                item.decision === "discarded" ? "accepted" : "discarded",
+                              )
+                            }
+                          >
+                            {item.decision === "discarded" ? "Keep" : "Discard"}
+                          </button>
+                        </span>
                       </span>
+                      {editing === item.id && (
+                        <ItemEditor
+                          item={item}
+                          onSave={(payload) => correct(item, payload)}
+                          onCancel={() => setEditing(null)}
+                        />
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -245,6 +292,14 @@ export function ImportReview({
                     {/* Bullets sit under their role. Reviewing one in isolation
                         cannot answer the only question that matters about it —
                         whether it belongs to this job. */}
+                    {editing === item.id && (
+                      <ItemEditor
+                        item={item}
+                        onSave={(payload) => correct(item, payload)}
+                        onCancel={() => setEditing(null)}
+                      />
+                    )}
+
                     {bullets.length > 0 && (
                       <ul className="mt-2 space-y-1">
                         {bullets.map((bullet) => (
@@ -266,6 +321,15 @@ export function ImportReview({
                                   className="text-xs underline underline-offset-2"
                                   style={{ color: "var(--muted)" }}
                                   onClick={() =>
+                                    setEditing(editing === bullet.id ? null : bullet.id)
+                                  }
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  className="text-xs underline underline-offset-2"
+                                  style={{ color: "var(--muted)" }}
+                                  onClick={() =>
                                     void decide(
                                       bullet,
                                       bullet.decision === "discarded" ? "accepted" : "discarded",
@@ -276,6 +340,13 @@ export function ImportReview({
                                 </button>
                               </span>
                             </span>
+                            {editing === bullet.id && (
+                              <ItemEditor
+                                item={bullet}
+                                onSave={(payload) => correct(bullet, payload)}
+                                onCancel={() => setEditing(null)}
+                              />
+                            )}
                           </li>
                         ))}
                       </ul>
@@ -287,10 +358,10 @@ export function ImportReview({
                     <ProvenanceLabel source={item.source} />
                     <Button
                       size="sm"
-                      variant={item.decision === "accepted" ? "default" : "outline"}
-                      onClick={() => void decide(item, "accepted")}
+                      variant="ghost"
+                      onClick={() => setEditing(editing === item.id ? null : item.id)}
                     >
-                      Keep
+                      Edit
                     </Button>
                     <Button
                       size="sm"
@@ -325,7 +396,7 @@ export function ImportReview({
             </>
           )}
           <span className="ml-3 text-xs" style={{ color: "var(--faint)" }}>
-            A keep · D discard · J/K move
+            A keep · E edit · D discard · J/K move
           </span>
         </p>
 
