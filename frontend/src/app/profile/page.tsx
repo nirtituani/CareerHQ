@@ -22,13 +22,26 @@ type Role = Item & {
 };
 
 type Content = {
-  contact: (Item & { full_name: string | null; email: string | null; location: string | null })[];
+  contact: (Item & {
+    full_name: string | null;
+    email: string | null;
+    phone: string | null;
+    location: string | null;
+    links: string[];
+  })[];
   titles: (Item & { title: string })[];
   summaries: (Item & { text: string })[];
   work_experience: Role[];
-  skills: (Item & { name: string })[];
-  education: (Item & { institution: string; qualification: string | null })[];
-  certifications: (Item & { name: string; issuer: string | null })[];
+  skills: (Item & { name: string; category: string | null })[];
+  education: (Item & {
+    institution: string;
+    qualification: string | null;
+    field_of_study: string | null;
+    start_date: string | null;
+    end_date: string | null;
+    grade: string | null;
+  })[];
+  certifications: (Item & { name: string; issuer: string | null; year: string | null })[];
   languages: (Item & { name: string; proficiency: string | null })[];
   military_service: (Item & {
     branch: string;
@@ -140,7 +153,18 @@ export default async function ProfilePage() {
             <Section title="Contact">
               {content.contact.map((c) => (
                 <Entry key={c.id} source={c.source}>
-                  {[c.full_name, c.email, c.location].filter(Boolean).join(" · ")}
+                  {/* Every stored field. Showing three of five here was the same
+                      bug as the review screen had — the profile would claim a
+                      phone number was never captured when it was. */}
+                  <p>{c.full_name}</p>
+                  <p style={{ color: "var(--muted)" }}>
+                    {[c.email, c.phone, c.location].filter(Boolean).join(" · ")}
+                  </p>
+                  {c.links.map((link) => (
+                    <p key={link} className="text-xs" style={{ color: "var(--faint)" }}>
+                      {link}
+                    </p>
+                  ))}
                 </Entry>
               ))}
             </Section>
@@ -195,10 +219,38 @@ export default async function ProfilePage() {
 
           {content.skills.length > 0 && (
             <Section title="Skills">
-              {content.skills.map((s) => (
-                <Entry key={s.id} source={s.source}>
-                  {s.name}
-                </Entry>
+              {[
+                ...content.skills
+                  .reduce((groups, skill) => {
+                    const category = skill.category ?? "Other";
+                    groups.set(category, [...(groups.get(category) ?? []), skill]);
+                    return groups;
+                  }, new Map<string, Content["skills"]>())
+                  .entries(),
+              ].map(([category, group]) => (
+                // The same grouping the review screen uses, and the same one the
+                // CV was written in. A flat list of 22 discards structure that is
+                // already in the data.
+                <li key={category} className="pt-3 first:pt-0">
+                  <p
+                    className="mb-1 text-xs tracking-wider uppercase"
+                    style={{ fontFamily: "var(--font-mono)", color: "var(--faint)" }}
+                  >
+                    {category}
+                  </p>
+                  <ul className="space-y-1">
+                    {group.map((skill) => (
+                      <li
+                        key={skill.id}
+                        className="flex items-baseline justify-between gap-4 py-0.5 text-sm"
+                        style={provenanceStyle(skill.source)}
+                      >
+                        <span>{skill.name}</span>
+                        <ProvenanceLabel source={skill.source} />
+                      </li>
+                    ))}
+                  </ul>
+                </li>
               ))}
             </Section>
           )}
@@ -207,7 +259,17 @@ export default async function ProfilePage() {
             <Section title="Education">
               {content.education.map((e) => (
                 <Entry key={e.id} source={e.source}>
-                  {[e.qualification, e.institution].filter(Boolean).join(", ")}
+                  <p>{[e.qualification, e.field_of_study, e.institution].filter(Boolean).join(", ")}</p>
+                  {[e.start_date, e.end_date, e.grade].some(Boolean) && (
+                    <p className="text-xs" style={{ color: "var(--faint)" }}>
+                      {[
+                        [e.start_date, e.end_date].filter(Boolean).join(" – "),
+                        e.grade,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </p>
+                  )}
                 </Entry>
               ))}
             </Section>
@@ -217,7 +279,7 @@ export default async function ProfilePage() {
             <Section title="Certifications">
               {content.certifications.map((c) => (
                 <Entry key={c.id} source={c.source}>
-                  {[c.name, c.issuer].filter(Boolean).join(" — ")}
+                  {[c.name, c.issuer, c.year].filter(Boolean).join(" — ")}
                 </Entry>
               ))}
             </Section>
