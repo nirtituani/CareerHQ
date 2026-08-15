@@ -158,13 +158,15 @@ export function ImportReview({
               a wall; six labelled groups is the structure the author wrote. */}
           {section === "skill" &&
             groupByCategory(visible).map(([category, group]) => (
-              <li key={category} className="pt-2 first:pt-0">
-                <p
-                  className="mb-1 text-xs tracking-wider uppercase"
-                  style={{ fontFamily: "var(--font-mono)", color: "var(--faint)" }}
-                >
-                  {category}
-                </p>
+              <li key={category ?? "uncategorised"} className="pt-2 first:pt-0">
+                {category && (
+                  <p
+                    className="mb-1 text-xs tracking-wider uppercase"
+                    style={{ fontFamily: "var(--font-mono)", color: "var(--faint)" }}
+                  >
+                    {category}
+                  </p>
+                )}
                 <ul className="space-y-1">
                   {group.map((item) => (
                     <li

@@ -222,22 +222,24 @@ export default async function ProfilePage() {
               {[
                 ...content.skills
                   .reduce((groups, skill) => {
-                    const category = skill.category ?? "Other";
+                    const category = skill.category?.trim() || null;
                     groups.set(category, [...(groups.get(category) ?? []), skill]);
                     return groups;
-                  }, new Map<string, Content["skills"]>())
+                  }, new Map<string | null, Content["skills"]>())
                   .entries(),
               ].map(([category, group]) => (
                 // The same grouping the review screen uses, and the same one the
                 // CV was written in. A flat list of 22 discards structure that is
                 // already in the data.
-                <li key={category} className="pt-3 first:pt-0">
-                  <p
-                    className="mb-1 text-xs tracking-wider uppercase"
-                    style={{ fontFamily: "var(--font-mono)", color: "var(--faint)" }}
-                  >
-                    {category}
-                  </p>
+                <li key={category ?? "uncategorised"} className="pt-3 first:pt-0">
+                  {category && (
+                    <p
+                      className="mb-1 text-xs tracking-wider uppercase"
+                      style={{ fontFamily: "var(--font-mono)", color: "var(--faint)" }}
+                    >
+                      {category}
+                    </p>
+                  )}
                   <ul className="space-y-1">
                     {group.map((skill) => (
                       <li

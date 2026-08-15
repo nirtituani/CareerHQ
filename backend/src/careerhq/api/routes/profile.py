@@ -109,7 +109,13 @@ async def read_profile_content(profile: CurrentProfile, session: DbSession) -> d
             for s in await _all(Skill, Skill.profile_id)
         ],
         "projects": [
-            {"id": str(p.id), "name": p.name, "description": p.description, "source": p.source}
+            {
+                "id": str(p.id),
+                "name": p.name,
+                "description": p.description,
+                "url": p.url,
+                "source": p.source,
+            }
             for p in await _all(Project, Project.profile_id)
         ],
         "education": [
