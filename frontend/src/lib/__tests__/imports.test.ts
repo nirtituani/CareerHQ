@@ -1,6 +1,10 @@
 import { describe as group, expect, it } from "vitest";
 
-import { describe as describeItem, type ExtractionItem } from "@/lib/imports";
+import {
+  describe as describeItem,
+  groupByCategory,
+  type ExtractionItem,
+} from "@/lib/imports";
 
 function item(kind: string, payload: Record<string, unknown>): ExtractionItem {
   return {
@@ -85,5 +89,33 @@ group("describe", () => {
   it("omits fields that were genuinely empty rather than printing blanks", () => {
     const rendered = describeItem(item("skill", { name: "Go", category: null }));
     expect(rendered.details).toEqual([]);
+  });
+});
+
+group("groupByCategory", () => {
+  it("keeps the categories the CV used, whatever they are", () => {
+    // Nothing is hardcoded. A CV organised as "Languages / Cloud" gets those
+    // two; the six groups seen on one real CV were that CV's own headings.
+    const groups = groupByCategory([
+      item("skill", { name: "C++", category: "Languages" }),
+      item("skill", { name: "AWS", category: "Cloud" }),
+      item("skill", { name: "Go", category: "Languages" }),
+    ]);
+
+    expect(groups.map(([category]) => category)).toEqual(["Languages", "Cloud"]);
+    expect(groups[0][1]).toHaveLength(2);
+  });
+
+  it("gives an uncategorised list no heading rather than inventing one", () => {
+    // A CV with no skill headings would otherwise render a single group called
+    // "Other" — a heading its author never wrote, making a plain list look like
+    // a categorised one with one odd bucket.
+    const groups = groupByCategory([
+      item("skill", { name: "C++", category: null }),
+      item("skill", { name: "Go", category: "  " }),
+    ]);
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0][0]).toBeNull();
   });
 });

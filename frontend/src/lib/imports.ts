@@ -148,13 +148,18 @@ export function describe(item: ExtractionItem): Described {
  * the section a wall to be skimmed rather than reviewed. The categories were
  * being extracted correctly the whole time; only the display ignored them.
  */
-export function groupByCategory(items: ExtractionItem[]): [string, ExtractionItem[]][] {
-  const groups = new Map<string, ExtractionItem[]>();
+export function groupByCategory(items: ExtractionItem[]): [string | null, ExtractionItem[]][] {
+  const groups = new Map<string | null, ExtractionItem[]>();
 
   for (const item of items) {
-    const category = ((item.payload as Record<string, unknown>).category as string) || "Other";
+    const raw = (item.payload as Record<string, unknown>).category;
+    const category = typeof raw === "string" && raw.trim() ? raw : null;
     groups.set(category, [...(groups.get(category) ?? []), item]);
   }
 
+  // A CV with no skill headings produces one nameless group. Labelling it
+  // "Other" would invent a heading the author never wrote and make an
+  // uncategorised list look like a categorised one with a single odd bucket.
+  // The caller renders a null category as no heading at all.
   return [...groups.entries()];
 }
