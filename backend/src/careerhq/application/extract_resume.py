@@ -32,6 +32,9 @@ Rules:
 - Military service belongs in military_service, not work_experience. Volunteer
   and leadership roles belong in volunteering. Paid employment only in
   work_experience.
+- For education, `qualification` is the award alone ("B.Sc.", "MSc", "PhD") and
+  `field_of_study` is the subject ("Computer Science"). Do not repeat the
+  subject inside the qualification.
 - Set confidence per item: high when the document states it plainly, low when
   you had to interpret layout or infer a boundary.
 

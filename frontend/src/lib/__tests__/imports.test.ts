@@ -2,6 +2,7 @@ import { describe as group, expect, it } from "vitest";
 
 import {
   describe as describeItem,
+  educationLine,
   groupByCategory,
   type ExtractionItem,
 } from "@/lib/imports";
@@ -117,5 +118,27 @@ group("groupByCategory", () => {
 
     expect(groups).toHaveLength(1);
     expect(groups[0][0]).toBeNull();
+  });
+});
+
+group("educationLine", () => {
+  it("does not say the subject twice", () => {
+    // A CV writes the degree as one phrase and the schema has two fields, so a
+    // model filling both honestly overlaps. The prompt asks for the award alone
+    // — this covers the case where it does not comply, because a prompt is a
+    // request rather than a guarantee.
+    expect(
+      educationLine("B.Sc. in Computer Science", "Computer Science", "Ben-Gurion University"),
+    ).toBe("B.Sc. in Computer Science, Ben-Gurion University");
+  });
+
+  it("keeps the subject when the qualification is the award alone", () => {
+    expect(educationLine("B.Sc.", "Computer Science", "Ben-Gurion University")).toBe(
+      "B.Sc., Computer Science, Ben-Gurion University",
+    );
+  });
+
+  it("tolerates missing parts", () => {
+    expect(educationLine(null, null, "Ben-Gurion University")).toBe("Ben-Gurion University");
   });
 });
