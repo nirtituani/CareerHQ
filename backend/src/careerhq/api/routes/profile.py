@@ -29,6 +29,7 @@ from careerhq.domain.models import (
     Project,
     ResumeProfile,
     Skill,
+    Source,
     SummaryBlock,
     VolunteerExperience,
     WorkExperience,
@@ -238,6 +239,86 @@ def _removable(kind: str) -> _Removable:
             status_code=status.HTTP_404_NOT_FOUND, detail=f"There is no {kind!r} section."
         )
     return entry
+
+
+#: Fields a user may change, per kind. A whitelist rather than "any column the
+#: request names": without it a PATCH could set `profile_id` and move a row to
+#: someone else's profile, or rewrite `source` and forge the provenance that
+#: decides what a later import may overwrite.
+EDITABLE_COLUMNS: dict[str, frozenset[str]] = {
+    "contact": frozenset({"full_name", "email", "phone", "location"}),
+    "title": frozenset({"title"}),
+    "summary": frozenset({"text"}),
+    "work_experience": frozenset(
+        {"company", "title", "location", "start_date", "end_date", "is_current"}
+    ),
+    "bullet": frozenset({"text"}),
+    "skill": frozenset({"name", "category"}),
+    "project": frozenset({"name", "description", "url"}),
+    "education": frozenset(
+        {"institution", "qualification", "field_of_study", "start_date", "end_date", "grade"}
+    ),
+    "certification": frozenset({"name", "issuer", "year"}),
+    "language": frozenset({"name", "proficiency"}),
+    "military_service": frozenset({"branch", "role", "start_date", "end_date", "details"}),
+    "volunteer": frozenset({"organisation", "role", "start_date", "end_date", "description"}),
+}
+
+
+@router.patch("/profile/{kind}/{item_id}", summary="Correct one item in the profile")
+async def edit_item(
+    kind: str,
+    item_id: uuid.UUID,
+    body: dict[str, Any],
+    profile: CurrentProfile,
+    session: DbSession,
+) -> dict[str, Any]:
+    """Change a fact already in the profile, and mark it as verified.
+
+    Review lets a user correct something before approving it; this lets them
+    correct it afterwards. Without it, "correction" existed only inside a window
+    that closed — a one-character typo in a job title cost the whole entry,
+    because deleting was the only repair available.
+
+    Saving sets `source` to `user_corrected`, which is the same state a review
+    correction produces and carries the same consequence: a later import will
+    not overwrite it.
+    """
+    allowed = EDITABLE_COLUMNS.get(kind)
+    if allowed is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"There is no {kind!r} section."
+        )
+
+    if kind == "bullet":
+        item = await session.scalar(
+            select(ExperienceBullet).where(
+                ExperienceBullet.id == item_id,
+                ExperienceBullet.experience_id.in_(
+                    select(WorkExperience.id).where(WorkExperience.profile_id == profile.id)
+                ),
+            )
+        )
+    else:
+        entry = _removable(kind)
+        item = await session.scalar(
+            select(entry.model).where(entry.owner == profile.id, entry.identity == item_id)
+        )
+
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found.")
+
+    for field, value in body.items():
+        if field not in allowed:
+            # Ignored rather than rejected: an interface sending a field this
+            # kind does not have is a bug to fix, not a reason to lose the rest
+            # of a user's correction.
+            continue
+        setattr(item, field, value)
+
+    item.source = Source.USER_CORRECTED
+    await session.commit()
+    return {"id": str(item_id), "source": item.source}
 
 
 @router.delete(

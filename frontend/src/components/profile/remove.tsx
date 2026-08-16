@@ -28,7 +28,7 @@ export function RemoveItem({ kind, id, label }: { kind: string; id: string; labe
       <button
         aria-label={`Remove ${label}`}
         onClick={() => setConfirming(true)}
-        className="text-xs underline underline-offset-2 opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100"
+        className="text-xs underline underline-offset-2"
         style={{ color: "var(--muted)" }}
       >
         Remove
