@@ -132,9 +132,14 @@ export function RemoveSection({
  * asks for a typed confirmation rather than a second click — a click can be
  * muscle memory, typing a word cannot.
  */
-export function ClearProfile({ total }: { total: number }) {
+export function ClearProfileDialog({
+  total,
+  onClose,
+}: {
+  total: number;
+  onClose: () => void;
+}) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
   const [typed, setTyped] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -145,29 +150,16 @@ export function ClearProfile({ total }: { total: number }) {
     const response = await fetch("/api/profile/content", { method: "DELETE" });
     setBusy(false);
     if (response.ok) {
-      setOpen(false);
-      setTyped("");
+      onClose();
       router.refresh();
     }
-  }
-
-  if (!open) {
-    return (
-      <button
-        onClick={() => setOpen(true)}
-        className="text-xs underline underline-offset-2"
-        style={{ color: "var(--muted)" }}
-      >
-        Clear my profile
-      </button>
-    );
   }
 
   return (
     <div
       role="alertdialog"
       aria-label="Clear profile"
-      className="rounded-md py-3 pr-4 text-sm"
+      className="mt-4 rounded-md py-3 pr-4 text-sm"
       style={{ borderLeft: "2px solid var(--color-failure)", paddingLeft: "0.75rem" }}
     >
       <p className="font-medium">Remove all {total} items from your profile?</p>
@@ -199,10 +191,7 @@ export function ClearProfile({ total }: { total: number }) {
           {busy ? "Clearing…" : "Clear my profile"}
         </button>
         <button
-          onClick={() => {
-            setOpen(false);
-            setTyped("");
-          }}
+          onClick={onClose}
           className="underline underline-offset-2"
           style={{ color: "var(--muted)" }}
         >

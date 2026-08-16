@@ -4,9 +4,9 @@ import { redirect } from "next/navigation";
 
 import { ApiUnavailable } from "@/components/api-unavailable";
 import { AppShell } from "@/components/app-shell";
-import { EditModeProvider, EditModeToggle } from "@/components/profile/edit-mode";
+import { EditModeProvider } from "@/components/profile/edit-mode";
 import { ProfileEntry } from "@/components/profile/entry";
-import { ClearProfile } from "@/components/profile/remove";
+import { ProfileMenu } from "@/components/profile/profile-menu";
 import { ProfileSection } from "@/components/profile/section";
 import { type Source, provenanceStyle } from "@/components/provenance";
 import { Button } from "@/components/ui/button";
@@ -122,13 +122,7 @@ export default async function ProfilePage() {
           </p>
         </div>
         {!empty && (
-          <div className="flex items-center gap-4">
-            <EditModeToggle />
-            <ClearProfile total={totalItems} />
-            <Button asChild variant="outline">
-              <Link href="/import">Import another CV</Link>
-            </Button>
-          </div>
+          <ProfileMenu total={totalItems} />
         )}
       </div>
 
