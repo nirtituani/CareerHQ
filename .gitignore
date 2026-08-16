@@ -48,3 +48,9 @@ blob-report/
 * 2.*
 * 2
 *\ 2.*
+
+# Personal documents used for manual testing. CVs contain a home address, a
+# phone number and an employment history — this repository is public, and
+# `git add -A` is one keystroke away from publishing them permanently.
+testing files/
+*.cv.pdf
