@@ -442,7 +442,7 @@ derived, and re-running creates nothing.
       **Confirmed**: `database=ok cache=not_configured object_storage=ok ai_provider=ok`. Setting
       the variables triggered a redeploy on its own, so the container was recreated rather than
       restarted
-- [ ] T088 👁 **OBSERVE** Import a CV on the **deployed** site and confirm the file landed in the
+- [x] T088 👁 **OBSERVE** Import a CV on the **deployed** site and confirm the file landed in the
       bucket and that `imported_resumes` recorded model, tokens and cost with `is_fixture = false`.
       **Failure looks like**: `is_fixture = true`, meaning the deployment is serving canned content
       and every extraction so far has been fictional
