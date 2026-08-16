@@ -9,10 +9,11 @@ rather than by a permission check that a future endpoint could omit
 from __future__ import annotations
 
 import uuid
-from typing import Annotated
+from dataclasses import dataclass
+from typing import Annotated, Any, cast
 
-from fastapi import APIRouter, Depends
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Response, status
+from sqlalchemy import CursorResult, delete, select
 from sqlalchemy.orm import InstrumentedAttribute
 
 from careerhq.api.deps import DbSession, get_current_profile
@@ -20,6 +21,7 @@ from careerhq.domain.models import (
     Certification,
     ContactInformation,
     Education,
+    ExperienceBullet,
     Language,
     MilitaryService,
     ProfessionalProfile,
@@ -184,3 +186,119 @@ async def read_profile_content(profile: CurrentProfile, session: DbSession) -> d
             else None
         ),
     }
+
+
+# ---------------------------------------------------------------------------
+# Removing things from the profile
+# ---------------------------------------------------------------------------
+#
+# Until this existed, anything that reached the profile was permanent. A badly
+# parsed role or a skills block that came through wrong could be discarded
+# during review, but never afterwards — and the review is exactly where a
+# mistake is easiest to miss, because there are dozens of items and no
+# consequence has been felt yet.
+#
+# Deletion is permanent and it is meant to be: the profile holds current
+# professional knowledge, not history. What *is* history — which import a fact
+# arrived in — lives on the ImportedResume record and is untouched by this.
+
+
+@dataclass(frozen=True)
+class _Removable:
+    """A profile-owned entity, with the columns needed to delete one safely."""
+
+    model: Any
+    owner: InstrumentedAttribute[uuid.UUID]
+    identity: InstrumentedAttribute[uuid.UUID]
+
+
+#: Sections a user may clear. Keyed by the same names the review screen uses, so
+#: one vocabulary covers extraction, review and the profile.
+REMOVABLE: dict[str, _Removable] = {
+    "contact": _Removable(ContactInformation, ContactInformation.profile_id, ContactInformation.id),
+    "title": _Removable(ProfessionalTitle, ProfessionalTitle.profile_id, ProfessionalTitle.id),
+    "summary": _Removable(SummaryBlock, SummaryBlock.profile_id, SummaryBlock.id),
+    "work_experience": _Removable(WorkExperience, WorkExperience.profile_id, WorkExperience.id),
+    "skill": _Removable(Skill, Skill.profile_id, Skill.id),
+    "project": _Removable(Project, Project.profile_id, Project.id),
+    "education": _Removable(Education, Education.profile_id, Education.id),
+    "certification": _Removable(Certification, Certification.profile_id, Certification.id),
+    "language": _Removable(Language, Language.profile_id, Language.id),
+    "military_service": _Removable(MilitaryService, MilitaryService.profile_id, MilitaryService.id),
+    "volunteer": _Removable(
+        VolunteerExperience, VolunteerExperience.profile_id, VolunteerExperience.id
+    ),
+}
+
+
+def _removable(kind: str) -> _Removable:
+    entry = REMOVABLE.get(kind)
+    if entry is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"There is no {kind!r} section."
+        )
+    return entry
+
+
+@router.delete(
+    "/profile/{kind}/{item_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Remove one item from the profile",
+)
+async def remove_item(
+    kind: str, item_id: uuid.UUID, profile: CurrentProfile, session: DbSession
+) -> Response:
+    """Delete one item.
+
+    Ownership is part of the WHERE clause rather than a separate check, so
+    another user's row cannot be deleted even if the id is guessed — the query
+    that could do it does not exist (FR-019).
+    """
+    if kind == "bullet":
+        # Bullets hang off a role rather than the profile, so ownership is
+        # established through the role they belong to.
+        # `execute` is typed as returning Result; a DELETE really returns a
+        # CursorResult, which is where rowcount lives. The cast states that
+        # rather than working around it by fetching the row first.
+        result = cast(
+            CursorResult[Any],
+            await session.execute(
+                delete(ExperienceBullet).where(
+                    ExperienceBullet.id == item_id,
+                    ExperienceBullet.experience_id.in_(
+                        select(WorkExperience.id).where(WorkExperience.profile_id == profile.id)
+                    ),
+                )
+            ),
+        )
+    else:
+        entry = _removable(kind)
+        result = cast(
+            CursorResult[Any],
+            await session.execute(
+                delete(entry.model).where(entry.owner == profile.id, entry.identity == item_id)
+            ),
+        )
+
+    if result.rowcount == 0:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found.")
+
+    await session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.delete(
+    "/profile/{kind}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Clear a whole section of the profile",
+)
+async def remove_section(kind: str, profile: CurrentProfile, session: DbSession) -> Response:
+    """Delete every item of one kind.
+
+    Exists for the case that motivated it: a skills block parsed badly enough
+    that removing twenty-two entries one at a time is not a realistic repair.
+    """
+    entry = _removable(kind)
+    await session.execute(delete(entry.model).where(entry.owner == profile.id))
+    await session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
