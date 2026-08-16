@@ -289,7 +289,7 @@ produces exactly one profile and one Master Resume.
 
 ### Verify against the real stack
 
-- [ ] T057 👁 **OBSERVE** [US1] Run the quickstart's User Story 1 walkthrough against
+- [x] T057 👁 **OBSERVE** [US1] Run the quickstart's User Story 1 walkthrough against
       `docker compose up -d` with a **real CV**: confirm the profile is empty after extraction and
       populated after approval, that a correction survives, and that approving twice leaves one
       Master Resume. **Failure looks like**: profile rows appearing before approval, which means
