@@ -122,3 +122,93 @@ export function RemoveSection({
     </span>
   );
 }
+
+/**
+ * Emptying the whole profile.
+ *
+ * Confirmed harder than the others on purpose. Removing one skill is a small
+ * correction; this discards everything the user reviewed and approved, and the
+ * only way back is to import again and re-review. So it states the total, and
+ * asks for a typed confirmation rather than a second click — a click can be
+ * muscle memory, typing a word cannot.
+ */
+export function ClearProfile({ total }: { total: number }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [typed, setTyped] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const CONFIRM = "clear";
+
+  async function clear() {
+    setBusy(true);
+    const response = await fetch("/api/profile/content", { method: "DELETE" });
+    setBusy(false);
+    if (response.ok) {
+      setOpen(false);
+      setTyped("");
+      router.refresh();
+    }
+  }
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="text-xs underline underline-offset-2"
+        style={{ color: "var(--muted)" }}
+      >
+        Clear my profile
+      </button>
+    );
+  }
+
+  return (
+    <div
+      role="alertdialog"
+      aria-label="Clear profile"
+      className="rounded-md py-3 pr-4 text-sm"
+      style={{ borderLeft: "2px solid var(--color-failure)", paddingLeft: "0.75rem" }}
+    >
+      <p className="font-medium">Remove all {total} items from your profile?</p>
+      <p className="mt-1" style={{ color: "var(--muted)" }}>
+        Your account stays. Your imports stay, so you can see what you uploaded — but everything
+        you approved into your profile goes, including any corrections you made. The only way
+        back is to import again and review it again.
+      </p>
+
+      <label className="mt-3 block">
+        <span className="text-xs" style={{ color: "var(--faint)" }}>
+          Type <strong>{CONFIRM}</strong> to confirm
+        </span>
+        <input
+          value={typed}
+          onChange={(event) => setTyped(event.target.value)}
+          className="mt-1 w-40 rounded-md border px-2 py-1 text-sm"
+          style={{ borderColor: "var(--border)", background: "var(--surface)" }}
+        />
+      </label>
+
+      <div className="mt-3 flex gap-3 text-xs">
+        <button
+          disabled={typed.trim().toLowerCase() !== CONFIRM || busy}
+          onClick={() => void clear()}
+          className="underline underline-offset-2 disabled:opacity-40"
+          style={{ color: "var(--color-failure)" }}
+        >
+          {busy ? "Clearing…" : "Clear my profile"}
+        </button>
+        <button
+          onClick={() => {
+            setOpen(false);
+            setTyped("");
+          }}
+          className="underline underline-offset-2"
+          style={{ color: "var(--muted)" }}
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
