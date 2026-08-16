@@ -424,15 +424,24 @@ derived, and re-running creates nothing.
 
 ### Deployment prerequisites
 
-- [ ] T085 🔧 **MANUAL** Create the Railway bucket and set credentials: `railway bucket create`,
+- [x] T085 🔧 **MANUAL** Create the Railway bucket and set credentials: `railway bucket create`,
       then `railway bucket credentials` into `S3_ACCESS_KEY` / `S3_SECRET_KEY` / `S3_ENDPOINT_URL` /
       `S3_BUCKET`. Verified in R5 that no bucket exists yet and that this needs **no application
-      code** — `storage.py` already speaks S3 and slice 002 made the settings optional
-- [ ] T086 🔧 **MANUAL** Set `AI_PROVIDER` and `ANTHROPIC_API_KEY` on the deployed backend service
-- [ ] T087 👁 **OBSERVE** `curl` deployed `/api/health/ready` and confirm **`object_storage` and
+      code** — `storage.py` already speaks S3 and slice 002 made the settings optional.
+      **Done**: bucket `careerhq-uploads` in `sjc`, the same coast as the `sfo` project. R5 left
+      the addressing style open; all three of boto3's default, virtual-host and path-style were
+      tested against the real endpoint from a local client, each round-tripping an object, so no
+      configuration change was needed. Credentials were verified **before** being set on
+      production rather than after, because a wrong value would have surfaced as a blocked
+      deployment
+- [x] T086 🔧 **MANUAL** Set `AI_PROVIDER` and `ANTHROPIC_API_KEY` on the deployed backend service
+- [x] T087 👁 **OBSERVE** `curl` deployed `/api/health/ready` and confirm **`object_storage` and
       `ai_provider` both report `ok`**, not `not_configured` (FR-021, FR-028). **Failure looks
       like**: either still `not_configured`, meaning the variables did not reach the running
-      container — slice 002's lesson is that variables are injected at container *creation*
+      container — slice 002's lesson is that variables are injected at container *creation*.
+      **Confirmed**: `database=ok cache=not_configured object_storage=ok ai_provider=ok`. Setting
+      the variables triggered a redeploy on its own, so the container was recreated rather than
+      restarted
 - [ ] T088 👁 **OBSERVE** Import a CV on the **deployed** site and confirm the file landed in the
       bucket and that `imported_resumes` recorded model, tokens and cost with `is_fixture = false`.
       **Failure looks like**: `is_fixture = true`, meaning the deployment is serving canned content
