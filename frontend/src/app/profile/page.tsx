@@ -9,6 +9,7 @@ import { ProfileEntry } from "@/components/profile/entry";
 import { ProfileMenu } from "@/components/profile/profile-menu";
 import { ProfileSection } from "@/components/profile/section";
 import { type Source, provenanceStyle } from "@/components/provenance";
+import { educationLine } from "@/lib/imports";
 import { Button } from "@/components/ui/button";
 import { ApiUnreachableError, type User } from "@/lib/api";
 import { fetchCurrentUser } from "@/lib/session";
@@ -264,7 +265,7 @@ export default async function ProfilePage() {
             <ProfileSection title="Education" kind="education" count={content.education.length}>
               {content.education.map((e) => (
                 <ProfileEntry key={e.id} source={e.source} kind="education" id={e.id} label={e.institution} values={e}>
-                  <p>{[e.qualification, e.field_of_study, e.institution].filter(Boolean).join(", ")}</p>
+                  <p>{educationLine(e.qualification, e.field_of_study, e.institution)}</p>
                   {[e.start_date, e.end_date, e.grade].some(Boolean) && (
                     <p className="text-xs" style={{ color: "var(--faint)" }}>
                       {[

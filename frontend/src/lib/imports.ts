@@ -76,6 +76,31 @@ function join(...parts: (string | null | undefined)[]): string {
   return parts.filter(Boolean).join(" · ");
 }
 
+/**
+ * "B.Sc., Computer Science, Ben-Gurion University" — without saying the subject
+ * twice.
+ *
+ * A CV usually writes the degree as one phrase ("B.Sc. in Computer Science"),
+ * and the schema has separate fields, so a model filling both honestly produces
+ * an overlap. The prompt now asks for the award alone, but a prompt is a request
+ * rather than a guarantee: this drops the subject when it already appears inside
+ * the qualification, so both shapes read correctly.
+ */
+export function educationLine(
+  qualification: string | null,
+  fieldOfStudy: string | null,
+  institution: string | null,
+): string {
+  const redundant =
+    qualification && fieldOfStudy
+      ? qualification.toLowerCase().includes(fieldOfStudy.toLowerCase())
+      : false;
+
+  return [qualification, redundant ? null : fieldOfStudy, institution]
+    .filter(Boolean)
+    .join(", ");
+}
+
 function dates(p: Record<string, unknown>): string | null {
   const start = p.start_date as string | null;
   const end = (p.is_current ? "Present" : (p.end_date as string | null)) ?? null;
@@ -115,7 +140,11 @@ export function describe(item: ExtractionItem): Described {
       };
     case "education":
       return {
-        primary: join(str("qualification"), str("field_of_study"), str("institution")),
+        primary: educationLine(
+          str("qualification"),
+          str("field_of_study"),
+          str("institution"),
+        ),
         details: [join(dates(p), str("grade"))].filter(Boolean),
       };
     case "certification":
