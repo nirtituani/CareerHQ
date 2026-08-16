@@ -11,7 +11,6 @@ from __future__ import annotations
 import uuid
 
 import httpx
-import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -133,7 +132,7 @@ async def test_another_users_section_is_untouched(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
     """Clearing a section must clear only your own."""
-    victim, _, victim_skill = await _user_with_content(db_session)
+    _victim, _, victim_skill = await _user_with_content(db_session)
     attacker, _, _ = await _user_with_content(db_session)
 
     assert (await _as(client, attacker).delete("/api/profile/skill")).status_code == 204
@@ -153,3 +152,61 @@ async def test_removal_requires_authentication(client: httpx.AsyncClient) -> Non
     client.cookies.clear()
     assert (await client.delete(f"/api/profile/skill/{uuid.uuid4()}")).status_code == 401
     assert (await client.delete("/api/profile/skill")).status_code == 401
+
+
+async def test_the_whole_profile_can_be_cleared(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    """Starting over is reasonable after a bad import.
+
+    Clearing eleven sections one at a time is not a way anyone would actually do
+    it, so the absence of this was the difference between "you can fix a
+    mistake" and "you can fix a mistake if you are patient enough".
+    """
+    from careerhq.domain.models import ResumeProfile
+
+    user, _, _ = await _user_with_content(db_session)
+    profile_id = await db_session.scalar(
+        select(ProfessionalProfile.id).where(ProfessionalProfile.user_id == user.id)
+    )
+    db_session.add(ResumeProfile(profile_id=profile_id, name="Master Resume", is_master=True))
+    await db_session.commit()
+
+    assert (await _as(client, user).delete("/api/profile/content")).status_code == 204
+
+    for model in (Skill, WorkExperience, ExperienceBullet, ResumeProfile):
+        assert (await db_session.scalar(select(func.count()).select_from(model))) == 0
+
+
+async def test_clearing_keeps_the_profile_and_the_user(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    """Principle I: exactly one profile per user.
+
+    Deleting and recreating the profile row would briefly break that invariant
+    and orphan anything later pointed at it. Clearing empties the container
+    rather than replacing it.
+    """
+    user, _, _ = await _user_with_content(db_session)
+
+    await _as(client, user).delete("/api/profile/content")
+
+    assert (await db_session.get(User, user.id)) is not None
+    assert (
+        await db_session.scalar(
+            select(func.count())
+            .select_from(ProfessionalProfile)
+            .where(ProfessionalProfile.user_id == user.id)
+        )
+    ) == 1
+
+
+async def test_clearing_one_profile_leaves_another_alone(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    _victim, _, victim_skill = await _user_with_content(db_session)
+    attacker, _, _ = await _user_with_content(db_session)
+
+    assert (await _as(client, attacker).delete("/api/profile/content")).status_code == 204
+
+    assert (await db_session.get(Skill, victim_skill.id)) is not None

@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 
 import { ApiUnavailable } from "@/components/api-unavailable";
 import { AppShell } from "@/components/app-shell";
-import { RemoveItem, RemoveSection } from "@/components/profile/remove";
+import { ClearProfile, RemoveItem, RemoveSection } from "@/components/profile/remove";
 import { ProvenanceLabel, type Source, provenanceStyle } from "@/components/provenance";
 import { Button } from "@/components/ui/button";
 import { ApiUnreachableError, type User } from "@/lib/api";
@@ -135,6 +135,21 @@ export default async function ProfilePage() {
     throw error;
   }
 
+  // Named so the confirmation can state it. "Remove everything" and "remove 61
+  // things" are the same action described at two different levels of honesty.
+  const totalItems =
+    content.contact.length +
+    content.titles.length +
+    content.summaries.length +
+    content.work_experience.length +
+    content.work_experience.reduce((n, role) => n + role.bullets.length, 0) +
+    content.skills.length +
+    content.education.length +
+    content.certifications.length +
+    content.languages.length +
+    content.volunteering.length +
+    content.military_service.length;
+
   const empty =
     content.work_experience.length === 0 &&
     content.skills.length === 0 &&
@@ -154,9 +169,12 @@ export default async function ProfilePage() {
           </p>
         </div>
         {!empty && (
-          <Button asChild variant="outline">
-            <Link href="/import">Import another CV</Link>
-          </Button>
+          <div className="flex items-center gap-4">
+            <ClearProfile total={totalItems} />
+            <Button asChild variant="outline">
+              <Link href="/import">Import another CV</Link>
+            </Button>
+          </div>
         )}
       </div>
 

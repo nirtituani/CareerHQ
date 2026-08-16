@@ -241,6 +241,38 @@ def _removable(kind: str) -> _Removable:
 
 
 @router.delete(
+    "/profile/content",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Clear everything in the profile",
+)
+async def clear_profile(profile: CurrentProfile, session: DbSession) -> Response:
+    """Empty the profile without deleting the account.
+
+    Clearing eleven sections one at a time is not a realistic way to start over,
+    and starting over is a reasonable thing to want after a bad import.
+
+    **The profile row itself survives**, and so does the user. Principle I says
+    each user owns exactly one Professional Profile; deleting and recreating it
+    would briefly break that and would orphan anything later pointed at it. This
+    empties the container rather than replacing it.
+
+    Import records are kept. They are history — what was uploaded and when — and
+    they are not profile content, so a clean profile does not require pretending
+    the imports never happened. The Master Resume goes, because it is derived
+    from content that no longer exists; the next approval recreates it.
+    """
+    for entry in REMOVABLE.values():
+        await session.execute(delete(entry.model).where(entry.owner == profile.id))
+
+    # Bullets are removed by the cascade from their roles, and the Master Resume
+    # is derived rather than owned.
+    await session.execute(delete(ResumeProfile).where(ResumeProfile.profile_id == profile.id))
+
+    await session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.delete(
     "/profile/{kind}/{item_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Remove one item from the profile",
