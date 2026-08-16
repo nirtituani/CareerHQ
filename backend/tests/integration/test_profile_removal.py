@@ -210,3 +210,76 @@ async def test_clearing_one_profile_leaves_another_alone(
     assert (await _as(client, attacker).delete("/api/profile/content")).status_code == 204
 
     assert (await db_session.get(Skill, victim_skill.id)) is not None
+
+
+# -- Correcting a fact already in the profile --------------------------------
+
+
+async def test_an_item_in_the_profile_can_be_corrected(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    """Review lets a user correct before approving; this is correcting after.
+
+    Without it, a one-character typo in a job title cost the whole entry,
+    because deleting was the only repair available.
+    """
+    user, _, skill = await _user_with_content(db_session)
+
+    response = await _as(client, user).patch(
+        f"/api/profile/skill/{skill.id}", json={"name": "Rust", "category": "Languages"}
+    )
+
+    assert response.status_code == 200
+    await db_session.refresh(skill)
+    assert skill.name == "Rust"
+    assert skill.category == "Languages"
+
+
+async def test_correcting_marks_the_item_verified(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    """The same state a review correction produces, with the same consequence:
+    a later import will not overwrite it."""
+    user, _, skill = await _user_with_content(db_session)
+
+    await _as(client, user).patch(f"/api/profile/skill/{skill.id}", json={"name": "Rust"})
+
+    await db_session.refresh(skill)
+    assert skill.source == Source.USER_CORRECTED
+
+
+async def test_a_patch_cannot_move_a_row_to_another_profile(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    """The whitelist is the point.
+
+    Without it a request could set `profile_id` and hand its own row to someone
+    else's profile, or rewrite `source` and forge the provenance that decides
+    what a later import is allowed to overwrite.
+    """
+    user, _, skill = await _user_with_content(db_session)
+    original_profile = skill.profile_id
+
+    await _as(client, user).patch(
+        f"/api/profile/skill/{skill.id}",
+        json={"name": "Rust", "profile_id": str(uuid.uuid4()), "source": "extracted"},
+    )
+
+    await db_session.refresh(skill)
+    assert skill.profile_id == original_profile
+    assert skill.source == Source.USER_CORRECTED, "source is set by the server, not the request"
+
+
+async def test_another_users_item_cannot_be_corrected(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    _victim, _, victim_skill = await _user_with_content(db_session)
+    attacker, _, _ = await _user_with_content(db_session)
+
+    response = await _as(client, attacker).patch(
+        f"/api/profile/skill/{victim_skill.id}", json={"name": "Owned"}
+    )
+
+    assert response.status_code == 404
+    await db_session.refresh(victim_skill)
+    assert victim_skill.name == "Python"

@@ -4,8 +4,11 @@ import { redirect } from "next/navigation";
 
 import { ApiUnavailable } from "@/components/api-unavailable";
 import { AppShell } from "@/components/app-shell";
-import { ClearProfile, RemoveItem, RemoveSection } from "@/components/profile/remove";
-import { ProvenanceLabel, type Source, provenanceStyle } from "@/components/provenance";
+import { EditModeProvider, EditModeToggle } from "@/components/profile/edit-mode";
+import { ProfileEntry } from "@/components/profile/entry";
+import { ClearProfile } from "@/components/profile/remove";
+import { ProfileSection } from "@/components/profile/section";
+import { type Source, provenanceStyle } from "@/components/provenance";
 import { Button } from "@/components/ui/button";
 import { ApiUnreachableError, type User } from "@/lib/api";
 import { fetchCurrentUser } from "@/lib/session";
@@ -72,57 +75,6 @@ async function fetchContent(): Promise<Content> {
   return (await response.json()) as Content;
 }
 
-/** Provenance survives into the profile — FR-004 requires it *after* approval. */
-function Entry({
-  source,
-  kind,
-  id,
-  label,
-  children,
-}: {
-  source: Source;
-  kind: string;
-  id: string;
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <li className="group py-1.5" style={provenanceStyle(source)}>
-      <div className="flex items-baseline justify-between gap-4">
-        <div className="min-w-0 text-sm">{children}</div>
-        <div className="flex shrink-0 items-center gap-3">
-          <ProvenanceLabel source={source} />
-          <RemoveItem kind={kind} id={id} label={label} />
-        </div>
-      </div>
-    </li>
-  );
-}
-
-function Section({
-  title,
-  kind,
-  count,
-  children,
-}: {
-  title: string;
-  kind: string;
-  count: number;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="mb-8">
-      <div className="mb-2 flex items-baseline justify-between gap-4">
-        <h2 className="text-lg" style={{ fontFamily: "var(--font-display)" }}>
-          {title}
-        </h2>
-        <RemoveSection kind={kind} title={title} count={count} />
-      </div>
-      <ul className="space-y-1">{children}</ul>
-    </section>
-  );
-}
-
 export default async function ProfilePage() {
   let user: User | null;
   let content: Content;
@@ -157,6 +109,7 @@ export default async function ProfilePage() {
 
   return (
     <AppShell user={user}>
+      <EditModeProvider>
       <div className="mb-8 flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl tracking-tight" style={{ fontFamily: "var(--font-display)" }}>
@@ -170,6 +123,7 @@ export default async function ProfilePage() {
         </div>
         {!empty && (
           <div className="flex items-center gap-4">
+            <EditModeToggle />
             <ClearProfile total={totalItems} />
             <Button asChild variant="outline">
               <Link href="/import">Import another CV</Link>
@@ -197,9 +151,9 @@ export default async function ProfilePage() {
       ) : (
         <>
           {content.contact.length > 0 && (
-            <Section title="Contact" kind="contact" count={content.contact.length}>
+            <ProfileSection title="Contact" kind="contact" count={content.contact.length}>
               {content.contact.map((c) => (
-                <Entry key={c.id} source={c.source} kind="contact" id={c.id} label="contact details">
+                <ProfileEntry key={c.id} source={c.source} kind="contact" id={c.id} label="contact details" values={c}>
                   {/* Every stored field. Showing three of five here was the same
                       bug as the review screen had — the profile would claim a
                       phone number was never captured when it was. */}
@@ -212,35 +166,35 @@ export default async function ProfilePage() {
                       {link}
                     </p>
                   ))}
-                </Entry>
+                </ProfileEntry>
               ))}
-            </Section>
+            </ProfileSection>
           )}
 
           {content.titles.length > 0 && (
-            <Section title="Titles" kind="title" count={content.titles.length}>
+            <ProfileSection title="Titles" kind="title" count={content.titles.length}>
               {content.titles.map((t) => (
-                <Entry key={t.id} source={t.source} kind="title" id={t.id} label={t.title}>
+                <ProfileEntry key={t.id} source={t.source} kind="title" id={t.id} label={t.title} values={t}>
                   {t.title}
-                </Entry>
+                </ProfileEntry>
               ))}
-            </Section>
+            </ProfileSection>
           )}
 
           {content.summaries.length > 0 && (
-            <Section title="Summary" kind="summary" count={content.summaries.length}>
+            <ProfileSection title="Summary" kind="summary" count={content.summaries.length}>
               {content.summaries.map((s) => (
-                <Entry key={s.id} source={s.source} kind="summary" id={s.id} label="summary">
+                <ProfileEntry key={s.id} source={s.source} kind="summary" id={s.id} label="summary" values={s}>
                   {s.text}
-                </Entry>
+                </ProfileEntry>
               ))}
-            </Section>
+            </ProfileSection>
           )}
 
           {content.work_experience.length > 0 && (
-            <Section title="Work experience" kind="work_experience" count={content.work_experience.length}>
+            <ProfileSection title="Work experience" kind="work_experience" count={content.work_experience.length}>
               {content.work_experience.map((role) => (
-                <Entry key={role.id} source={role.source} kind="work_experience" id={role.id} label={role.company}>
+                <ProfileEntry key={role.id} source={role.source} kind="work_experience" id={role.id} label={role.company} values={role}>
                   <p className="font-medium">
                     {[role.title, role.company].filter(Boolean).join(" — ")}
                   </p>
@@ -259,13 +213,13 @@ export default async function ProfilePage() {
                       </li>
                     ))}
                   </ul>
-                </Entry>
+                </ProfileEntry>
               ))}
-            </Section>
+            </ProfileSection>
           )}
 
           {content.skills.length > 0 && (
-            <Section title="Skills" kind="skill" count={content.skills.length}>
+            <ProfileSection title="Skills" kind="skill" count={content.skills.length}>
               {[
                 ...content.skills
                   .reduce((groups, skill) => {
@@ -289,28 +243,27 @@ export default async function ProfilePage() {
                   )}
                   <ul className="space-y-1">
                     {group.map((skill) => (
-                      <li
+                      <ProfileEntry
                         key={skill.id}
-                        className="group flex items-baseline justify-between gap-4 py-0.5 text-sm"
-                        style={provenanceStyle(skill.source)}
+                        source={skill.source}
+                        kind="skill"
+                        id={skill.id}
+                        label={skill.name}
+                        values={skill}
                       >
-                        <span>{skill.name}</span>
-                        <span className="flex items-center gap-3">
-                          <ProvenanceLabel source={skill.source} />
-                          <RemoveItem kind="skill" id={skill.id} label={skill.name} />
-                        </span>
-                      </li>
+                        {skill.name}
+                      </ProfileEntry>
                     ))}
                   </ul>
                 </li>
               ))}
-            </Section>
+            </ProfileSection>
           )}
 
           {content.education.length > 0 && (
-            <Section title="Education" kind="education" count={content.education.length}>
+            <ProfileSection title="Education" kind="education" count={content.education.length}>
               {content.education.map((e) => (
-                <Entry key={e.id} source={e.source} kind="education" id={e.id} label={e.institution}>
+                <ProfileEntry key={e.id} source={e.source} kind="education" id={e.id} label={e.institution} values={e}>
                   <p>{[e.qualification, e.field_of_study, e.institution].filter(Boolean).join(", ")}</p>
                   {[e.start_date, e.end_date, e.grade].some(Boolean) && (
                     <p className="text-xs" style={{ color: "var(--faint)" }}>
@@ -322,52 +275,53 @@ export default async function ProfilePage() {
                         .join(" · ")}
                     </p>
                   )}
-                </Entry>
+                </ProfileEntry>
               ))}
-            </Section>
+            </ProfileSection>
           )}
 
           {content.certifications.length > 0 && (
-            <Section title="Certifications" kind="certification" count={content.certifications.length}>
+            <ProfileSection title="Certifications" kind="certification" count={content.certifications.length}>
               {content.certifications.map((c) => (
-                <Entry key={c.id} source={c.source} kind="certification" id={c.id} label={c.name}>
+                <ProfileEntry key={c.id} source={c.source} kind="certification" id={c.id} label={c.name} values={c}>
                   {[c.name, c.issuer, c.year].filter(Boolean).join(" — ")}
-                </Entry>
+                </ProfileEntry>
               ))}
-            </Section>
+            </ProfileSection>
           )}
 
           {content.volunteering.length > 0 && (
-            <Section title="Volunteering" kind="volunteer" count={content.volunteering.length}>
+            <ProfileSection title="Volunteering" kind="volunteer" count={content.volunteering.length}>
               {content.volunteering.map((v) => (
-                <Entry key={v.id} source={v.source} kind="volunteer" id={v.id} label={v.organisation}>
+                <ProfileEntry key={v.id} source={v.source} kind="volunteer" id={v.id} label={v.organisation} values={v}>
                   {[v.role, v.organisation].filter(Boolean).join(" — ")}
-                </Entry>
+                </ProfileEntry>
               ))}
-            </Section>
+            </ProfileSection>
           )}
 
           {content.military_service.length > 0 && (
-            <Section title="Military service" kind="military_service" count={content.military_service.length}>
+            <ProfileSection title="Military service" kind="military_service" count={content.military_service.length}>
               {content.military_service.map((m) => (
-                <Entry key={m.id} source={m.source} kind="military_service" id={m.id} label={m.branch}>
+                <ProfileEntry key={m.id} source={m.source} kind="military_service" id={m.id} label={m.branch} values={m}>
                   {[m.role, m.branch].filter(Boolean).join(" — ")}
-                </Entry>
+                </ProfileEntry>
               ))}
-            </Section>
+            </ProfileSection>
           )}
 
           {content.languages.length > 0 && (
-            <Section title="Languages" kind="language" count={content.languages.length}>
+            <ProfileSection title="Languages" kind="language" count={content.languages.length}>
               {content.languages.map((l) => (
-                <Entry key={l.id} source={l.source} kind="language" id={l.id} label={l.name}>
+                <ProfileEntry key={l.id} source={l.source} kind="language" id={l.id} label={l.name} values={l}>
                   {[l.name, l.proficiency].filter(Boolean).join(" — ")}
-                </Entry>
+                </ProfileEntry>
               ))}
-            </Section>
+            </ProfileSection>
           )}
         </>
       )}
+      </EditModeProvider>
     </AppShell>
   );
 }
