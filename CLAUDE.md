@@ -125,6 +125,65 @@ deployment again. The short version:
   `frontned`). Copy it from Railway rather than typing it, and remember `PUBLIC_BASE_URL` must
   match the Google redirect URI byte for byte.
 
+### Slice 003 — Data Foundation is in progress: 58 of 96 tasks
+
+**User Story 1 is complete** apart from T058. A user uploads a CV, reviews what was extracted,
+corrects it, and approves it into their Professional Profile. Verified repeatedly against a real
+CV, and 126 backend tests at 81% plus 37 component tests.
+
+**The structured completion seam is the artifact to understand first**
+(`specs/003-data-foundation/contracts/extraction-seam.md`). One call in, one validated object out:
+`complete(task, schema, prompt) -> Completion[T]`. A schema is required, so unvalidated text
+cannot come back; the model is chosen by **task name**, which is what lets slice 004 express
+docs/08 §3.2.3 as configuration rather than branches; and usage is returned so the audit record
+Principle V requires is written in the same transaction as the work.
+
+`infrastructure/ai/litellm_gateway.py` is the **only** module that may import `litellm`, asserted
+by a test over the import graph. Two other boundary tests exist for the same reason —
+`storage_key` is read by exactly one module, and `domain/` imports no framework or provider code.
+All three were watched failing before being trusted.
+
+Extraction runs on **Sonnet** at roughly $0.017–$0.038 per CV, defaulted in code rather than left
+to the environment (an unset variable fell back to Opus at more than twice the price for
+identical output). Measured on a real CV: 9 of 9 bullets attributed to the correct role.
+
+**Decisions made during implementation that the spec does not carry:**
+
+- **A second import merges, it does not append.** Keys are conservative — a role is company plus
+  title plus start date — so a duplicate can be discarded by hand rather than an incorrect merge
+  being undoable. Contact and summary are single-valued, but a value the **user corrected** is
+  never replaced by a later import.
+- **Approval has two modes**, chosen by what the user did. An untouched review adds everything not
+  discarded; explicitly adding any item narrows it to those. A second import marks what the
+  profile already holds, so only new items need attention.
+- **The profile is editable and removable** — per item, per section, and entirely — behind an
+  explicit edit mode rather than permanently visible controls. Correcting there marks the fact
+  `user_corrected`, which then protects it from a later import.
+- **`EXTRACTED` is not labelled.** Every fact carries it straight after an import, so the label
+  said nothing; only `CORRECTED` and `ADDED` are marked, and the dashed rule carries the rest.
+
+**What remains:** T058 (a scanned PDF observed failing in a browser), all of User Story 2
+(recording a job, the applications table, the tabbed detail view) and User Story 3 (JobTracker
+import — **blocked on a real CSV export**, T074).
+
+### What working on this slice actually taught
+
+Worth reading before writing more interface code, because it cost most of a day:
+
+- **Every display bug was found by a person looking at a real CV, not by the suite.** Contact
+  fields, bullet attribution, skill categories and project URLs were all extracted correctly and
+  then dropped, summarised away, or detached from their context by the renderer. A fixture only
+  contains the fields whoever wrote it thought to include — the same set the renderer was written
+  against — so it cannot catch an omission. `tests/integration/test_profile_content.py` now reads
+  the models' own columns and requires every stored value to reach the API; it found a fourth bug
+  on its first run.
+- **A second render path costs an affordance every time.** Grouping skills created one, and Edit,
+  then Add, then Remove each went missing from it before the controls were extracted into a single
+  component.
+- **Test against a scratch user, never the real profile.** A test run against live data merged a
+  fictional CV into it and replaced the contact block, because contact is single-valued by design.
+  It was recoverable only because import records are kept.
+
 ### Slice 004 decision recorded ahead of its spec
 
 `docs/08` §3.2.3 fixes the model per workflow node: **Sonnet** to analyze, draft and revise;
@@ -320,6 +379,11 @@ Recorded so they are not rediscovered.
   Otherwise the push is rejected outright, with the commit still safe locally.
 - **A comment beginning `# noqa` is parsed as a blanket lint suppression.** Do not start an
   explanatory comment with that word.
+- **`testing files/` holds real CVs and is gitignored.** A CV carries a home address, a phone
+  number and an employment history, and this repository is public. It sat untracked for a while
+  with `git add -A` in regular use, which is one keystroke from publishing it permanently. The
+  only documents ever committed are the three synthetic fixtures in `backend/tests/fixtures/`,
+  whose subject is fictional precisely so they can be.
 - **`docker compose up -d backend` does not pick up backend *code* changes.** The frontend mounts
   `./frontend/src:/app/src`, so its dev server hot-reloads; **the backend mounts nothing** and runs
   the baked image. `up -d` recreates the container from that same image, so it restarts happily
