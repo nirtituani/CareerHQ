@@ -140,9 +140,17 @@ primary channel because it survives greyscale, colour blindness and a poor monit
 
 | State | Rule | Label | Reads as |
 |---|---|---|---|
-| `extracted` | `--rule-extracted` — **2px dashed** | `EXTRACTED` | Provisional. The system's guess |
+| `extracted` | `--rule-extracted` — **2px dashed** | *(none)* | Provisional. The system's guess |
 | `user_corrected` | `--rule-corrected` — 2px solid brand | `CORRECTED` | Affirmed, and changed |
 | `user_added` | `--rule-added` — 2px solid muted | `ADDED` | Affirmed, and yours |
+
+**The default state is unlabelled.** Straight after an import every row is
+`extracted`, so labelling it writes one word sixty times and competes with the
+content for attention — and a word that appears on everything reads as
+decoration rather than information. The exception is the signal: a fact someone
+corrected or added is worth marking, and the rest is the baseline. The dashed
+rule still carries the distinction for every item, which is exactly why the rule
+is the primary channel and the label is reinforcement.
 
 Dashed versus solid is the whole idea: *provisional* versus *affirmed*, legible down a long list at
 a glance without reading a single label.

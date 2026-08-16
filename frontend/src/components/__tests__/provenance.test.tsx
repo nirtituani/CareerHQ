@@ -33,9 +33,19 @@ describe("provenance", () => {
     expect(css).toMatch(/--rule-added:\s*[^;]*solid/);
   });
 
-  it("labels every provenance state in text as well", () => {
-    render(<ProvenanceLabel source="extracted" />);
-    expect(screen.getByText("EXTRACTED")).toBeInTheDocument();
+  it("says nothing for the default state", () => {
+    // Straight after an import every row is `extracted`, so labelling it puts
+    // the same word on sixty rows and competes with the content for attention.
+    // The dashed rule still carries the distinction, which is why it is the
+    // primary channel rather than the label.
+    const { container } = render(<ProvenanceLabel source="extracted" />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("labels the states a person caused", () => {
+    // The exception is the signal: these are the facts a human touched.
+    render(<ProvenanceLabel source="user_corrected" />);
+    expect(screen.getByText("CORRECTED")).toBeInTheDocument();
   });
 });
 
