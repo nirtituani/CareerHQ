@@ -120,6 +120,12 @@ export default async function ProfilePage() {
               ? "Everything your tailored resumes are built from."
               : "Your professional knowledge lives here."}
           </p>
+          {/* The dashed rule needs saying once. Repeating it on every row was
+              the version that had to be explained anyway. */}
+          <p className="mt-1 text-xs" style={{ color: "var(--faint)" }}>
+            A dashed line means the fact came from your CV and you have not
+            checked it yet.
+          </p>
         </div>
         {!empty && (
           <ProfileMenu total={totalItems} />

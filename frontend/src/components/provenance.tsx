@@ -38,6 +38,16 @@ export function provenanceStyle(source: Source): React.CSSProperties {
 }
 
 export function ProvenanceLabel({ source }: { source: Source }) {
+  // `extracted` is the default and says nothing worth reading: straight after an
+  // import every row carries it, and sixty repetitions of one word is noise
+  // competing with the content. The signal is the *exception* — a fact a person
+  // corrected or added — so only that is labelled.
+  //
+  // FR-004 still holds. The distinction survives in the left rule, which is the
+  // primary channel by design (docs/09 §5) precisely because it works without
+  // reading anything.
+  if (source === "extracted") return null;
+
   const { label, hint } = PROVENANCE[source];
   return (
     <span
