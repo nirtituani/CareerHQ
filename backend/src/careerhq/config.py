@@ -127,6 +127,11 @@ class Settings(BaseSettings):
     #: import for no measurable gain. Measured on the sample CV: Opus $0.041,
     #: Sonnet a fraction of that, with identical bullet attribution.
     llm_model_cv_extraction: str = "anthropic/claude-sonnet-5"
+    #: Sonnet for the same reason, and it runs less often than the name
+    #: suggests: a posting that publishes schema.org `JobPosting` data is read
+    #: straight from the page with no completion at all, which covers most
+    #: applicant tracking systems.
+    llm_model_job_extraction: str = "anthropic/claude-sonnet-5"
     # Local by default so the stack runs with no API key. Anthropic has no
     # embeddings endpoint, which is why this is not an Anthropic model.
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
