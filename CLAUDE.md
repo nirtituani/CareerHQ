@@ -80,10 +80,32 @@ to get wrong and each failed at least once during slice 002:
 - `BACKEND_URL` on the frontend is consumed at **build** time. Changing it needs a rebuild, not a
   restart.
 
-**Only Postgres is deployed.** Redis and object storage are not; nothing needs them until slices
-003/004. That is why `REDIS_URL` and the `S3_*` settings are now optional, and why readiness
-reports them as `not_configured` rather than failing. Setting placeholder values would make the
-application believe it has a cache and fail at first use.
+**Postgres, object storage and the AI provider are deployed. Redis is not.** Readiness reports
+`database ok, cache not_configured, object_storage ok, ai_provider ok`. Nothing reads a cache yet,
+and a placeholder would make the application believe it has one and fail at first use.
+
+- **Object storage is a Railway bucket**, `careerhq-uploads` in `sjc` — the same coast as the
+  `sfo` project. It is **billable** (cents per GB, so negligible for CVs) and lives on the account
+  rather than in this repository, so it survives between sessions and is removed with
+  `railway bucket delete`. Credentials come from `railway bucket credentials`; all three boto3
+  addressing styles were tested against the real endpoint and work, so no client configuration is
+  needed.
+- **`ai_provider: ok` does not mean extraction works.** It is a construction check by deliberate
+  design: probing the provider properly would bill a completion on every health check, and this
+  endpoint is the platform's healthcheck. A key that is present and wrong still reports `ok`.
+  Whether extraction actually works was settled once, by importing a real CV and confirming the
+  record read `claude-sonnet-5`, real token counts, a real cost, and `is_fixture = false`.
+
+**To query the deployed database**, an SSH key is registered as `careerhq-dev-machine`
+(`~/.ssh/railway_careerhq`, dedicated to this project, no passphrase, revoked with
+`railway ssh keys remove careerhq-dev-machine`):
+
+```bash
+railway ssh --service pgvector "PGHOST=localhost PGPORT=5432 psql -U postgres -d railway -c '…'"
+```
+
+The `PGHOST`/`PGPORT` override is not optional — see the `psql` gotcha below, which this walked
+straight into the first time.
 
 ### What the deployment gate and rollback drills established
 
