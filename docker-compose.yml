@@ -118,6 +118,10 @@ services:
       target: dev
     environment:
       BACKEND_URL: http://backend:8000
+      # Publishable by design — it travels in the logo image URL, so the browser
+      # must see it. Kept out of the source anyway: the source is public, and a
+      # token in a public repo is one anyone can spend.
+      NEXT_PUBLIC_LOGO_DEV_TOKEN: ${LOGO_DEV_TOKEN:-}
       WATCHPACK_POLLING: "true"
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
