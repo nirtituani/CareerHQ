@@ -132,7 +132,7 @@ deployment again. The short version:
   collides with the project name in 2000 log lines. Use high-entropy values even in development,
   or secret-scanning the logs is meaningless.
 
-### Two things worth doing when convenient
+### Worth doing when convenient
 
 - **Rotate the database password**, and restart `pgvector` while you are there. It was visible on
   screen during setup while the public TCP proxy was still open. That proxy is gone — `tcpProxies`
@@ -205,6 +205,16 @@ Worth reading before writing more interface code, because it cost most of a day:
 - **Test against a scratch user, never the real profile.** A test run against live data merged a
   fictional CV into it and replaced the contact block, because contact is single-valued by design.
   It was recoverable only because import records are kept.
+
+- **A real JobTracker CSV export is needed before User Story 3** can be finished (T074). Export
+  from JobTracker's `GET /api/export` into `backend/tests/fixtures/jobtracker_export.csv`. The
+  mapping is already written from the source, so this proves it against real data rather than
+  deriving it — and the messy cases are the point: blank dates, `"competitive"` salaries, and
+  custom statuses that live in the browser's localStorage and therefore appear nowhere in the
+  JobTracker source.
+- **There is no "delete my account".** The profile can be cleared entirely, but the user, their
+  imports and their uploaded files stay. That is out of scope for slice 003 rather than an
+  oversight, and it is recorded so the absence is a decision rather than a gap nobody noticed.
 
 ### Slice 004 decision recorded ahead of its spec
 
