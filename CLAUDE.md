@@ -147,27 +147,64 @@ deployment again. The short version:
   `frontned`). Copy it from Railway rather than typing it, and remember `PUBLIC_BASE_URL` must
   match the Google redirect URI byte for byte.
 
-### Slice 003 — Data Foundation is in progress: 63 of 96 tasks
+### Slice 003 — Data Foundation: User Stories 1 and 2 done, 93 of 109 tasks
 
-**User Story 1 is complete**, and it is deployed and verified there. A user uploads a CV, reviews what was extracted,
-corrects it, and approves it into their Professional Profile. Verified repeatedly against a real
-CV, and 126 backend tests at 81% plus 37 component tests.
+**Not complete.** User Story 3 is blocked on a JobTracker CSV export only you can produce (T074).
+Everything else in the slice is built, deployed and verified there.
 
-**The structured completion seam is the artifact to understand first**
+**User Story 1 — a CV becomes a reviewed profile.** Upload, review item by item, correct, approve.
+Nothing reaches the profile without approval.
+
+**User Story 2 — a job becomes a record to tailor against.** Add it from a posting URL or by hand;
+move it through statuses; open a record holding the description slice 004 works from.
+
+189 backend tests at 81%, 64 component tests. Deployed and verified on Railway.
+
+**The structured completion seam is still the artifact to understand first**
 (`specs/003-data-foundation/contracts/extraction-seam.md`). One call in, one validated object out:
-`complete(task, schema, prompt) -> Completion[T]`. A schema is required, so unvalidated text
-cannot come back; the model is chosen by **task name**, which is what lets slice 004 express
-docs/08 §3.2.3 as configuration rather than branches; and usage is returned so the audit record
-Principle V requires is written in the same transaction as the work.
+`complete(task, schema, prompt) -> Completion[T]`. A schema is required, so unvalidated text cannot
+come back; the model is chosen by **task name**, which is what lets slice 004 express docs/08
+§3.2.3 as configuration rather than branches; and usage is returned so the audit record Principle V
+requires is written in the same transaction as the work.
 
-`infrastructure/ai/litellm_gateway.py` is the **only** module that may import `litellm`, asserted
-by a test over the import graph. Two other boundary tests exist for the same reason —
-`storage_key` is read by exactly one module, and `domain/` imports no framework or provider code.
-All three were watched failing before being trusted.
+There are now **two** call sites — `extract_resume` and `extract_job` — and that was a decision
+recorded in T096, not drift. Neither loops, uses tools, or reacts to its own output, which is the
+line the guard actually protects.
 
-Extraction runs on **Sonnet** at roughly $0.017–$0.038 per CV, defaulted in code rather than left
-to the environment (an unset variable fell back to Opus at more than twice the price for
-identical output). Measured on a real CV: 9 of 9 bullets attributed to the correct role.
+**`llm_model_<task>` must be set for every new task.** `model_for_task` falls back to
+`llm_provider_model`, which is **Opus** — so a task with no entry silently runs at 2.5× the price
+for no gain. It has already caught CV extraction once.
+
+### Reading a job posting from a URL
+
+Requested during implementation, so the spec does not carry it. Three steps, tried in order,
+because the first two fail often and the third always works: **URL** → **paste the posting text**
+→ **fill it in by hand**. What it taught:
+
+- **Structured data is metadata only.** Returning early on schema.org `JobPosting` looked free and
+  was wrong twice: on a real posting the block held 1,591 characters of company blurb while the
+  page held 9,447 including the requirements, and the early return skipped the requirements
+  narrowing entirely. Where the employer *did* state a field it still wins over a model reading a
+  page; the body always comes from the page.
+- **Never ask the model to retype the description.** Output is the slow half of a completion: a
+  real Greenhouse posting took **52 seconds** that way and timed out the frontend proxy. Metadata
+  only is 5.4s with 131 output tokens. Output is also 57–86% of the cost, so this is the cost lever
+  as well as the latency one.
+- **A page that ships its template must be refused, not read.** Client-rendered boards serve
+  `{{position.name}} @ {{company.name}}`, and a model will "extract" that into an empty company and
+  a requirements box full of placeholders — which reads as a broken feature rather than an
+  unreadable page.
+- **Comeet needs a vendor adapter** (`infrastructure/jobs/comeet.py`) because it renders
+  client-side and dominates Israeli tech hiring. Its page ships the credentials its own browser
+  code uses; its API supplies metadata and points at the employer's rendered page for the body.
+- **LinkedIn works fine** with a plain fetch — 200, ~10k characters of real content. Repeated
+  assumption to the contrary was wrong.
+
+**`infrastructure/jobs/fetch.py` is the only place a user-supplied URL is requested**, which makes
+it the one place SSRF is possible: `169.254.169.254`, `backend:8000` and the database are each one
+request away. The guard resolves the hostname and refuses any non-global address, re-checks every
+redirect hop, allows only http/https, and never names what it found — otherwise it doubles as a way
+to map the network. Verified against the live endpoint.
 
 **Decisions made during implementation that the spec does not carry:**
 
@@ -176,45 +213,62 @@ identical output). Measured on a real CV: 9 of 9 bullets attributed to the corre
   being undoable. Contact and summary are single-valued, but a value the **user corrected** is
   never replaced by a later import.
 - **Approval has two modes**, chosen by what the user did. An untouched review adds everything not
-  discarded; explicitly adding any item narrows it to those. A second import marks what the
-  profile already holds, so only new items need attention.
+  discarded; explicitly adding any item narrows it to those. A second import marks what the profile
+  already holds, so only new items need attention.
 - **The profile is editable and removable** — per item, per section, and entirely — behind an
-  explicit edit mode rather than permanently visible controls. Correcting there marks the fact
-  `user_corrected`, which then protects it from a later import.
+  explicit edit mode. Correcting there marks the fact `user_corrected`, which then protects it from
+  a later import.
 - **`EXTRACTED` is not labelled.** Every fact carries it straight after an import, so the label
-  said nothing; only `CORRECTED` and `ADDED` are marked, and the dashed rule carries the rest.
+  said nothing; only `CORRECTED` and `ADDED` are marked.
+- **There is no `rejected` column, and its absence is a release blocker.** JobTracker keeps a
+  boolean beside the status and reconciles the two at every read because they disagree. Here
+  rejection is a value of `normalized_status`; an imported row with `rejected=true` and status
+  "Interview Round 2" keeps the label — how far you got — and normalizes to `rejected` — the
+  outcome. Asserted against `information_schema` locally **and** on the deployed database, because
+  an invariant enforced by an absence has nothing else to catch its return.
+- **`date_added` and `date_applied` are separate**, so "this sat in Pre-Applied for 46 days" is
+  computable. One field overwritten at the transition loses exactly the signal a stale wishlist
+  needs. The interface shows one Date column and picks between them.
+- **Applied Via and Date Applied are asked only once the status is Applied or later.** Both are
+  meaningless on a job nobody has applied to, and asking up front is most of why JobTracker's form
+  is long.
+- **Mark-as-rejected moves the status**, so there is still one source of truth, and undo restores
+  the previous status *from history* rather than clearing a flag — JobTracker's undo erased the
+  fact it ever happened.
 
-**What remains:** all of User Story 2
-(recording a job, the applications table, the tabbed detail view) and User Story 3 (JobTracker
-import — **blocked on a real CSV export**, T074).
+**What remains:** all of User Story 3 (JobTracker import — **blocked on a real CSV export**, T074),
+T089 (one real job on the deployed system), and T092–T095's remaining documentation.
 
 ### What working on this slice actually taught
 
-Worth reading before writing more interface code, because it cost most of a day:
+Worth reading before writing more interface code:
 
-- **Every display bug was found by a person looking at a real CV, not by the suite.** Contact
+- **Every display bug was found by a person looking at real data, not by the suite.** Contact
   fields, bullet attribution, skill categories and project URLs were all extracted correctly and
-  then dropped, summarised away, or detached from their context by the renderer. A fixture only
-  contains the fields whoever wrote it thought to include — the same set the renderer was written
-  against — so it cannot catch an omission. `tests/integration/test_profile_content.py` now reads
-  the models' own columns and requires every stored value to reach the API; it found a fourth bug
-  on its first run.
+  then dropped by the renderer. A fixture only contains the fields whoever wrote it thought to
+  include, so it cannot catch an omission.
+  `tests/integration/test_profile_content.py` reads the models' own columns and requires every
+  stored value to reach the API; it found a fourth bug on its first run.
+- **`create_all` does not reconcile an existing table**, so the test database kept whatever shape it
+  was first built with and every schema-shaped assertion silently checked a stale snapshot. T067 —
+  a release blocker — passed against a deliberately added `rejected` column until `conftest.py`
+  dropped before creating. **Any test that asserts an absence must be watched failing.**
+- **Assert an absence against the right scope.** "No rejected toggle on the form" passed against a
+  form that had one, because Radix renders dialogs into a portal and `container` was empty. Same
+  class of false gate, one layer up.
 - **A second render path costs an affordance every time.** Grouping skills created one, and Edit,
-  then Add, then Remove each went missing from it before the controls were extracted into a single
-  component.
+  then Add, then Remove each went missing from it.
 - **Test against a scratch user, never the real profile.** A test run against live data merged a
-  fictional CV into it and replaced the contact block, because contact is single-valued by design.
-  It was recoverable only because import records are kept.
+  fictional CV into it and replaced the contact block.
 
-- **A real JobTracker CSV export is needed before User Story 3** can be finished (T074). Export
-  from JobTracker's `GET /api/export` into `backend/tests/fixtures/jobtracker_export.csv`. The
-  mapping is already written from the source, so this proves it against real data rather than
-  deriving it — and the messy cases are the point: blank dates, `"competitive"` salaries, and
-  custom statuses that live in the browser's localStorage and therefore appear nowhere in the
-  JobTracker source.
-- **There is no "delete my account".** The profile can be cleared entirely, but the user, their
-  imports and their uploaded files stay. That is out of scope for slice 003 rather than an
-  oversight, and it is recorded so the absence is a decision rather than a gap nobody noticed.
+### Reading the source app is cheaper than guessing at it
+
+`nirtituani/job-tracker-web` is public and was read directly twice — once for research.md §R8 and
+once during User Story 2. Both times it settled questions that would otherwise have been guessed:
+the status vocabulary and Applied Via options, `match_rating * 20` for the percentage, the Job Desc
+icon, and the `WHERE rejected IS TRUE OR status='Rejected'` query that proves why the flag had to
+go. **It also hardcodes a logo.dev token in public source** (`ApplicationTable.jsx:4`) — worth
+rotating.
 
 ### Slice 004 decision recorded ahead of its spec
 
@@ -409,6 +463,14 @@ Recorded so they are not rediscovered.
   from the public Actions API with `curl`, which needs no auth at all.
 - **Pushing anything under `.github/workflows/` needs a token with the `workflow` scope.**
   Otherwise the push is rejected outright, with the commit still safe locally.
+- **`NEXT_PUBLIC_*` is inlined when the frontend is *built*, not read at run time.** Same trap as
+  `BACKEND_URL` above and worth stating as the general rule: setting one on a running service is
+  too late — the value is already in the bundle. It needs a declared `ARG` in the Dockerfile, and
+  on Railway the variable must exist *before* the build. The failure is silent: the feature simply
+  does nothing.
+- **pydantic's `EmailStr` rejects reserved TLDs**, `.test` and `.invalid` among them. A scratch user
+  seeded with `someone@example.test` makes `/api/auth/me` return **500**, which surfaces as a
+  white-screen page and reads like an application bug. Use `example.com` for test fixtures.
 - **A comment beginning `# noqa` is parsed as a blanket lint suppression.** Do not start an
   explanatory comment with that word.
 - **`testing files/` holds real CVs and is gitignored.** A CV carries a home address, a phone

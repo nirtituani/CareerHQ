@@ -130,6 +130,18 @@ secrets configured, and the Google OAuth client updated for the deployed domain.
 
 ## 5.3 Slice 003 — Data Foundation
 
+> **Status: User Stories 1 and 2 complete and deployed; User Story 3 blocked.** A CV becomes a
+> reviewed profile, and a job becomes a record carrying the description slice 004 tailors against —
+> both verified on the deployed system. The JobTracker import is blocked on a real CSV export from
+> the source app, which only the author can produce.
+>
+> Two things this slice added that the plan below does not describe, both requested during
+> implementation and recorded in `specs/003-data-foundation/tasks.md` Phase 4b: **reading a job
+> posting from its URL** (a second `complete()` call site, decided rather than drifted into — see
+> T096) and the **match-analysis design** in
+> [`docs/superpowers/specs/2026-08-17-match-analysis-design.md`](superpowers/specs/2026-08-17-match-analysis-design.md),
+> which is slice 004 work started early because both of its inputs now exist.
+
 **Delivers**: The user uploads their existing CV; it is parsed into structured Professional Profile
 content; the user reviews and corrects it; an initial Master Resume is created. Alongside it, a
 minimal Application entity holds jobs and their descriptions, seeded by importing real data from

@@ -42,7 +42,10 @@ unmet. That is why FR-021 makes it a requirement rather than an assumption.
 ## Validating User Story 1 — CV import
 
 1. Sign in at http://localhost:3000.
-2. Go to **Import**, upload a real PDF CV.
+2. Reach the import screen and upload a real PDF CV. **There is no Import item in the sidebar** —
+   docs/09 §6.0 defines six destinations and importing is an action, not one of them. Use
+   **Dashboard → Import a CV**, or **Profile → Import my CV** on an empty profile. (An earlier
+   version of this line said "Go to Import", which is not followable.)
 3. **Before touching anything, check the database.** This is the assertion, not a formality:
 
    ```bash
@@ -71,16 +74,24 @@ unmet. That is why FR-021 makes it a requirement rather than an assumption.
 
 ## Validating User Story 2 — record a job
 
-1. **Applications → New**. Add a company, title, and paste a real job description.
-2. Confirm it saves with no submitted resume and a pre-submission status (FR-011).
-3. Change its status. Confirm a history row was written (FR-012):
+1. **Applications → Add Application.** The modal opens on the automatic route: paste a posting URL
+   and press **Fetch**. Confirm the company, title, location and requirements come back filled in,
+   and that nothing was saved yet — the extraction populates the form and waits for you.
+2. Press **Enter the details manually** on a fresh modal and confirm the same form appears empty,
+   so the manual path does not depend on the automatic one.
+3. Save. Confirm it stores with no submitted resume and a pre-submission status (FR-011), and that
+   **Applied Via and Date Applied were never asked for** — both are meaningless before you apply.
+4. Try a URL from a client-rendered board (any `comeet.com` posting will do). Confirm it either
+   resolves through the vendor adapter or refuses with an offer to paste the text — and that no
+   `{{position.name}}` placeholder ever reaches the form.
+5. Change its status. Confirm a history row was written (FR-012):
 
    ```bash
    docker compose exec postgres psql -U careerhq -d careerhq -c \
      "SELECT count(*) FROM application_status_history;"
    ```
 
-4. **Confirm no rejected column exists anywhere** — the release-blocking invariant (FR-016):
+6. **Confirm no rejected column exists anywhere** — the release-blocking invariant (FR-016):
 
    ```bash
    docker compose exec postgres psql -U careerhq -d careerhq -c \
@@ -88,7 +99,15 @@ unmet. That is why FR-021 makes it a requirement rather than an assumption.
        WHERE column_name ILIKE '%rejected%';"
    ```
 
-   Expect **zero rows**. This is an absence, so it has to be checked rather than observed.
+   Expect **zero rows**. This is an absence, so it has to be checked rather than observed — and
+   check the tables exist first (`\dt applications`), because the query is vacuously satisfied by a
+   database that has no applications schema at all. That is not hypothetical: the same assertion
+   passed against a deliberately added column locally, because `create_all` had never rebuilt the
+   test database.
+
+7. Press the ✕ on a row to mark it rejected, then the undo arrow. Confirm the status returns to
+   what it was **and** that the history still records the rejection — the undo appends, it does not
+   erase.
 
 ## Validating User Story 3 — JobTracker import
 
@@ -122,6 +141,8 @@ misconfigurations all deployed green.
 
 1. `curl -sS https://frontend-production-02ac.up.railway.app/api/health/ready` — confirm
    `object_storage` and `ai_provider` both report `ok`, not `not_configured`.
+   `ai_provider: ok` means a client could be *built*, not that the key works; step 3 is what
+   settles that.
 2. Import a CV on the deployed site and confirm the file landed in the bucket.
 3. Confirm the model, tokens and cost were recorded for that extraction (FR-026):
 
@@ -132,3 +153,19 @@ misconfigurations all deployed green.
 
    `is_fixture` must be `false` on the deployed system — if it is `true`, the deployment is
    serving canned content and every extraction so far has been fictional.
+
+4. Confirm the applications schema deployed, not just the code (T090). Reaching the deployed
+   database needs the `PGHOST`/`PGPORT` override — the running container still carries a stale
+   public-proxy address, and without the override `psql` authenticates against a stranger's
+   database (CLAUDE.md):
+
+   ```bash
+   railway ssh --service pgvector "PGHOST=localhost PGPORT=5432 psql -U postgres -d railway -tAc \
+     \"SELECT version_num FROM alembic_version;\""
+   ```
+
+   Expect `0005_applications`, both `uq_` constraints present, and zero `rejected` columns.
+
+5. Record a job on the deployed site. **The slice is not done until the deployed system holds both
+   of slice 004's inputs** — a populated profile *and* an application carrying real description
+   text. The profile half alone does not meet it (T089, SC-010).

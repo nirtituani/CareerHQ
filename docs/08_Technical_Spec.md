@@ -35,16 +35,18 @@ truth for their own areas; this document owns the narrative and links down for d
 
 ## 1.2 Status at a glance
 
-**Two of seven slices are built, and the system is deployed.** Everything in this document
-carries an explicit status marker so that planned work is never mistaken for shipped work.
+**Two of seven slices are complete, a third is two-thirds done, and the system is deployed.**
+Everything in this document carries an explicit status marker so that planned work is never
+mistaken for shipped work.
 
 | | |
 |---|---|
 | **Live at** | **https://frontend-production-02ac.up.railway.app** |
 | **Built and verified** | Slice 001 — Platform Foundation; Slice 002 — Deployment (52/52, all three user stories verified) |
-| **Next** | Slice 003 — Data Foundation |
-| **Evidence** | 58 backend tests at 89% coverage, 3 component tests, 6 Playwright smoke tests, CI green on `main` |
-| **Verified how** | Locally: full quickstart from a fresh clone on wiped volumes. **On the deployed system**: a real Google sign-in taking the database from `0\|0` to `1\|1` and leaving it there on a second sign-in, with security headers, cookie flags and readiness confirmed by observation — see [`specs/002-deployment/observations.md`](../specs/002-deployment/observations.md) |
+| **Partly built** | Slice 003 — Data Foundation. User Story 1 (CV → reviewed profile) and User Story 2 (record a job) are complete and deployed. **User Story 3 (JobTracker import) is blocked** on a real CSV export from the source app |
+| **Next** | Finish slice 003, then Slice 004 — Resume Tailoring |
+| **Evidence** | 189 backend tests at 81% coverage, 64 component tests, 6 Playwright smoke tests, CI green on `main` |
+| **Verified how** | Locally: full quickstart from a fresh clone on wiped volumes. **On the deployed system**: a real Google sign-in taking the database from `0\|0` to `1\|1`; a real CV imported and confirmed non-fixture; migration `0005` applied with constraints C2 and C3 present and no `rejected` column anywhere; a real job posting read end to end through the deployed extraction path — see [`specs/002-deployment/observations.md`](../specs/002-deployment/observations.md) |
 
 ---
 
