@@ -34,6 +34,13 @@ COPY . .
 ARG BACKEND_URL
 ENV BACKEND_URL=${BACKEND_URL}
 
+# Same rule as BACKEND_URL above, and the same trap: `NEXT_PUBLIC_*` is inlined
+# into the client bundle when it is built, not read at run time. Setting it only
+# in the environment of a running container is too late — the value is already
+# baked in, and the logos silently do not load.
+ARG NEXT_PUBLIC_LOGO_DEV_TOKEN
+ENV NEXT_PUBLIC_LOGO_DEV_TOKEN=${NEXT_PUBLIC_LOGO_DEV_TOKEN}
+
 ENV NEXT_TELEMETRY_DISABLED=1
 
 # The value is echoed inside the RUN rather than before it so that it forms
