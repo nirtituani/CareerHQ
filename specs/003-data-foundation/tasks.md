@@ -512,26 +512,40 @@ derived, and re-running creates nothing.
 - [ ] T089 👁 **OBSERVE** Confirm the deployed system holds **both** of slice 004's inputs — a
       populated profile **and** an application carrying real job description text (SC-010). This is
       the slice's own definition of done, and the profile half alone does not meet it
-- [ ] T090 👁 **OBSERVE** Run T063's `information_schema` query against the **deployed** database.
+- [x] T090 👁 **OBSERVE** Run T063's `information_schema` query against the **deployed** database.
       A constraint that holds locally and not in production is not a constraint
 
 ### Gates and documentation
 
-- [ ] T091 Run every gate from the host and confirm green: `ruff format --check .`, `ruff check .`,
+- [x] T091 Run every gate from the host and confirm green: `ruff format --check .`, `ruff check .`,
       `mypy src`, `pytest` from `backend/`; `lint`, `typecheck`, `test`, `build` from `frontend/`.
       Host, not containers — `backend/.dockerignore` excludes `tests/` and a container `next build`
       fails on a directory the dev server owns (CLAUDE.md)
-- [ ] T092 [P] Update `README.md` with the CV import flow, the provider-key options, and the bucket
+- [x] T092 [P] Update `README.md` with the CV import flow, the provider-key options, and the bucket
       requirement
-- [ ] T093 [P] Update `CLAUDE.md`: slice 003 complete, what carries into slice 004, and any gotcha
-      this slice proved with its symptom
-- [ ] T094 [P] Update `docs/05_Implementation_Plan.md` and `docs/08_Technical_Spec.md` — slice 003
-      complete, slice 004 next, capability status markers moved
-- [ ] T095 Walk `specs/003-data-foundation/quickstart.md` end to end **as written** and correct it
-      against what actually happens. Slice 001's T069 and slice 002's T052 both found real errors
+- [x] T093 [P] Update `CLAUDE.md`: what carries into slice 004, and any gotcha this slice proved
+      with its symptom. **Amended**: this said "slice 003 complete". It is not — User Story 3 is
+      blocked on a JobTracker CSV export only the author can produce (T074), so the honest state is
+      User Stories 1 and 2 complete and User Story 3 blocked. Writing "complete" would make the
+      documentation say something the task list contradicts
+- [x] T094 [P] Update `docs/05_Implementation_Plan.md` and `docs/08_Technical_Spec.md` — capability
+      status markers moved to match what is built. **Amended** for the same reason as T093: slice
+      003 is two-thirds done, not complete, and docs/08 §1.2's whole purpose is that planned work is
+      never mistaken for shipped work
+- [x] T095 Walk `specs/003-data-foundation/quickstart.md` end to end **as written** and correct it
+      against what actually happens. **Found**: "Go to Import" is not followable — there is no
+      Import item in the sidebar, because docs/09 §6.0 makes importing an action inside Profile
+      rather than a destination. Also corrected: the button is "Add Application", not "New"; the
+      modal opens on the URL route, not an empty form; the `rejected` query is vacuously satisfied
+      by a database with no applications schema, so the tables must be checked first; and the
+      deployed section had no step for the applications schema or for T089's second input. Slice 001's T069 and slice 002's T052 both found real errors
       this way; documentation nobody has followed is a claim, not a procedure
-- [ ] T096 Confirm the scope guards held: no agent loop, no embeddings, no vector retrieval.
-      Review the full diff. **Amended**: the original guard read "**exactly one model call** in
+- [x] T096 Confirm the scope guards held: no agent loop, no embeddings, no vector retrieval.
+      Review the full diff. **Verified mechanically** rather than by reading: exactly two
+      `.complete(` call sites (`extract_resume.py:103`, `extract_job.py:124`), no loop, retry,
+      self-critique or agent-loop construct anywhere near either, no embedding or vector retrieval
+      in use (`embedding_model` is a config default nothing consumes), and neither call site feeds
+      its own output back. **Amended**: the original guard read "**exactly one model call** in
       the whole slice … if it contains a second `complete()` call site, slice 004 arrived early".
       There are now **two** call sites — `extract_resume` and `extract_job` — and that was a
       decision, not drift. Adding a job by URL was requested directly, and the alternative was

@@ -14,11 +14,20 @@ Built with FastAPI, Next.js, PostgreSQL with pgvector, and LangGraph.
 
 **Live at https://frontend-production-02ac.up.railway.app**
 
-**Slice 001 — Platform Foundation**: complete. **Slice 002 — Deployment**: live, finishing.
+**Slice 001 — Platform Foundation**: complete. **Slice 002 — Deployment**: complete.
+**Slice 003 — Data Foundation**: User Stories 1 and 2 complete; User Story 3 (JobTracker import)
+is blocked on a real CSV export.
 
-Working today: the containerized environment, Google sign-in with per-user isolation, health
-checks that report each dependency by name — and all of it running on a public HTTPS address,
-redeployed from `main`.
+Working today, and deployed:
+
+- **Google sign-in** with per-user isolation, and health checks that name each dependency
+- **Import a CV** — upload it, review what was extracted item by item, correct anything wrong, and
+  approve it into your Professional Profile. Nothing reaches the profile without your approval
+- **Record a job** — paste a posting URL and the company, title, location and requirements are
+  read from it; or enter them by hand. Every status change is recorded, and the timeline is
+  append-only
+- **See where everything stands** — a dashboard whose stat tiles filter the applications table,
+  and a per-application record holding the job description the resume tailoring will work from
 
 The agent capabilities are next. See [`docs/05_Implementation_Plan.md`](docs/05_Implementation_Plan.md)
 for the roadmap, [`docs/07_Capabilities.md`](docs/07_Capabilities.md) for what each one does, and
@@ -53,6 +62,36 @@ Open **http://localhost:3000**. API documentation is at **http://localhost:3000/
 
 > The health checks work without Google credentials — only sign-in needs them. If a port is taken,
 > change it in `.env` (`FRONTEND_PORT`, `BACKEND_PORT`, …) rather than editing `docker-compose.yml`.
+
+### To import a CV or read a job posting
+
+Both need a model provider. Set **one** of these:
+
+| Variable | Effect |
+|---|---|
+| `ANTHROPIC_API_KEY` | Real extraction. Roughly 2–4¢ per CV or posting on Sonnet |
+| `AI_PROVIDER=fixture` | Canned demo content, no key and no network |
+
+**Fixture mode is never a fallback.** An absent key reports `ai_provider: not_configured` and
+refuses, rather than quietly showing someone else's career history in a review screen they are
+about to approve into their own profile. Everything it produces is labelled `is_fixture` for the
+same reason.
+
+`ai_provider: ok` only means a client could be *built* — it is deliberately not a live probe,
+because this endpoint is the platform's healthcheck and probing would bill a completion on every
+check. A key that is present and wrong still reports `ok`; the only proof is a real import.
+
+**Uploads need object storage.** Compose starts MinIO and wires it up, so locally there is nothing
+to do. Deployed, `S3_*` must point at a real bucket — without it an upload fails at the point of
+use rather than at startup, which is deliberate: the stack must come up on a clean clone before
+any storage account exists.
+
+### Company logos (optional)
+
+Set `LOGO_DEV_TOKEN` to a publishable token from [logo.dev](https://www.logo.dev) and the
+applications table shows company logos. Leave it empty and it falls back to initials — nothing
+else changes. It is publishable by design (it travels in the image URL), but it belongs in `.env`
+rather than in the source, because this repository is public.
 
 ---
 
@@ -215,19 +254,31 @@ SESSION_SECRET=…
 PUBLIC_BASE_URL=https://frontend-production-02ac.up.railway.app
 GOOGLE_CLIENT_ID=…
 GOOGLE_CLIENT_SECRET=…
+AI_PROVIDER=anthropic
+ANTHROPIC_API_KEY=…
+S3_ENDPOINT_URL=…          # Railway bucket, `railway bucket credentials`
+S3_ACCESS_KEY=…
+S3_SECRET_KEY=…
+S3_BUCKET=careerhq-uploads
+S3_REGION=…
 ```
 
 On `frontend`:
 
 ```
 BACKEND_URL=http://backend.railway.internal:8000
+NEXT_PUBLIC_LOGO_DEV_TOKEN=…   # optional; logos fall back to initials without it
 ```
 
-Three things about that list are easy to get wrong:
+Four things about that list are easy to get wrong:
 
-- **`REDIS_URL` and `S3_*` are deliberately unset.** They are optional, and readiness reports them
-  as `not_configured`. A placeholder value would make the application believe it has a cache and
-  fail at first use.
+- **`REDIS_URL` is deliberately unset.** It is optional, and readiness reports it as
+  `not_configured`. A placeholder would make the application believe it has a cache and fail at
+  first use. `S3_*` *is* set, because uploads need it — without it a CV upload fails at the point
+  of use rather than at startup.
+- **`NEXT_PUBLIC_LOGO_DEV_TOKEN` is consumed when the frontend image is *built*.** Same trap as
+  `BACKEND_URL` below: setting it on a running service is too late, the value is already baked in,
+  and the failure is silent — the logos simply do not load.
 - **`DATABASE_URL` must use `postgresql+psycopg://` and the `_PRIVATE` host.** A bare `postgres://`
   will not build the async engine, and the public host routes database traffic over the internet.
 - **`BACKEND_URL` is consumed when the frontend image is *built*.** Changing it requires a
