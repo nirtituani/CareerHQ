@@ -326,55 +326,112 @@ it persists, is visible only to its owner, and opens a detail view showing the f
 
 ### Tests first
 
-- [ ] T060 [P] [US2] Test in `backend/tests/integration/test_applications.py`: an application is
+- [x] T060 [P] [US2] Test in `backend/tests/integration/test_applications.py`: an application is
       valid with **no** submitted resume while in a pre-submission status (FR-011)
-- [ ] T061 [P] [US2] Test in `backend/tests/integration/test_applications.py`: two users cannot see
+- [x] T061 [P] [US2] Test in `backend/tests/integration/test_applications.py`: two users cannot see
       or retrieve each other's applications; another user's id returns **404, not 403**, so the
       endpoint does not confirm existence (FR-019, contracts/http-api.md)
-- [ ] T062 [P] [US2] Test in `backend/tests/integration/test_applications.py`: every status change
+- [x] T062 [P] [US2] Test in `backend/tests/integration/test_applications.py`: every status change
       writes a history row, and there is **no update or delete path** to that table (FR-012,
       constraint C6, Constitution IV)
-- [ ] T063 [P] [US2] Test in `backend/tests/integration/test_applications.py`: two applications
+- [x] T063 [P] [US2] Test in `backend/tests/integration/test_applications.py`: two applications
       naming the same company resolve to **one** company row (FR-014, constraint C2)
-- [ ] T064 [P] [US2] Test in `backend/tests/integration/test_applications.py`: `normalized_status`
+- [x] T064 [P] [US2] Test in `backend/tests/integration/test_applications.py`: `normalized_status`
       cannot be set directly by a request — it is derived from the label. A client-settable
       normalized status is a second source of truth for the same fact (FR-013)
 
 ### Implementation
 
-- [ ] T065 [US2] Add `Application`, `Company` and `ApplicationStatusHistory` to
+- [x] T065 [US2] Add `Application`, `Company` and `ApplicationStatusHistory` to
       `backend/src/careerhq/domain/models/application.py` per data-model.md §3. Note `salary_text`
       is **free text**, not min/max — the source stores "90-110k" and "competitive"
       interchangeably (R8)
-- [ ] T066 [US2] Write migration `backend/alembic/versions/0004_*.py` with constraints **C2**
+- [x] T066 [US2] Write migration `backend/alembic/versions/0005_applications.py` with constraints **C2**
       (`UNIQUE (user_id, normalized_name)` on companies) and **C3** (partial
       `UNIQUE (user_id, import_source, import_source_id)` on applications)
-- [ ] T067 [US2] Test in `backend/tests/integration/test_applications.py`: **no column named
+- [x] T067 [US2] Test in `backend/tests/integration/test_applications.py`: **no column named
       `rejected` exists anywhere**, asserted against `information_schema.columns`. FR-016's
       enforcement is an *absence*, so nothing fails when it reappears — this is the only thing that
       would catch it. **Failure looks like**: any row returned. Release blocker
-- [ ] T068 [US2] Create `backend/src/careerhq/application/record_application.py` and
+- [x] T068 [US2] Create `backend/src/careerhq/application/record_application.py` and
       `backend/src/careerhq/api/routes/applications.py` per contracts/http-api.md
-- [ ] T069 [P] [US2] Build the applications table at `frontend/src/app/applications/page.tsx` per
+- [x] T069 [P] [US2] Build the applications table at `frontend/src/app/applications/page.tsx` per
       docs/09 §6.2 — dense rows, mono tabular dates, status pill showing the **user's label** with a
       neutral marker where the normalized category differs
-- [ ] T070 [P] [US2] Build the dashboard at `frontend/src/app/dashboard/page.tsx` per docs/09 §6.1,
+- [x] T070 [P] [US2] Build the dashboard at `frontend/src/app/dashboard/page.tsx` per docs/09 §6.1,
       with the four stat tiles as **filters** — clicking one filters the table and the active tile
       is visibly selected, as JobTracker already does
-- [ ] T071 [US2] Build the tabbed application detail at
+- [x] T071 [US2] Build the tabbed application detail at
       `frontend/src/app/applications/[id]/page.tsx` per docs/09 §6.3: `Details | Requirements ◦ |
       Company ◦ | Interview ◦ | Versions`, one primary `Tailor CV` action, and the full job
       description text on `--surface-sunken`
-- [ ] T072 [P] [US2] Implement the *not built yet* tab treatment — unbuilt capabilities marked in
+- [x] T072 [P] [US2] Implement the *not built yet* tab treatment — unbuilt capabilities marked in
       the tab itself so the user never clicks in to discover it. It must never read as **failed**
       or as **empty data**; those are three distinct states (docs/09 §5)
-- [ ] T073 👁 **OBSERVE** [US2] Against the running stack: create an application with a real job
+- [x] T073 👁 **OBSERVE** [US2] Against the running stack: create an application with a real job
       description, change its status, confirm a history row appears, and confirm the detail view
       shows the description in full. **Failure looks like**: the detail view linking out instead of
       showing stored text
 
 **Checkpoint**: slice 004 now has both of its inputs — a profile to tailor and a job to tailor
 against.
+
+---
+
+## Phase 4b: Added during User Story 2, not in the original plan
+
+Recorded because a task list that omits half of what was built is worse than none. Every task
+here was **requested during implementation** and is complete; each says why, since none of the
+reasoning survives in the diff.
+
+### Reading a posting instead of retyping it
+
+- [x] T073a Read a job from its **URL**, or from pasted text when a site refuses — one call in,
+      one validated object out, through the existing seam. Requested directly: pasting a wall of
+      text the posting already contains is not a feature. **This is the slice's second
+      `complete()` call site**, which T096 originally forbade; see the amendment there
+- [x] T073b The model is asked *about* the posting, never to reproduce it. **Failure looks like**:
+      a completion whose output is the whole description — 52s on a real Greenhouse posting, which
+      timed out the frontend proxy. Metadata only is 5.4s and 131 output tokens
+- [x] T073c `job_description` holds the **requirements only** (user's decision). The consequence
+      is real and was stated at the time: slice 004 can no longer match a CV bullet against a
+      responsibility, and the full posting is not kept
+- [x] T073d Structured data is **metadata only**, never the body. **Failure looks like**: a
+      description beginning "Company Overview:" — the early return on schema.org data skipped the
+      requirements narrowing *and* returned 1,591 characters where the page held 9,447
+- [x] T073e Refuse a page whose text is an unrendered template. **Failure looks like**: a
+      requirements box full of `{{position.name}}`, which reads as a broken extraction rather than
+      an unreadable page
+- [x] T073f **SSRF guard** on the fetcher — the first place a user-supplied URL is requested from
+      inside the network. Resolves the hostname, refuses any non-global address, re-checks every
+      redirect hop, allows only http/https, and never names what it found. **Release blocker**
+- [x] T073g Comeet adapter: the page ships the credentials its own client code uses, its API
+      supplies metadata, and it points at the employer's rendered page for the body. Justified by
+      market rather than generality — Comeet dominates Israeli tech hiring
+
+### Matching the source app the author uses daily
+
+- [x] T073h Add Application as a **modal**, with the source app's field set: dates, salary,
+      posting link, company website, contact person and email, notes. **No "Mark as rejected"
+      toggle** — FR-016, and the source's own dashboard has to reconcile the flag with the status
+      at every read
+- [x] T073i Applied Via is a dropdown carrying the source's own options, and it appears — with
+      Date Applied — only once the status is Applied or later. Both are meaningless on a job
+      nobody has applied to yet
+- [x] T073j The row matches the source: company logo, Job Title, Status, Date Applied, Match as
+      `rating × 20`%, Applied Via, Job Desc link, and edit / mark-rejected / delete actions.
+      Location moved to the record. **Mark as rejected moves the status**, so there is still one
+      source of truth, and undo restores the previous status *from history* rather than clearing a
+      flag — the source's undo erased the fact it happened
+- [x] T073k Editing opens the **same modal** as adding. A second form is how the Applied Via rule,
+      the date pair and the absent rejected toggle end up remembered in one place and forgotten in
+      the other
+- [x] T073l Fix the **Active** tile: it counted Pre-Applied. The source's own definition is
+      `status NOT IN ('Pre-Applied','Rejected','Ghosted','Withdrawn')`. Excluding only the closed
+      outcomes let every wishlist row read as in flight when nothing had been sent
+- [x] T073m The status pill shows the user's label alone. A category marker was built and removed:
+      every row read "Pre-Applied WISHLIST", and a marker on everything is decoration. docs/09
+      §6.2's marker is for genuine disagreement, which cannot arise until US3
 
 ---
 
@@ -473,9 +530,17 @@ derived, and re-running creates nothing.
 - [ ] T095 Walk `specs/003-data-foundation/quickstart.md` end to end **as written** and correct it
       against what actually happens. Slice 001's T069 and slice 002's T052 both found real errors
       this way; documentation nobody has followed is a claim, not a procedure
-- [ ] T096 Confirm the scope guards held: **exactly one model call** in the whole slice, no agent
-      loop, no embeddings, no vector retrieval, and no job-description summarization. Review the
-      full diff — if it contains a second `complete()` call site, slice 004 arrived early
+- [ ] T096 Confirm the scope guards held: no agent loop, no embeddings, no vector retrieval.
+      Review the full diff. **Amended**: the original guard read "**exactly one model call** in
+      the whole slice … if it contains a second `complete()` call site, slice 004 arrived early".
+      There are now **two** call sites — `extract_resume` and `extract_job` — and that was a
+      decision, not drift. Adding a job by URL was requested directly, and the alternative was
+      asking the user to paste a wall of text the posting already contains. What the guard was
+      protecting against still holds: `extract_job` is **one call in, one validated object out**
+      through the same seam, with no loop, no tool use, and no reaction to its own output. The
+      model is also the *second* choice — a posting publishing schema.org `JobPosting` data is read
+      exactly and billed nothing, which is most applicant tracking systems. The real line is
+      therefore "no call site reacts to its own previous output", and that is what to check
 
 ---
 
