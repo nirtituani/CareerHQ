@@ -15,6 +15,27 @@ read when adding a job, before any resume work.
 It appears as a **Match** tab on the application record, second after Details, and
 as a percentage in the applications table's Match column.
 
+### It scores against the whole posting, not the requirements list
+
+**Requirements-only was tried first and reversed**, and the reversal is recorded
+here so nobody re-derives it. A requirements list omits the signal that decides
+most matches: *"design and operate services handling millions of requests per
+day"* appears in no requirements section, but it is exactly what makes a
+production backend history relevant. Scoring on requirements alone also loses
+team size, domain, the stack mentioned in passing, and how senior the work
+actually is.
+
+So the extraction stores **both**, and they serve different readers:
+
+| field | holds | read by |
+|---|---|---|
+| `job_description` | the full posting text | the match analysis, and slice 004's tailoring |
+| `requirements` | the extracted list | the person, on the Details tab, as bullets |
+
+One extraction call already produces both — `requirements` is a field on
+`JobMetadata` and the full text is what the model was given. The earlier version
+simply discarded one of them.
+
 ### What it is not
 
 - **Not a tailoring quality metric.** docs/07 §3.2 lists a Match Score among the
@@ -43,8 +64,9 @@ one validated object out. An agent runtime would add retries and state to someth
 that runs once and returns.
 
 **Not RAG, and the reason is the failure mode.** A Professional Profile measures
-**760 tokens** (measured, not estimated) and a requirements list around 210. There
-is nothing to retrieve *from* — the whole corpus fits in the prompt many times over.
+**760 tokens** (measured, not estimated) and a whole job posting 2,400–4,500.
+There is nothing to retrieve *from* — the entire corpus fits in the prompt many
+times over, with a 1M context window to spare.
 
 More importantly, the feature's central question is *which requirements do I not
 have*, and that can only be answered by seeing the **entire** profile. If retrieval
@@ -137,6 +159,13 @@ unqueryable and would have to be re-extracted from analyses already paid for.
 profile does not contain** — structural rather than hoped for, and it is what lets a
 green chip be clicked to see why.
 
+### The application gains a `requirements` column
+
+A migration adds `requirements` and returns `job_description` to its plain
+meaning — the full posting. Existing rows keep whatever they hold; re-adding a
+job repopulates both. The Details tab keeps showing requirements as bullets, so
+nothing changes on screen, with the full posting behind a disclosure.
+
 ### `applications.current_match_analysis_id`
 
 Points at the analysis to display. One join for the table rather than one per row,
@@ -224,24 +253,54 @@ The analysis is visibly AI-generated and carries its model and cost.
 
 ## 8. Cost
 
-Measured against the real profile (760 tokens) and a real requirements list (210):
+Sonnet 5 is $3 / $15 per MTok, with an **introductory $2 / $10 in force until
+31 August 2026**. Both are given below because the difference is material.
 
-| | input | output | cost |
-|---|---|---|---|
-| One analysis | ~1,200 | ~1,500 | **≈ $0.026** |
+The arithmetic is reconciled against a call that was actually billed — the
+Greenhouse job extraction, 6,511 in / 131 out, charged **$0.014332**. At the
+introductory rate that computes to $0.014332 exactly; at standard it would be
+$0.0215. So the rate is confirmed and the token counts below are real.
 
-A hundred applications is roughly **$2.60**. Every job scored on add, whether or
-not it is ever opened.
+Per job, scoring the whole posting against a 760-token profile:
 
-A quick-score-then-detail split was considered and rejected: both variants read the
-same input, so splitting saves nothing on the expensive half, costs *more* in total
+| | input | output | today | after 31 Aug |
+|---|---:|---:|---:|---:|
+| Typical posting | 3,420 | ~1,500 | **$0.022** | $0.033 |
+| Long posting | 5,560 | ~1,500 | **$0.026** | $0.039 |
+
+A hundred applications is roughly **$2.20–2.60 today**, $3.30–3.90 after August.
+Every job is scored on add, whether or not it is ever opened.
+
+**Output is 57–86% of the cost**, because output tokens bill at 5× input. Two
+consequences worth keeping in view:
+
+* Moving from requirements-only to the whole posting — the change §1 records —
+  costs about half a cent. The better score is nearly free; the expense is what
+  the model *writes back*.
+* The dominant output cost is the per-requirement `evidence` strings, quoting
+  profile text the database already holds. **The first cost lever, when one is
+  wanted, is to return a requirement index and a profile-item reference instead
+  of quoting both sides back** — roughly halving output with no information
+  lost, since both texts are stored and can be joined at render time.
+
+A quick-score-then-detail split was considered and rejected: both variants read
+the same input, so it saves nothing on the expensive half, costs more in total
 if the tab is ever opened, and produces two independently generated numbers that
 disagree with each other on one screen.
 
-Levers for later, none of them needed now: cache by (profile version × requirement
-set), drop the first pass to Haiku, or score only on demand.
+Other levers, none needed now: Haiku 4.5 at $1/$5 (untested here — worth a
+measured comparison, not a blind swap), or scoring only on demand. Prompt
+caching is **not** one: the profile plus prompt is ~1,060 tokens against Sonnet
+5's 1,024-token cacheable minimum, so it barely qualifies, and input is the
+minority of the bill regardless.
 
----
+### `llm_model_match_analysis` must be set explicitly
+
+`model_for_task` falls back to `llm_provider_model`, which is **Opus 5** at
+$5/$25. A missing entry therefore runs this at **$0.065 per job — 2.5× Sonnet**,
+silently and with no quality gain. This is not hypothetical: CLAUDE.md records
+the same fallback catching CV extraction once already. The config line ships in
+the same commit as the feature.
 
 ## 9. Sequencing
 
@@ -264,3 +323,8 @@ becoming a fourth thing slice 003 quietly grew.
   rubric is distinguishable from that.
 - **Whether a canonical skill vocabulary is needed for the first version**, or
   whether extracting requirements as written is good enough to start.
+- **Whether Haiku 4.5 is good enough for this task.** It is half Sonnet's
+  introductory price, and the task is structured and schema-validated — but the
+  seam raises rather than accepting partial data, so a weaker model trades cost
+  for extraction failures. Decide with a measured comparison once there are real
+  analyses to compare, not before.
