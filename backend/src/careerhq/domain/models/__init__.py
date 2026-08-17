@@ -16,6 +16,14 @@ complete, so importing this package is what registers the whole schema. That is
 why the re-exports are load-bearing rather than a convenience.
 """
 
+from careerhq.domain.models.application import (
+    Application,
+    ApplicationStatusHistory,
+    Company,
+    NormalizedStatus,
+    normalize_company_name,
+    normalize_status,
+)
 from careerhq.domain.models.identity import ProfessionalProfile, User
 from careerhq.domain.models.imports import ExtractionItem, ImportedResume
 from careerhq.domain.models.profile import (
@@ -36,7 +44,10 @@ from careerhq.domain.models.profile import (
 from careerhq.domain.models.provenance import ImportStatus, ItemDecision, Source
 
 __all__ = [
+    "Application",
+    "ApplicationStatusHistory",
     "Certification",
+    "Company",
     "ContactInformation",
     "Education",
     "ExperienceBullet",
@@ -46,6 +57,7 @@ __all__ = [
     "ItemDecision",
     "Language",
     "MilitaryService",
+    "NormalizedStatus",
     "ProfessionalProfile",
     "ProfessionalTitle",
     "Project",
@@ -56,4 +68,6 @@ __all__ = [
     "User",
     "VolunteerExperience",
     "WorkExperience",
+    "normalize_company_name",
+    "normalize_status",
 ]
