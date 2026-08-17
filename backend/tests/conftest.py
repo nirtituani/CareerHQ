@@ -131,6 +131,14 @@ async def engine() -> AsyncIterator[AsyncEngine]:
         # Matches migration 0001; the schema itself comes from the models.
         await connection.execute(text("CREATE EXTENSION IF NOT EXISTS pgcrypto"))
         await connection.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+        # Dropped first, because `create_all` skips tables that already exist
+        # rather than reconciling them. Without this the test database keeps
+        # whatever shape it had when it was first built, and any test that
+        # reads the *schema* silently checks a stale one. That is not
+        # hypothetical: T067 asserts no `rejected` column exists anywhere
+        # (FR-016, a release blocker), and it passed against a deliberately
+        # added column until this line existed.
+        await connection.run_sync(Base.metadata.drop_all)
         await connection.run_sync(Base.metadata.create_all)
 
     yield test_engine
