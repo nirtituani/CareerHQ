@@ -125,9 +125,9 @@ deployment again. The short version:
   `frontned`). Copy it from Railway rather than typing it, and remember `PUBLIC_BASE_URL` must
   match the Google redirect URI byte for byte.
 
-### Slice 003 — Data Foundation is in progress: 58 of 96 tasks
+### Slice 003 — Data Foundation is in progress: 63 of 96 tasks
 
-**User Story 1 is complete** apart from T058. A user uploads a CV, reviews what was extracted,
+**User Story 1 is complete**, and it is deployed and verified there. A user uploads a CV, reviews what was extracted,
 corrects it, and approves it into their Professional Profile. Verified repeatedly against a real
 CV, and 126 backend tests at 81% plus 37 component tests.
 
@@ -162,7 +162,7 @@ identical output). Measured on a real CV: 9 of 9 bullets attributed to the corre
 - **`EXTRACTED` is not labelled.** Every fact carries it straight after an import, so the label
   said nothing; only `CORRECTED` and `ADDED` are marked, and the dashed rule carries the rest.
 
-**What remains:** T058 (a scanned PDF observed failing in a browser), all of User Story 2
+**What remains:** all of User Story 2
 (recording a job, the applications table, the tabbed detail view) and User Story 3 (JobTracker
 import — **blocked on a real CSV export**, T074).
 

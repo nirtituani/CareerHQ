@@ -294,8 +294,14 @@ produces exactly one profile and one Master Resume.
       populated after approval, that a correction survives, and that approving twice leaves one
       Master Resume. **Failure looks like**: profile rows appearing before approval, which means
       staging is not staging
-- [ ] T058 👁 **OBSERVE** [US1] Upload a scanned/image-only PDF against the running stack and
-      confirm it reads as a **failure**, not an empty form (FR-008, docs/09 §5)
+- [x] T058 👁 **OBSERVE** [US1] Upload a scanned/image-only PDF against the running stack and
+      confirm it reads as a **failure**, not an empty form (FR-008, docs/09 §5). **Confirmed**:
+      "That CV could not be read — this file has no readable text, it looks like a scan or an
+      image. Try a PDF exported from a word processor.", with the failure treatment's red rule and
+      the upload control still present so another file can be chosen. Visibly distinct from the
+      teal merge notice above it, which is the distinction docs/09 §5 draws between three states
+      that are easy to conflate. The record shows `failed` with `model` NULL — the failure is
+      raised before the model call, so a scan costs nothing — and the profile was untouched
 - [x] T059 [US1] Measure SC-002 against a real CV: at least 80% of work-experience bullets
       extracted and attributed to the correct role. **Do this now, not at the end** — if it misses,
       the honest responses are a better prompt or a stronger model, both configuration under R1,
