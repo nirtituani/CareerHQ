@@ -27,3 +27,27 @@ export async function fetchCurrentUser(): Promise<User | null> {
   if (!response.ok) throw new Error(`Unexpected ${response.status} from /api/auth/me`);
   return (await response.json()) as User;
 }
+
+/**
+ * Fetch any API path in a server component, forwarding the session cookie.
+ *
+ * Same reasoning as `fetchCurrentUser` above, generalised when the
+ * applications screens needed a second and third resource. A 404 returns null
+ * — "no such application, or not yours" is an ordinary answer the page turns
+ * into `notFound()`, not an exception.
+ */
+export async function fetchFromApi<T>(path: string): Promise<T | null> {
+  const cookieStore = await cookies();
+  const backend = process.env.BACKEND_URL ?? "http://localhost:8000";
+
+  const response = await fetch(`${backend}${path}`, {
+    headers: { cookie: cookieStore.toString() },
+    cache: "no-store",
+  }).catch((cause) => {
+    throw new ApiUnreachableError(cause);
+  });
+
+  if (response.status === 404 || response.status === 401) return null;
+  if (!response.ok) throw new Error(`Unexpected ${response.status} from ${path}`);
+  return (await response.json()) as T;
+}

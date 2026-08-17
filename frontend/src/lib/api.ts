@@ -102,3 +102,160 @@ export function loginUrl(next?: string): string {
   const params = next ? `?next=${encodeURIComponent(next)}` : "";
   return `/api/auth/google/login${params}`;
 }
+
+// ---------------------------------------------------------------------------
+// Applications
+// ---------------------------------------------------------------------------
+
+/**
+ * The analytics category, derived from the user's label by the backend.
+ *
+ * Never sent *to* the API. It is derived from `status` server-side (FR-013),
+ * because a client-settable normalized status is a second source of truth for
+ * the same fact and the two drift the first time one is written without the
+ * other.
+ */
+export type NormalizedStatus =
+  | "wishlist"
+  | "applied"
+  | "interviewing"
+  | "offer"
+  | "rejected"
+  | "withdrawn"
+  | "ghosted"
+  | "other";
+
+export type StatusChange = {
+  from_status: string | null;
+  to_status: string;
+  normalized_to_status: NormalizedStatus;
+  changed_at: string;
+  note: string | null;
+};
+
+export type Application = {
+  id: string;
+  company: { id: string; name: string; domain: string | null };
+  job_title: string;
+  location: string | null;
+  /** The stored text slice 004 tailors against — not a link to a posting. */
+  job_description: string | null;
+  job_url: string | null;
+  job_description_url: string | null;
+  /** The user's own words, verbatim. */
+  status: string;
+  normalized_status: NormalizedStatus;
+  date_added: string;
+  date_applied: string | null;
+  source: string | null;
+  /** Free text: the source stores "90-110k" and "competitive" alike. */
+  salary_text: string | null;
+  /** 0 means unset. Preserved from a JobTracker import. */
+  imported_match_rating: number;
+  contact_name: string | null;
+  contact_email: string | null;
+  notes: string | null;
+  import_source: string | null;
+  archived_at: string | null;
+  status_history: StatusChange[];
+};
+
+/** Fields a client may write. `normalized_status` is deliberately absent. */
+export type ApplicationInput = {
+  company: string;
+  job_title: string;
+  /** Belongs to the employer, so a second job there inherits it. */
+  company_domain?: string;
+  job_description?: string;
+  location?: string;
+  status?: string;
+  /** When the job was recorded — the staleness signal for a Pre-Applied row. */
+  date_added?: string;
+  /** When it was actually applied to. Null until then; never the same fact. */
+  date_applied?: string;
+  job_url?: string;
+  /** The posting link, filled in automatically after a fetch. */
+  job_description_url?: string;
+  /** "Applied Via" — only meaningful once the status is Applied or later. */
+  source?: string;
+  salary_text?: string;
+  contact_name?: string;
+  contact_email?: string;
+  notes?: string;
+};
+
+export function listApplications(): Promise<{ applications: Application[] }> {
+  return request<{ applications: Application[] }>("/api/applications");
+}
+
+export function getApplication(id: string): Promise<Application> {
+  return request<Application>(`/api/applications/${id}`);
+}
+
+export function createApplication(input: ApplicationInput): Promise<Application> {
+  return request<Application>("/api/applications", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateApplication(
+  id: string,
+  changes: Partial<ApplicationInput>,
+): Promise<Application> {
+  return request<Application>(`/api/applications/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(changes),
+  });
+}
+
+/** Fields read off a posting. Every one optional — a posting may name none. */
+export type JobPostingExtraction = {
+  company: string | null;
+  job_title: string | null;
+  location: string | null;
+  salary_text: string | null;
+  job_description: string | null;
+  company_domain: string | null;
+};
+
+/**
+ * How the fields were obtained.
+ *
+ * `structured_data` means the employer published them in the page and they were
+ * read exactly, with no model call. `model` means a model read the page text.
+ * The form marks the difference, because they deserve different trust.
+ */
+export type ExtractionProvenance = "structured_data" | "model" | "manual";
+
+export type JobExtraction = {
+  posting: JobPostingExtraction;
+  provenance: ExtractionProvenance;
+  usage: { model: string; cost: string; is_fixture: boolean } | null;
+};
+
+/**
+ * Read a posting into form fields. **Saves nothing** — the person confirms it.
+ *
+ * Throws `ApiError` with a readable message when a site refuses automated
+ * access, which is the common case on the large job boards. The caller turns
+ * that into the offer to paste the posting text instead.
+ */
+export function extractJob(input: { url?: string; text?: string }): Promise<JobExtraction> {
+  return request<JobExtraction>("/api/applications/extract", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+/** Undo a rejection, restoring the status held before it (appends history). */
+export function unrejectApplication(id: string): Promise<Application> {
+  return request<Application>(`/api/applications/${id}/unreject`, { method: "POST" });
+}
+
+export function deleteApplication(id: string): Promise<void> {
+  return request<void>(`/api/applications/${id}`, { method: "DELETE" });
+}
