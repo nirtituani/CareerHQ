@@ -10,7 +10,8 @@ the plan: see `docs/05_Implementation_Plan.md` §2.
 
 ## Read these first
 
-In this order. The whole project is legible from five files.
+**Resuming work? Read [`HANDOFF.md`](HANDOFF.md) first** — current status, what failed, and the
+exact next steps. Then the five below, in order. The whole project is legible from them.
 
 1. **`docs/07_Capabilities.md`** — what CareerHQ is and what each capability does. Start here;
    it is one page.
@@ -21,7 +22,7 @@ In this order. The whole project is legible from five files.
    II–IV are release blockers.
 4. **`docs/05_Implementation_Plan.md`** — the slice roadmap and why it is ordered that way.
 5. **`specs/00N-<slice>/tasks.md`** — the current slice's task list, with checkboxes showing
-   exactly where work stopped. **Only slice 001 has these** — 002–007 are specified when they
+   exactly where work stopped. **Slices 001–003 have these**; 004–007 are specified when they
    start.
 
 Supporting detail lives in `docs/01` (requirements), `docs/02` (ADRs), `docs/03` (domain model),
@@ -32,43 +33,24 @@ the author's design notes, the resume-builder reference — is in `docs/referenc
 
 ## Current state
 
-### Where to pick up
+**Status, open tasks and next steps live in [`HANDOFF.md`](HANDOFF.md), not here.** That file is
+rewritten as work moves; this one holds what stays true. If the two disagree about status,
+HANDOFF.md wins.
 
-Everything below is committed, pushed, and deployed. Three things are open, and **two of them are
-blocked on the author, not on code**:
+What follows is durable reference: how the deployment is shaped, and what each slice established.
 
-| | State |
-|---|---|
-| **Match analysis** (slice 004, started early) | Design **approved and committed** — [`docs/superpowers/specs/2026-08-17-match-analysis-design.md`](docs/superpowers/specs/2026-08-17-match-analysis-design.md). No code written. **Paused** waiting for the author's scoring rubric / skill file, which was going to arrive via GitHub. The design has slots for it (`criteria_version` in §3 for a rubric; the vocabulary slot beside requirement extraction for a skills taxonomy) so it drops in without rework. Next step after it arrives: the implementation plan |
-| **T089** | The deployed system has a populated profile but **zero applications**. Add one real job at https://frontend-production-02ac.up.railway.app and the task is met. The profile half alone does not count |
-| **User Story 3** (T074–T084) | Blocked on a JobTracker CSV export into `backend/tests/fixtures/jobtracker_export.csv`. The mapping is already written from the source, so this proves it against real data — the messy cases are the point: blank dates, `"competitive"` salaries, and custom statuses that live in browser storage and reach no export |
+### What each slice established
 
-**Importing a CV is reached from Profile**, deliberately — docs/09 §6.0 defines six navigation
-destinations and importing is an action, not one of them. There is no Import item in the sidebar
-and there should not be. The dashboard also links to it.
-
-
-**Slice 001 — Platform Foundation is complete.** All 69 tasks done, all three user stories
-verified, and the quickstart run end to end from a fresh clone on wiped volumes — including a
-real Google sign-in taking the database from `0|0` to `1|1`, and a second sign-in leaving it at
-`1|1` while advancing only `last_login_at`.
-
-Working: Docker Compose stack, Google sign-in end to end, per-user isolation, health checks
-reporting each dependency by name, and CI green on every gate. 55 backend tests at 89% coverage,
-3 component tests, 6 Playwright smoke tests. (58 backend tests as of slice 002.)
-
-Merged to `main` and pushed; CI green on the merge commit. Working branch is now `main`.
-
-**Slice 002 — Deployment is complete. All 52 tasks done.**
-
-**CareerHQ is deployed at https://frontend-production-02ac.up.railway.app** — publicly
-reachable over HTTPS, with a real Google sign-in working end to end and taking the deployed
-database from `0|0` to `1|1`, staying `1|1` on a second sign-in.
-
-User Stories 1 and 2 are verified against the running system. What that established is recorded
-in `specs/002-deployment/observations.md`, which is the evidence FR-015 required — that file
-matters more than usual, because it records where a first measurement was **wrong** as well as
-where it passed.
+- **Slice 001 — Platform Foundation.** Docker Compose stack, Google sign-in end to end, per-user
+  isolation, health checks reporting each dependency by name. Quickstart run from a fresh clone on
+  wiped volumes, including a real sign-in taking the database `0|0` → `1|1` and a second sign-in
+  leaving it `1|1` while advancing only `last_login_at`.
+- **Slice 002 — Deployment.** **CareerHQ is live at
+  https://frontend-production-02ac.up.railway.app** — publicly reachable over HTTPS, real Google
+  sign-in working end to end. The evidence FR-015 required is
+  `specs/002-deployment/observations.md`, which matters more than usual because it records where a
+  first measurement was **wrong** as well as where it passed.
+- **Slice 003 — Data Foundation.** Below.
 
 ### What is deployed
 
@@ -148,33 +130,13 @@ deployment again. The short version:
   collides with the project name in 2000 log lines. Use high-entropy values even in development,
   or secret-scanning the logs is meaningless.
 
-### Worth doing when convenient
-
-- **Rotate the database password**, and restart `pgvector` while you are there. It was visible on
-  screen during setup while the public TCP proxy was still open. That proxy is gone — `tcpProxies`
-  returns `[]`, so the database is not reachable from the internet — but the stale `PGHOST` in the
-  *running* container has since sent an authentication attempt to whichever tenant now owns the
-  recycled proxy port (see the `psql` gotcha below). That moves this from hygiene to worth doing.
-  Restarting the service recreates the container and clears the stale pointer, so the next person
-  to open that Console does not repeat it. `DATABASE_URL` references `${{pgvector.PGPASSWORD}}`,
-  so rotating propagates with nothing to hand-edit. Note that changing the variable alone does
-  **not** change the password: run `ALTER USER … WITH PASSWORD` first.
-- **The deployed domain says `frontend`, and three misspellings of it cost real time** (`fronted`,
-  `frontned`). Copy it from Railway rather than typing it, and remember `PUBLIC_BASE_URL` must
-  match the Google redirect URI byte for byte.
-
-### Slice 003 — Data Foundation: User Stories 1 and 2 done, 93 of 109 tasks
-
-**Not complete.** User Story 3 is blocked on a JobTracker CSV export only you can produce (T074).
-Everything else in the slice is built, deployed and verified there.
+### Slice 003 — Data Foundation: what it built
 
 **User Story 1 — a CV becomes a reviewed profile.** Upload, review item by item, correct, approve.
 Nothing reaches the profile without approval.
 
 **User Story 2 — a job becomes a record to tailor against.** Add it from a posting URL or by hand;
 move it through statuses; open a record holding the description slice 004 works from.
-
-189 backend tests at 81%, 64 component tests. Deployed and verified on Railway.
 
 **The structured completion seam is still the artifact to understand first**
 (`specs/003-data-foundation/contracts/extraction-seam.md`). One call in, one validated object out:
@@ -251,9 +213,6 @@ to map the network. Verified against the live endpoint.
 - **Mark-as-rejected moves the status**, so there is still one source of truth, and undo restores
   the previous status *from history* rather than clearing a flag — JobTracker's undo erased the
   fact it ever happened.
-
-**What remains:** all of User Story 3 (JobTracker import — **blocked on a real CSV export**, T074),
-T089 (one real job on the deployed system), and T092–T095's remaining documentation.
 
 ### What working on this slice actually taught
 
