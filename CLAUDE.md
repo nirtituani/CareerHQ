@@ -32,6 +32,22 @@ the author's design notes, the resume-builder reference — is in `docs/referenc
 
 ## Current state
 
+### Where to pick up
+
+Everything below is committed, pushed, and deployed. Three things are open, and **two of them are
+blocked on the author, not on code**:
+
+| | State |
+|---|---|
+| **Match analysis** (slice 004, started early) | Design **approved and committed** — [`docs/superpowers/specs/2026-08-17-match-analysis-design.md`](docs/superpowers/specs/2026-08-17-match-analysis-design.md). No code written. **Paused** waiting for the author's scoring rubric / skill file, which was going to arrive via GitHub. The design has slots for it (`criteria_version` in §3 for a rubric; the vocabulary slot beside requirement extraction for a skills taxonomy) so it drops in without rework. Next step after it arrives: the implementation plan |
+| **T089** | The deployed system has a populated profile but **zero applications**. Add one real job at https://frontend-production-02ac.up.railway.app and the task is met. The profile half alone does not count |
+| **User Story 3** (T074–T084) | Blocked on a JobTracker CSV export into `backend/tests/fixtures/jobtracker_export.csv`. The mapping is already written from the source, so this proves it against real data — the messy cases are the point: blank dates, `"competitive"` salaries, and custom statuses that live in browser storage and reach no export |
+
+**Importing a CV is reached from Profile**, deliberately — docs/09 §6.0 defines six navigation
+destinations and importing is an action, not one of them. There is no Import item in the sidebar
+and there should not be. The dashboard also links to it.
+
+
 **Slice 001 — Platform Foundation is complete.** All 69 tasks done, all three user stories
 verified, and the quickstart run end to end from a fresh clone on wiped volumes — including a
 real Google sign-in taking the database from `0|0` to `1|1`, and a second sign-in leaving it at
