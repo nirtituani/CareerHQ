@@ -160,6 +160,31 @@ async def test_a_confirmed_requirement_cannot_carry_a_shortfall(
     await db_session.rollback()
 
 
+@pytest.mark.parametrize("importance", [-1, 101])
+async def test_importance_stays_inside_the_scale(db_session: AsyncSession, importance: int) -> None:
+    """The band rule reads this column, so a value outside 0-100 would make the
+    cap threshold meaningless in a way nothing else would notice."""
+    application = await _application(db_session)
+    analysis = await _analysis(db_session, application)
+
+    db_session.add(
+        MatchRequirement(
+            analysis_id=analysis.id,
+            ordinal=0,
+            text_="5+ years of Python",
+            kind=RequirementKind.MUST_HAVE,
+            importance=importance,
+            verdict=RequirementVerdict.CONFIRMED,
+            shortfall=None,
+            evidence="Six years on the payments platform.",
+        )
+    )
+
+    with pytest.raises(IntegrityError, match="ck_match_requirement_importance"):
+        await db_session.flush()
+    await db_session.rollback()
+
+
 async def test_only_one_analysis_may_be_pending_per_application(
     db_session: AsyncSession,
 ) -> None:

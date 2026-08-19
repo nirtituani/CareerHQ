@@ -50,6 +50,7 @@ _JUDGEMENT = {
         {
             "text": "5+ years building production backend services",
             "kind": "must_have",
+            "importance": 90,
             "verdict": "confirmed",
             "shortfall": None,
             "evidence": "Led the payments platform team for six years.",
@@ -57,6 +58,9 @@ _JUDGEMENT = {
         {
             "text": "Kubernetes in production",
             "kind": "must_have",
+            # Below CAP_IMPORTANCE, so this fixture stays a `strong` match and
+            # the banding assertions test banding rather than the cap.
+            "importance": 40,
             "verdict": "unverified",
             "shortfall": "evidence",
             "evidence": None,
@@ -236,6 +240,7 @@ async def test_an_invalid_completion_fails_the_analysis_and_leaves_the_job_alone
             {
                 "text": "5+ years building production backend services",
                 "kind": "must_have",
+                "importance": 90,
                 "verdict": "confirmed",
                 "shortfall": None,
                 "evidence": None,

@@ -44,7 +44,8 @@ MatchJudgement
 
 JudgedRequirement
     text:       str              # the requirement as the posting worded it
-    kind:       "must_have" | "preferred"
+    kind:       "must_have" | "preferred"   # what the posting SAID
+    importance: int              # 0..100 — what the model JUDGED it is worth
     verdict:    "confirmed" | "partial" | "transferable" | "gap" | "unverified"
     shortfall:  "wording" | "evidence" | "capability" | None
     evidence:   str | None       # quoted from the profile
@@ -92,7 +93,7 @@ against a known fixture profile, not hoped for.
 
 ---
 
-## The rubric — `criteria_version: v1-weighted`
+## The rubric — `criteria_version: v2-importance`
 
 Adapted from `varunr89/resume-tailoring-skill` (MIT). Its dimensions were designed to score one
 experience against one template slot; the unit here is a whole profile against a whole posting, so
@@ -122,9 +123,21 @@ Computed in the application layer, never by the model (see the schema note above
 | 35–54 | `stretch` |
 | 0–34 | `low_probability` |
 
-**A must-have at `gap` caps the band at `stretch`**, whatever the arithmetic says. A profile
-scoring 80 on everything else while failing a stated must-have is not a strong match, and a
-weighted average will happily hide that.
+**An unmet requirement the model judges important caps the band at `stretch`**, whatever the
+arithmetic says. A profile scoring 80 on everything else while missing what the role is about is
+not a strong match, and a weighted average will happily hide that.
+
+Two parts to that rule, both changed in v2 (research.md R10):
+
+- **Unmet means `gap` *or* `unverified`.** A recruiter reads exactly the profile the model reads
+  and draws the same conclusion from silence, so a requirement the CV does not evidence is a risk
+  to the application whether or not the shortfall is provable. The *claim* stays honest —
+  `unverified` still asserts nothing and still carries no evidence — but it is weighed.
+- **Importance is judged, not read off the heading.** Each requirement carries an `importance`
+  0–100 and the cap fires at **70**. A posting's "must have" list is routinely a wishlist; banding
+  on it would make every job read `stretch` and the band would stop discriminating. `kind` is
+  still stored, because it is the employer's own words — the same split as `status` against
+  `normalized_status`.
 
 Both the weights and the thresholds are part of `v1-weighted`. Changing either is a **new criteria
 version**, never an edit — FR-018, and the reason the band is stored rather than recomputed.

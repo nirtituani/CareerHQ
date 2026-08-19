@@ -326,7 +326,11 @@ def _analysis_out(analysis: MatchAnalysis | None) -> dict[str, Any] | None:
             {
                 "ordinal": row.ordinal,
                 "text": row.text_,
+                # What the posting said, and what the model judged it is worth.
+                # Both travel: the first is the employer's words, the second is
+                # what the band rule actually reads.
                 "kind": row.kind,
+                "importance": row.importance,
                 "verdict": row.verdict,
                 "shortfall": row.shortfall,
                 "evidence": row.evidence,

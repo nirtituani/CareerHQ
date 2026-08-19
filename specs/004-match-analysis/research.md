@@ -262,10 +262,68 @@ must-have at `gap` caps the band at `stretch` whatever the arithmetic says.
 
 ---
 
+## R10 — Weighing silence, and judging importance rather than trusting the heading
+
+Both decided by the author after R9 shipped, and both reverse something R9 settled. `v1-weighted`
+scores exist, so this is `v2-importance` rather than an edit (FR-018).
+
+### D1 — `unverified` is weighed like a gap
+
+R9 capped only on `gap`, on the reasoning that silence is not proof of absence. That is right about
+the **claim** and wrong about the **score**.
+
+The score answers *is this worth my evening*. A recruiter reads exactly the profile the model
+reads and draws the same conclusion from silence — so a requirement the CV does not evidence is a
+risk to the application whether or not the shortfall is provable. Treating "your CV does not show
+this" as costless models a reader who does not exist.
+
+Nothing about AI-008 changes, because the two were never the same question. The grounding rule
+governs what the system **asserts**: `gap` still requires quoted evidence, `unverified` still
+forbids it, and the system still never says *you do not have this* about a silent profile. Only
+the weighing changed.
+
+**And the loop is already built.** A person who sees `unverified` on something they can do adds it
+to their profile; the analysis goes stale and offers a re-run (US3). `unverified` is recoverable
+in a way `gap` is not — which is a reason to show them differently, not a reason to make one free.
+
+### D2 — Importance is judged per requirement
+
+The obvious way to stop the cap over-firing is a proportional rule — cap when more than some
+fraction of must-haves are unmet. Rejected: it treats every must-have alike, which is the same
+flaw one level up.
+
+Instead the model rates each requirement's `importance` 0–100 and the cap fires at **70**. The
+prompt tells it not to read importance off the heading, and gives it the signals that actually
+carry it: requirements stated **earlier** matter more, because recruiters lead with what they care
+about and pad the end; so does anything repeated across sections, named in the job title, or tied
+to what the team actually does. It anchors the scale (80–100 the role *is* this, down to 0–39
+boilerplate) and warns that most postings have only two to five above 80.
+
+`kind` is kept beside it. It is the employer's own words, and the split mirrors `status` against
+`normalized_status`: the source is preserved, the value the system reasons over is derived, and
+neither can be quietly lost. A `preferred` requirement judged critical caps; a `must_have` judged
+incidental does not.
+
+**Cost**: one integer per requirement, roughly 150–200 output tokens on a 38-requirement posting —
+about 10% more per analysis. Folded into T075's re-measurement.
+
+**Alternative rejected**: deriving importance from `ordinal` alone in application code. Position is
+real signal and is already stored, but it is not sufficient — "familiarity with Jira" is filler
+wherever it appears, and a model reading the whole posting knows that where a rank does not.
+
+### The `is` → `==` fix that shipped with it
+
+`band_for` compared verdicts with `is`. Correct while the values came straight from a completion as
+enum members — and silently wrong for anything read back from the database, since these are
+`String(16)` columns that return plain `str`. Nothing would have raised; the cap would simply have
+stopped firing, with every band still looking plausible. There is now a test that passes strings.
+
+---
+
 ## Deferred by design, with the mechanism that makes deferral safe
 
 | Question | State | Why it is safe to start without it |
 |---|---|---|
-| **The scoring rubric** | **Resolved by R9** — ships as `v1-weighted` | The planned uncalibrated `v0` was never entered. FR-018 still governs: a v2 must stay distinguishable. |
+| **The scoring rubric** | **Resolved by R9, revised by R10** — ships as `v2-importance` | The planned uncalibrated `v0` was never entered. FR-018 still governs: a v2 must stay distinguishable. |
 | **A canonical skill vocabulary** | Not built | Requirements are scored as written. Whether collapsing "K8s"/"Kubernetes"/"container orchestration" is needed becomes visible from real analyses. |
 | **Whether Haiku suffices** | Untested | R8. Decided by measurement once there are analyses to compare. The five-verdict taxonomy is a harder task than three, which is an argument for measuring rather than assuming. |
