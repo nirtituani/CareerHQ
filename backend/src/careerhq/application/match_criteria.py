@@ -17,6 +17,7 @@ scores produced by different unnamed criteria measures nothing.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 
 from careerhq.domain.models import MatchBand, RequirementKind, RequirementVerdict
 
@@ -25,7 +26,7 @@ from careerhq.domain.models import MatchBand, RequirementKind, RequirementVerdic
 #: against a whole posting, so the weights carry over and the thresholds below
 #: are ours. `v1` because a rubric arrived before implementation did — the
 #: uncalibrated `v0` state the design planned for was never entered.
-CRITERIA_VERSION = "v1-weighted"
+CRITERIA_VERSION = "v2-importance"
 
 #: What each dimension is worth. Deliberately not an average: a direct match in
 #: the same domain at comparable scale is worth four times an adjacent one.
@@ -42,9 +43,27 @@ _BANDS: tuple[tuple[int, MatchBand], ...] = (
     (0, MatchBand.LOW_PROBABILITY),
 )
 
-#: A failed must-have cannot produce a better band than this, whatever the
-#: arithmetic says.
-_MUST_HAVE_GAP_CEILING = MatchBand.STRETCH
+#: An unmet requirement this important cannot produce a better band than
+#: `_UNMET_CEILING`, whatever the arithmetic says.
+#:
+#: The threshold exists because a posting's own `must have` heading is routinely
+#: a wishlist. If every stated requirement capped, every job would read
+#: `stretch` and the band would stop discriminating — a uselessly pessimistic
+#: signal traded for a too-generous one. So the model judges importance and this
+#: is where "clearly required" starts. The prompt anchors the scale.
+CAP_IMPORTANCE = 70
+
+#: Verdicts that mean *the profile does not evidence this*.
+#:
+#: `unverified` is in here from v2, and it is the substantive change. A
+#: recruiter reads exactly the profile the model reads and draws the same
+#: conclusion from silence, so treating "your CV does not show this" as costless
+#: models a reader who does not exist. The *claim* stays honest — `unverified`
+#: still asserts nothing and still carries no evidence — but it is weighed
+#: (research.md R10).
+_UNMET = frozenset({RequirementVerdict.GAP, RequirementVerdict.UNVERIFIED})
+
+_UNMET_CEILING = MatchBand.STRETCH
 
 #: Band order, worst to best. Only used to make the ceiling a ceiling rather
 #: than an assignment — a poor score that also fails a must-have must not be
@@ -73,35 +92,54 @@ def overall_score(direct: int, transferable: int, adjacent: int, impact: int) ->
     return round(weighted)
 
 
-def band_for(
-    score: int,
-    *,
-    requirements: Sequence[tuple[RequirementKind, RequirementVerdict]],
-) -> MatchBand:
+@dataclass(frozen=True, slots=True)
+class Judged:
+    """One requirement as the model judged it, for banding purposes.
+
+    `kind` is what the posting **said**; `importance` is what the model
+    **judged**. Both are kept, the same split as `status` and
+    `normalized_status`: the source's own words are preserved and the value the
+    system reasons over is derived, so neither can be quietly lost.
+    """
+
+    kind: RequirementKind
+    verdict: RequirementVerdict
+    importance: int
+
+
+def band_for(score: int, *, requirements: Sequence[Judged]) -> MatchBand:
     """The band shown to the person, which is not simply the score bucketed.
 
-    A stated must-have the profile is **shown to fall short of** caps the band,
+    An **important** requirement the profile does not evidence caps the band,
     because a weighted sum hides exactly that: one unmet requirement barely
-    moves four dimension ratings, so a profile can score 90 while failing the
-    thing the posting said was required.
+    moves four dimension ratings, so a profile can score 90 while missing the
+    thing the role is actually about.
 
-    Note what does *not* cap: `unverified`. A profile merely silent about a
-    must-have has not been shown to fail it, and capping on silence would punish
-    a thin CV rather than a real shortfall — quietly restoring the met/missing
-    binary the five-verdict taxonomy exists to break. `partial` and
-    `transferable` do not cap either; both are evidence of something.
+    Two things this does *not* do:
+
+    * It does not cap on `partial` or `transferable`. Both are evidence of
+      something, and most real profiles live there — capping on them would
+      punish exactly the shape the five-verdict taxonomy exists to describe.
+    * It does not trust the posting's `must have` heading. A `preferred`
+      requirement the model judges critical caps; a `must_have` it judges
+      incidental does not.
+
+    Comparisons are `==`, never `is`. These values are stored in `String(16)`
+    columns, so anything read back from the database is a plain `str` — and `is`
+    would silently never match, disabling the cap with nothing raising and every
+    band still looking plausible.
     """
     banded = next(band for lower, band in _BANDS if score >= lower)
 
-    failed_must_have = any(
-        kind is RequirementKind.MUST_HAVE and verdict is RequirementVerdict.GAP
-        for kind, verdict in requirements
+    unmet_and_important = any(
+        requirement.verdict in _UNMET and requirement.importance >= CAP_IMPORTANCE
+        for requirement in requirements
     )
-    if not failed_must_have:
+    if not unmet_and_important:
         return banded
 
     # min by position: a ceiling, never a promotion.
-    return min(banded, _MUST_HAVE_GAP_CEILING, key=_ORDER.index)
+    return min(banded, _UNMET_CEILING, key=_ORDER.index)
 
 
-__all__ = ["CRITERIA_VERSION", "band_for", "overall_score"]
+__all__ = ["CAP_IMPORTANCE", "CRITERIA_VERSION", "Judged", "band_for", "overall_score"]

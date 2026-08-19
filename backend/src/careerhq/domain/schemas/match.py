@@ -31,7 +31,22 @@ class JudgedRequirement(BaseModel):
     #: Worded as the posting worded it. A paraphrase makes the coverage count
     #: incomparable between runs and slice 007's frequency counting meaningless.
     text: str = Field(description="The requirement, worded as the posting worded it")
+    #: What the posting **said**. Preserved verbatim, and deliberately not what
+    #: the band rule reasons over — see `importance`.
     kind: Literal["must_have", "preferred"]
+
+    #: What the model **judged** this requirement is worth to this recruiter for
+    #: this role, 0-100.
+    #:
+    #: Separate from `kind` because a posting's "must have" heading is routinely
+    #: a wishlist, and because the recruiter's real priorities show in how the
+    #: posting is written — what comes first, what is repeated, what the role is
+    #: actually about — rather than in which heading a line sits under. The same
+    #: split as `status` and `normalized_status`.
+    importance: int = Field(
+        ge=0, le=100, description="How much this requirement matters for this role"
+    )
+
     verdict: Literal["confirmed", "partial", "transferable", "gap", "unverified"]
     #: Why it is not met, which decides what to do about it: rephrase what is
     #: already there, supply the proof, or acknowledge the gap.

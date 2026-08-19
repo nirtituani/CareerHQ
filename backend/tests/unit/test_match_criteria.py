@@ -1,8 +1,16 @@
-"""The rubric: `v1-weighted` (contracts/match-analysis.md, research.md R9).
+"""The rubric: `v2-importance` (contracts/match-analysis.md, research.md R9, R10).
 
-The model rates four dimensions; the application computes the score and derives
-the band. Asking the model for the parts *and* the total invites them to
-disagree, and the total is the one a person acts on.
+The model rates four dimensions and the importance of each requirement; the
+application computes the score and derives the band.
+
+**v2 changed two things from v1-weighted**, both recorded in R10:
+
+* An unmet requirement is `gap` **or** `unverified`. The score answers *is this
+  worth my evening*, and a recruiter reads the same profile the model does — so
+  a requirement your CV does not evidence is a risk to the application whether
+  or not the shortfall is provable.
+* Importance is judged per requirement rather than taken from the posting's
+  own `must have` heading, which is routinely a wishlist.
 
 Band boundaries are tested at every edge rather than in the middle, because
 off-by-one at a threshold is the failure a mid-range example never shows.
@@ -13,21 +21,32 @@ from __future__ import annotations
 import pytest
 
 from careerhq.application.match_criteria import (
+    CAP_IMPORTANCE,
     CRITERIA_VERSION,
+    Judged,
     band_for,
     overall_score,
 )
 from careerhq.domain.models import MatchBand, RequirementKind, RequirementVerdict
 
 
+def _req(
+    verdict: RequirementVerdict,
+    importance: int,
+    kind: RequirementKind = RequirementKind.MUST_HAVE,
+) -> Judged:
+    return Judged(kind=kind, verdict=verdict, importance=importance)
+
+
 def test_the_criteria_version_is_named_and_stable() -> None:
     """FR-018. A score whose criteria are unnamed cannot be calibrated against.
 
-    Changing the weights or the thresholds means a **new** version, never an
-    edit — otherwise every historical score silently becomes incomparable, and
-    docs/07 §3.2 evaluates this capability on Match Score calibration.
+    Changing the weights, the thresholds or the cap rule means a **new**
+    version, never an edit — otherwise every historical score silently becomes
+    incomparable, and docs/07 §3.2 evaluates this capability on Match Score
+    calibration. v1 scores exist and must stay distinguishable from v2 ones.
     """
-    assert CRITERIA_VERSION == "v1-weighted"
+    assert CRITERIA_VERSION == "v2-importance"
 
 
 @pytest.mark.parametrize(
@@ -67,47 +86,89 @@ def test_band_boundaries_land_on_the_right_side(score: int, expected: MatchBand)
     assert band_for(score, requirements=[]) is expected
 
 
-def test_a_failed_must_have_caps_the_band_however_good_the_arithmetic() -> None:
-    """The rule that is in neither source, added because averages hide this.
+@pytest.mark.parametrize("verdict", [RequirementVerdict.GAP, RequirementVerdict.UNVERIFIED])
+def test_an_unmet_important_requirement_caps_the_band(verdict: RequirementVerdict) -> None:
+    """**v2: `unverified` caps too.** The reversal from v1, and why.
 
-    A profile scoring 90 on every dimension while failing a stated must-have is
-    not a strong match. A weighted sum will report one cheerfully, because a
-    single unmet requirement barely moves four dimension ratings.
+    v1 capped only on `gap`, reasoning that silence is not proof of absence.
+    True about the *claim*, wrong about the *score*: a recruiter reads exactly
+    the profile the model reads, and draws the same conclusion from silence. A
+    score that treats "your CV does not evidence this" as costless models a
+    reader who does not exist.
+
+    The claim stays honest — `unverified` still asserts nothing and still
+    carries no evidence. Only the weighing changed (research.md R10).
     """
-    requirements = [
-        (RequirementKind.MUST_HAVE, RequirementVerdict.CONFIRMED),
-        (RequirementKind.MUST_HAVE, RequirementVerdict.GAP),
-        (RequirementKind.PREFERRED, RequirementVerdict.CONFIRMED),
-    ]
-
-    assert band_for(90, requirements=requirements) is MatchBand.STRETCH
+    assert band_for(90, requirements=[_req(verdict, 85)]) is MatchBand.STRETCH
 
 
-def test_the_cap_does_not_promote_a_worse_score() -> None:
-    """A cap is a ceiling, not an assignment.
+def test_an_unimportant_unmet_requirement_does_not_cap() -> None:
+    """The whole point of judging importance rather than trusting the heading.
 
-    A genuinely poor match that also fails a must-have stays where it was; it
-    must not be lifted *up* to `stretch` by the rule meant to hold scores down.
+    Postings list wishlists under "must have". If every stated requirement
+    capped, every job would read `stretch` and the band would stop
+    discriminating — a uselessly pessimistic signal traded for a too-generous
+    one.
     """
-    requirements = [(RequirementKind.MUST_HAVE, RequirementVerdict.GAP)]
+    assert band_for(90, requirements=[_req(RequirementVerdict.GAP, 30)]) is MatchBand.STRONG
 
-    assert band_for(10, requirements=requirements) is MatchBand.LOW_PROBABILITY
+
+def test_the_threshold_is_inclusive_at_its_edge() -> None:
+    """An off-by-one here silently changes which jobs cap."""
+    assert band_for(90, requirements=[_req(RequirementVerdict.GAP, CAP_IMPORTANCE)]) is (
+        MatchBand.STRETCH
+    )
+    assert band_for(90, requirements=[_req(RequirementVerdict.GAP, CAP_IMPORTANCE - 1)]) is (
+        MatchBand.STRONG
+    )
 
 
 @pytest.mark.parametrize(
     "verdict",
-    [RequirementVerdict.PARTIAL, RequirementVerdict.TRANSFERABLE, RequirementVerdict.UNVERIFIED],
+    [
+        RequirementVerdict.CONFIRMED,
+        RequirementVerdict.PARTIAL,
+        RequirementVerdict.TRANSFERABLE,
+    ],
 )
-def test_only_an_outright_gap_on_a_must_have_caps_the_band(
-    verdict: RequirementVerdict,
-) -> None:
-    """`unverified` must not cap, and that is the whole point of separating it.
+def test_evidenced_verdicts_never_cap_however_important(verdict: RequirementVerdict) -> None:
+    """`partial` and `transferable` are evidence of something, not absence.
 
-    A profile that is merely silent about a must-have has not been shown to fail
-    it. Capping on silence would punish the person for a thin CV rather than for
-    a real shortfall — and would quietly restore the met/missing binary the
-    five-verdict taxonomy exists to break.
+    Capping on them would punish the profiles the five-verdict taxonomy exists
+    to describe — most real ones are mostly `partial` and `transferable`.
     """
-    requirements = [(RequirementKind.MUST_HAVE, verdict)]
+    assert band_for(90, requirements=[_req(verdict, 100)]) is MatchBand.STRONG
 
-    assert band_for(90, requirements=requirements) is MatchBand.STRONG
+
+def test_importance_is_judged_not_taken_from_the_postings_heading() -> None:
+    """A `preferred` requirement the model judges critical still caps.
+
+    `kind` is what the posting *said*; `importance` is what the model *judged*.
+    The same split as `status` and `normalized_status`: the source's own words
+    are preserved, and the value the system reasons over is derived.
+    """
+    critical_but_labelled_optional = _req(
+        RequirementVerdict.UNVERIFIED, 90, kind=RequirementKind.PREFERRED
+    )
+
+    assert band_for(90, requirements=[critical_but_labelled_optional]) is MatchBand.STRETCH
+
+
+def test_the_cap_does_not_promote_a_worse_score() -> None:
+    """A cap is a ceiling, not an assignment."""
+    assert band_for(10, requirements=[_req(RequirementVerdict.GAP, 100)]) is (
+        MatchBand.LOW_PROBABILITY
+    )
+
+
+def test_the_cap_fires_on_values_read_back_from_the_database() -> None:
+    """These columns are `String(16)`, so a stored row returns plain `str`.
+
+    `band_for` used to compare with `is`, which matches an enum member and never
+    a string — so a re-run or recompute reading stored rows would have silently
+    stopped capping, with nothing raising and every band looking plausible.
+    Only a test that passes strings can catch it.
+    """
+    from_the_database = Judged(kind="must_have", verdict="gap", importance=90)  # type: ignore[arg-type]
+
+    assert band_for(90, requirements=[from_the_database]) is MatchBand.STRETCH

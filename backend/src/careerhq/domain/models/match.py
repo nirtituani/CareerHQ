@@ -229,6 +229,10 @@ class MatchRequirement(Base):
             "(verdict = 'confirmed') = (shortfall IS NULL)",
             name="ck_match_requirement_shortfall",
         ),
+        CheckConstraint(
+            "importance >= 0 AND importance <= 100",
+            name="ck_match_requirement_importance",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -247,7 +251,15 @@ class MatchRequirement(Base):
     #: incomparable between runs and slice 007's frequency counting meaningless.
     text_: Mapped[str] = mapped_column("text", Text, nullable=False)
 
+    #: What the posting said. Preserved because it is the employer's own words.
     kind: Mapped[RequirementKind] = mapped_column(String(16), nullable=False)
+
+    #: What the model judged it is worth, 0-100. This is what the band rule
+    #: reads; `kind` is not. A posting's "must have" heading is routinely a
+    #: wishlist, and if every stated requirement capped the band, every job
+    #: would read `stretch` and the band would stop discriminating.
+    importance: Mapped[int] = mapped_column(SmallInteger, nullable=False, server_default="50")
+
     verdict: Mapped[RequirementVerdict] = mapped_column(String(16), nullable=False)
     shortfall: Mapped[Shortfall | None] = mapped_column(String(16))
 

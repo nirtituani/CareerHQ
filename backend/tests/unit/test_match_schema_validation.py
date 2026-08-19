@@ -25,6 +25,7 @@ def _requirement(**overrides: object) -> dict[str, object]:
     base: dict[str, object] = {
         "text": "5+ years building production backend services",
         "kind": "must_have",
+        "importance": 90,
         "verdict": "confirmed",
         "shortfall": None,
         "evidence": "Led the payments platform team for six years.",

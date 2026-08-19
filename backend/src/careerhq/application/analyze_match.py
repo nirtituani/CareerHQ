@@ -25,7 +25,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from careerhq.application.match_criteria import CRITERIA_VERSION, band_for, overall_score
+from careerhq.application.match_criteria import (
+    CRITERIA_VERSION,
+    Judged,
+    band_for,
+    overall_score,
+)
 from careerhq.application.ports import StructuredCompletion
 from careerhq.domain.models import (
     Application,
@@ -88,6 +93,27 @@ Rules, in order of importance:
 7. Every verdict except `confirmed` states a `shortfall`: `wording` (the profile
    has it but words it differently), `evidence` (plausible but unproven), or
    `capability` (genuinely not there).
+8. Rate each requirement's `importance` from 0 to 100 — how much it really
+   matters to this recruiter for this role. **Do not read it off the heading.**
+   A "must have" list is often a wishlist and a "nice to have" is sometimes the
+   whole job. Judge from how the posting is written:
+   - Requirements stated EARLIER matter more. Recruiters lead with what they
+     care about and pad the end.
+   - Repeated across sections, named in the job title, or restated in the
+     summary — that is the core of the role.
+   - Tied to what the team actually does, versus generic to any job at this
+     level (communication, teamwork, "fast-paced environment").
+   - Specific and checkable ("5 years of Kubernetes in production") versus
+     boilerplate ("passion for technology").
+
+   Anchor the scale:
+   - 80-100 — the role is *about* this. Remove it and it is a different job.
+   - 60-79 — clearly required; a candidate without it is a hard sell.
+   - 40-59 — expected, but would not decide the hire on its own.
+   - 0-39  — nice to have, boilerplate, or legal/EEO text.
+
+   Most postings have only two to five requirements above 80. If you rate ten
+   that way, you have taken the heading at face value instead of judging.
 
 Rate four dimensions from 0 to 100:
 - `direct`: same capability, same domain, comparable scale.
@@ -272,7 +298,12 @@ async def run_analysis(
 
     judgement = result.value
     verdicts = [
-        (RequirementKind(r.kind), RequirementVerdict(r.verdict)) for r in judgement.requirements
+        Judged(
+            kind=RequirementKind(r.kind),
+            verdict=RequirementVerdict(r.verdict),
+            importance=r.importance,
+        )
+        for r in judgement.requirements
     ]
     score = overall_score(
         judgement.direct, judgement.transferable, judgement.adjacent, judgement.impact
@@ -299,6 +330,7 @@ async def run_analysis(
                 ordinal=ordinal,
                 text_=judged.text,
                 kind=RequirementKind(judged.kind),
+                importance=judged.importance,
                 verdict=RequirementVerdict(judged.verdict),
                 shortfall=Shortfall(judged.shortfall) if judged.shortfall else None,
                 evidence=judged.evidence,
