@@ -94,40 +94,59 @@ the current `job_description` semantics would be wrong in a way no later task co
 
 ### Data model
 
-- [ ] T009 Create `backend/src/careerhq/domain/models/match.py` with `MatchAnalysis` and
+- [x] T009 Create `backend/src/careerhq/domain/models/match.py` with `MatchAnalysis` and
       `MatchRequirement` per [data-model.md](./data-model.md). Enums for `status`, `band`, `kind`,
       `verdict`, `shortfall`. `cost` is `Numeric(12,6)` — **Decimal, never float**.
-- [ ] T010 Add `requirements` (`text[]`, nullable) and `current_match_analysis_id`
+- [x] T010 Add `requirements` (`text[]`, nullable) and `current_match_analysis_id`
       (uuid, nullable, `ON DELETE SET NULL`) to `Application` in
       `backend/src/careerhq/domain/models/application.py`.
-- [ ] T011 Write the Alembic migration in `backend/alembic/versions/`: both tables, both columns,
+- [x] T011 Write the Alembic migration in `backend/alembic/versions/`: both tables, both columns,
       the FK, **the `CHECK ((verdict = 'unverified') = (evidence IS NULL))` constraint**, and the
       partial unique index `ON match_analyses (application_id) WHERE status = 'pending'`.
-- [ ] T012 [P] Test in `backend/tests/integration/test_match_schema.py`: inserting a
+- [x] T012 [P] Test in `backend/tests/integration/test_match_schema.py`: inserting a
       `confirmed` requirement with `evidence = NULL` **raises at the database level**, and a
       `unverified` requirement with evidence also raises. Watch both fail before T011 — this is
       AI-008 enforced where it cannot be bypassed, and a constraint nobody has watched reject
       something is not a constraint. (Invariant I1.)
-- [ ] T013 [P] Test in `backend/tests/integration/test_match_schema.py`: a second `pending`
+- [x] T013 [P] Test in `backend/tests/integration/test_match_schema.py`: a second `pending`
       analysis for the same application is rejected by the partial unique index. (Invariant I8,
       FR-007.)
-- [ ] T014 Run the migration against a real database and confirm both tables, the constraint and
+- [x] T014 Run the migration against a real database and confirm both tables, the constraint and
       the index exist by querying `information_schema` — not by trusting the migration ran.
+      **Verified** on the dev database: both tables, both nullable columns, both CHECK constraints
+      with the expected definitions, and the partial unique index. Data survived — 1 user, 1
+      profile, 5 applications — and **all 5 applications came out as legacy rows**
+      (`requirements IS NULL`), which is R1's case at 100% of this database. They will read
+      *nothing to score against yet* rather than being scored against a requirements list.
 
 ### The criteria module
 
-- [ ] T015 [P] Test in `backend/tests/unit/test_match_criteria.py`: `overall_score` equals
+- [x] T015 [P] Test in `backend/tests/unit/test_match_criteria.py`: `overall_score` equals
       `round(direct*0.4 + transferable*0.3 + adjacent*0.2 + impact*0.1)` for a table of known
       inputs. (Contract T3b.)
-- [ ] T016 [P] Test in `backend/tests/unit/test_match_criteria.py`: band thresholds map correctly
+- [x] T016 [P] Test in `backend/tests/unit/test_match_criteria.py`: band thresholds map correctly
       at every boundary — 75, 74, 55, 54, 35, 34 — because off-by-one at a band edge is the
       failure a mid-range example never shows.
-- [ ] T017 [P] Test in `backend/tests/unit/test_match_criteria.py`: **a must-have at `gap` caps
+- [x] T017 [P] Test in `backend/tests/unit/test_match_criteria.py`: **a must-have at `gap` caps
       the band at `stretch`** even when the arithmetic yields 90. This rule is in neither source
       and exists because a weighted average hides a failed must-have cheerfully.
-- [ ] T018 Create `backend/src/careerhq/application/match_criteria.py` holding
+- [x] T018 Create `backend/src/careerhq/application/match_criteria.py` holding
       `CRITERIA_VERSION = "v1-weighted"`, the weights, the band thresholds and the must-have cap.
       One module, so a v2 is a new module rather than an edit to history.
+
+### Found while doing Phase 2
+
+Neither was in the plan; both are committed with the phase.
+
+- **The circular foreign key must be named.** `applications.current_match_analysis_id` points at
+  `match_analyses`, which points back — so the constraint needs `use_alter=True` to be added after
+  both tables exist. An *unnamed* altered constraint cannot be dropped, which broke `drop_all` and
+  therefore every test needing a clean schema.
+- **`conftest.py` now drops the schema, not the tables.** `metadata.drop_all` emits its statements
+  from the **metadata** rather than from what the database contains, so it tried to drop a
+  constraint the existing test database predated and failed outright. `DROP SCHEMA public CASCADE`
+  is also strictly stronger for the original purpose — it removes what `create_all` would not know
+  to drop, including a column added by hand, which is exactly the scenario T003 guards against.
 
 ---
 
