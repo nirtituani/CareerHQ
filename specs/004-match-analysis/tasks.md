@@ -182,48 +182,51 @@ applications table with no further interaction.
 
 ### The completion schema — tests first
 
-- [ ] T019 [P] [US1] Test in `backend/tests/unit/test_match_schema.py`: a `MatchRequirementResult`
+- [x] T019 [P] [US1] Test in `backend/tests/unit/test_match_schema.py`: a `MatchRequirementResult`
       with verdict `confirmed`, `partial`, `transferable` or `gap` and **no evidence** raises.
       Four cases, watched failing. (Contract T2, FR-008.)
-- [ ] T020 [P] [US1] Test in `backend/tests/unit/test_match_schema.py`: verdict `unverified`
+- [x] T020 [P] [US1] Test in `backend/tests/unit/test_match_schema.py`: verdict `unverified`
       **with** evidence raises. The rule is an equivalence, not an implication. (Contract T3.)
-- [ ] T021 [P] [US1] Test in `backend/tests/unit/test_match_schema.py`: `shortfall` is `None` if
+- [x] T021 [P] [US1] Test in `backend/tests/unit/test_match_schema.py`: `shortfall` is `None` if
       and only if the verdict is `confirmed`.
-- [ ] T022 [P] [US1] Test in `backend/tests/unit/test_match_schema.py`: `direct`, `transferable`,
+- [x] T022 [P] [US1] Test in `backend/tests/unit/test_match_schema.py`: `direct`, `transferable`,
       `adjacent` and `impact` are each constrained to 0–100 and a value outside raises.
-- [ ] T023 [US1] Create `backend/src/careerhq/domain/schemas/match.py` — `MatchAnalysis` and
-      `MatchRequirementResult` per [contracts/match-analysis.md](./contracts/match-analysis.md),
+- [x] T023 [US1] Create `backend/src/careerhq/domain/schemas/match.py` — **`MatchJudgement` and
+      `JudgedRequirement`**, renamed from the contract's `MatchAnalysis` /
+      `MatchRequirementResult` because the ORM row is already `MatchAnalysis` and
+      `analyze_match.py` imports both. Same reason the CV extraction schemas carry an `Extracted`
+      prefix. Per [contracts/match-analysis.md](./contracts/match-analysis.md),
       with the grounding validator. **The model does not return `overall_score`**; it rates four
       dimensions and the application computes the total.
 
 ### The use case — tests first
 
-- [ ] T024 [P] [US1] Test in `backend/tests/integration/test_match_analysis.py`: a successful run
+- [x] T024 [P] [US1] Test in `backend/tests/integration/test_match_analysis.py`: a successful run
       writes the analysis `ready` with score, band, verdict, `criteria_version`, **and** model,
       token counts, cost and `is_fixture` — all in one transaction. (FR-017, Principle V.)
-- [ ] T025 [P] [US1] Test in `backend/tests/integration/test_match_analysis.py`: requirement rows
+- [x] T025 [P] [US1] Test in `backend/tests/integration/test_match_analysis.py`: requirement rows
       are written with ordinal, kind, verdict, shortfall and evidence, in posting order.
-- [ ] T026 [P] [US1] Test in `backend/tests/integration/test_match_analysis.py`: a completion that
+- [x] T026 [P] [US1] Test in `backend/tests/integration/test_match_analysis.py`: a completion that
       fails validation leaves the analysis `failed` with an `error`, and **the application is
       still readable and editable**. (Contract T4, FR-026.)
-- [ ] T027 [P] [US1] Test in `backend/tests/integration/test_match_analysis.py`: the profile is
+- [x] T027 [P] [US1] Test in `backend/tests/integration/test_match_analysis.py`: the profile is
       byte-for-byte unchanged across a run. (Contract T7, FR-012, Invariant I6.)
-- [ ] T028 [P] [US1] Test in `backend/tests/integration/test_match_analysis.py`:
+- [x] T028 [P] [US1] Test in `backend/tests/integration/test_match_analysis.py`:
       `imported_match_rating` is unchanged by a run. (FR-013.)
-- [ ] T029 [P] [US1] Test in `backend/tests/integration/test_match_analysis.py`: an application
+- [x] T029 [P] [US1] Test in `backend/tests/integration/test_match_analysis.py`: an application
       with `requirements IS NULL` (a legacy row) is **never scored** — no analysis row is created.
       (Invariant I7, R1.)
-- [ ] T030 [P] [US1] Test in `backend/tests/integration/test_match_analysis.py`: an application
+- [x] T030 [P] [US1] Test in `backend/tests/integration/test_match_analysis.py`: an application
       with `requirements = []` is also not scored, and this is not an error. (FR-006.)
-- [ ] T031 [US1] Create `backend/src/careerhq/application/analyze_match.py` — the third
+- [x] T031 [US1] Create `backend/src/careerhq/application/analyze_match.py` — the third
       `complete()` call site. `task="match_analysis"`, `schema=MatchAnalysis`. Renders the whole
       profile and the whole posting. **No loop, no tools, no reaction to its own output.**
-- [ ] T032 [US1] Write the prompt in `backend/src/careerhq/application/analyze_match.py`,
+- [x] T032 [US1] Write the prompt in `backend/src/careerhq/application/analyze_match.py`,
       honouring P1–P7 in
       [contracts/match-analysis.md](./contracts/match-analysis.md). P4 and P5 are the two that
       decide whether the output is honest: silence is `unverified`, never `gap`; and all five
       verdicts must be used rather than collapsing to a binary.
-- [ ] T033 [US1] In `backend/src/careerhq/application/analyze_match.py`, truncate an over-long
+- [x] T033 [US1] In `backend/src/careerhq/application/analyze_match.py`, truncate an over-long
       posting **at the end, and record that it was truncated**.
       Never from the middle — requirements cluster in the second half. (P1.)
 

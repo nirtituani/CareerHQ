@@ -14,7 +14,7 @@ V and VI.
 ```python
 completion.complete(
     task="match_analysis",          # NOT a model name — O3
-    schema=MatchAnalysis,           # required — O1
+    schema=MatchJudgement,          # required — O1
     prompt=render(profile, posting),
 )  -> Completion[MatchAnalysis]
 ```
@@ -29,16 +29,20 @@ must exist**; the fallback is Opus at 2.5× the cost with no quality gain (R8).
 
 ## The schema
 
+**Named `MatchJudgement` / `JudgedRequirement` in code**, not `MatchAnalysis` /
+`MatchRequirementResult`: the ORM row is already `MatchAnalysis` and `analyze_match.py` imports
+both. The design's own phrase for this is "one structured judgement".
+
 ```
-MatchAnalysis
+MatchJudgement
     direct:         int          # 0..100 — the four rated dimensions
     transferable:   int          # 0..100
     adjacent:       int          # 0..100
     impact:         int          # 0..100
     verdict:        str          # one sentence
-    requirements:   list[MatchRequirementResult]   # may be empty
+    requirements:   list[JudgedRequirement]   # may be empty
 
-MatchRequirementResult
+JudgedRequirement
     text:       str              # the requirement as the posting worded it
     kind:       "must_have" | "preferred"
     verdict:    "confirmed" | "partial" | "transferable" | "gap" | "unverified"
