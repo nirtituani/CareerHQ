@@ -269,19 +269,21 @@ applications table with no further interaction.
 
 ### Frontend
 
-- [ ] T044 [P] [US1] Test in `frontend/src/components/__tests__/match.test.tsx`: the four states
+- [x] T044 [P] [US1] Test in `frontend/src/components/__tests__/match.test.tsx`: the four states
       render distinctly, and *nothing to score* is **not** styled as an error.
-- [ ] T045 [US1] Create `frontend/src/components/applications/match-score.tsx` — the band for the
+- [x] T045 [US1] Create `frontend/src/components/applications/match-score.tsx` — the band for the
       table and the tab header. **Shows the band, never a bare percentage** (FR-001a).
-- [ ] T046 [US1] Add the Match column to
+- [x] T046 [US1] Add the Match column to
       `frontend/src/components/applications/applications-view.tsx`, sortable by the underlying
       score since four bands make a poor sort key.
-- [ ] T047 [P] [US1] Add the match types and fetchers to `frontend/src/lib/api.ts`.
+- [x] T047 [P] [US1] Add the match types and fetchers to `frontend/src/lib/api.ts`.
 
 ### Verify against the real stack
 
-- [ ] T048 👁 **OBSERVE** [US1] Run [quickstart.md](./quickstart.md) step 1 **before spending
+- [x] T048 👁 **OBSERVE** [US1] Run [quickstart.md](./quickstart.md) step 1 **before spending
       anything**: confirm `model_for_task("match_analysis")` differs from the Opus fallback.
+      **Confirmed on the running stack**: `anthropic/claude-sonnet-5` against a fallback of
+      `anthropic/claude-opus-5`.
 - [ ] T049 👁 **OBSERVE** [US1] Run quickstart steps 2 and 3 against the running stack. Confirm
       the row reads `ready`, a band consistent with the score, `criteria_version = v1-weighted`,
       a real model, real token counts, a real cost and **`is_fixture = false`**. `is_fixture =

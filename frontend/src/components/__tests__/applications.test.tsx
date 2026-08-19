@@ -26,6 +26,9 @@ function application(overrides: Partial<Application> = {}): Application {
     job_title: "Senior Backend Engineer",
     location: "Tel Aviv",
     job_description: "We are looking for a Senior Backend Engineer.",
+    // `null` is the legacy default deliberately: every application recorded
+    // before slice 004 has no captured posting (research.md R1).
+    requirements: null,
     job_url: "https://example.com/posting",
     job_description_url: null,
     status: "Applied",
