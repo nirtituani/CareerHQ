@@ -33,9 +33,26 @@ class JobPostingExtraction(BaseModel):
     #: would invent precision the posting does not have.
     salary_text: str | None = Field(default=None, description="Salary as written, verbatim")
 
-    #: The reason any of this exists — the text slice 004 tailors against.
+    #: The reason any of this exists — the text slice 004 tailors against, and
+    #: what match analysis scores. **The full posting**, not a narrowing of it:
+    #: the signal that decides most matches is often stated outside a
+    #: requirements section (research.md R2).
     job_description: str | None = Field(
         default=None, description="The full posting text, as plain text"
+    )
+
+    #: What the posting asks of the candidate, kept **beside** the posting
+    #: rather than in place of it. Before slice 004 these were joined with
+    #: newlines and stored as `job_description`, and the body was discarded —
+    #: one column holding two kinds of content with nothing recording which
+    #: (research.md R1).
+    #:
+    #: `[]` and `None` are different facts. `[]` means the posting was read and
+    #: stated no requirements; `None` means no posting was ever captured, which
+    #: is true of every row written before slice 004. Those rows are not scored,
+    #: and this distinction is the only thing that identifies them.
+    requirements: list[str] = Field(
+        default_factory=list, description="What the posting asks of the candidate"
     )
 
     #: For the logo column, when the posting names the employer's own site.
