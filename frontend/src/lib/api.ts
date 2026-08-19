@@ -138,8 +138,21 @@ export type Application = {
   company: { id: string; name: string; domain: string | null };
   job_title: string;
   location: string | null;
-  /** The stored text slice 004 tailors against — not a link to a posting. */
+  /** The **full posting**, which match analysis scores against. */
   job_description: string | null;
+  /**
+   * What the posting asks of the candidate.
+   *
+   * `null` and `[]` are different facts. `null` means no posting was ever
+   * captured — a row recorded before slice 004, whose `job_description` holds a
+   * joined requirements list rather than an advert. `[]` means the posting was
+   * read and stated none. Only `null` rows are unscoreable for want of a
+   * posting, so collapsing these loses the thing that tells them apart.
+   */
+  requirements: string[] | null;
+  /** Computed against the profile. Never `imported_match_rating`, which is the
+   *  person's own 1–5 judgement and a separate fact (FR-013). */
+  match?: MatchSummary;
   job_url: string | null;
   job_description_url: string | null;
   /** The user's own words, verbatim. */
@@ -160,6 +173,12 @@ export type Application = {
   status_history: StatusChange[];
 };
 
+export type MatchSummary = {
+  state: "running" | "ready" | "failed" | "nothing_to_score";
+  band: "strong" | "moderate" | "stretch" | "low_probability" | null;
+  overall_score: number | null;
+};
+
 /** Fields a client may write. `normalized_status` is deliberately absent. */
 export type ApplicationInput = {
   company: string;
@@ -167,6 +186,7 @@ export type ApplicationInput = {
   /** Belongs to the employer, so a second job there inherits it. */
   company_domain?: string;
   job_description?: string;
+  requirements?: string[];
   location?: string;
   status?: string;
   /** When the job was recorded — the staleness signal for a Pre-Applied row. */
