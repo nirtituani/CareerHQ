@@ -279,8 +279,19 @@ class TestStructuredDataIsMetadataOnly:
         # The employer's own title, not the model's guess.
         assert result.posting.job_title == "Senior Backend Engineer"
         assert result.posting.company == "Acme Corporation"
-        # And the requirements, not the company blurb.
-        assert result.posting.job_description == "5+ years of Python\nExperience with PostgreSQL"
+
+        # The requirements are their own field now. **Amended in slice 004**:
+        # this line previously asserted `job_description` held exactly
+        # "5+ years of Python\nExperience with PostgreSQL" — the requirements
+        # wearing the posting's name, with the body discarded. research.md R1
+        # reverses that; both halves are kept.
+        assert result.posting.requirements == ["5+ years of Python", "Experience with PostgreSQL"]
+
+        # The body is the *page*, and still never the structured block's
+        # description — which is the lesson this test exists for. On a real
+        # posting that block held 1,591 characters of company blurb while the
+        # page held 9,447 including the requirements.
+        assert "Requirements: 5+ years of Python" in (result.posting.job_description or "")
         assert "Company Overview" not in (result.posting.job_description or "")
 
 

@@ -70,21 +70,27 @@ the current `job_description` semantics would be wrong in a way no later task co
 
 ### The R1 correction — stop discarding the posting
 
-- [ ] T004 Test in `backend/tests/unit/test_extract_job.py`: extracting from posting text returns
+- [x] T004 Test in `backend/tests/unit/test_extract_job.py`: extracting from posting text returns
       **both** the full body as `job_description` **and** the requirements as a separate list.
       Watch it fail — today the body is discarded and the joined requirements take its place.
-- [ ] T005 [P] Test in `backend/tests/unit/test_extract_job.py`: a posting yielding **no**
+- [x] T005 [P] Test in `backend/tests/unit/test_extract_job.py`: a posting yielding **no**
       requirements stores the body as `job_description` and an **empty list**, not `NULL`.
       `NULL` (never captured) and `[]` (captured, none found) are different facts and the whole
       legacy-row decision rests on them staying distinguishable.
-- [ ] T006 Add `requirements: list[str]` to `JobPostingExtraction` in
+- [x] T006 Add `requirements: list[str]` to `JobPostingExtraction` in
       `backend/src/careerhq/domain/schemas/job.py`.
-- [ ] T007 Change `backend/src/careerhq/application/extract_job.py` to stop collapsing
+- [x] T007 Change `backend/src/careerhq/application/extract_job.py` to stop collapsing
       requirements into `job_description`. The body becomes `job_description`; the list becomes
       `requirements`. **Amend the comment block that records the old decision** rather than
       deleting it — it explains why the reversal happened.
-- [ ] T008 [P] Update `backend/src/careerhq/infrastructure/jobs/parse.py` and
+- [x] T008 [P] Update `backend/src/careerhq/infrastructure/jobs/parse.py` and
       `comeet.py` if either constructs `JobPostingExtraction` positionally.
+      **No change needed** — `parse.py:219` constructs with keywords and `comeet.py` does not
+      construct one at all. `requirements` defaults to `[]`, which the URL path's metadata merge
+      filters out as falsy, so structured data never overwrites the model's list with an empty one.
+      One *existing* test did need amending: `test_structured_metadata_wins_over_the_models_reading`
+      asserted `job_description` held exactly the joined requirements. That is the behaviour R1
+      reverses, so the assertion moved to `requirements` and the body check became a positive one.
 
 ### Data model
 
@@ -122,6 +128,28 @@ the current `job_description` semantics would be wrong in a way no later task co
 - [ ] T018 Create `backend/src/careerhq/application/match_criteria.py` holding
       `CRITERIA_VERSION = "v1-weighted"`, the weights, the band thresholds and the must-have cap.
       One module, so a v2 is a new module rather than an edit to history.
+
+---
+
+## Phase 2b: Found during implementation, not in the original plan
+
+T007 has blast radius the plan did not account for. The Add Application form has a **single**
+textarea named `job_description`, labelled *Requirements*, with the placeholder *"One requirement
+per line…"* and a *"+ Add the requirements"* affordance. It was correct while `job_description`
+held the joined requirements list. After T007 it holds the whole posting, so a job added from a
+URL pre-fills that box with the entire advert.
+
+These depend on the `requirements` column (T010) and the API returning it, so they run after
+Phase 2's data model rather than beside T007.
+
+- [ ] T088 [P] Test in `frontend/src/components/__tests__/applications.test.tsx`: the Requirements
+      field is populated from `requirements`, one per line — **not** from `job_description`. Watch
+      it fail; today the binding is to the posting.
+- [ ] T089 In `frontend/src/components/applications/add-application.tsx`, bind the Requirements
+      textarea to `requirements` and carry `job_description` through the form without displaying
+      it in that box. **The posting must survive a form round-trip** — a person who opens the form
+      on an extracted job and saves it must not silently discard the text match analysis scores
+      against.
 
 ---
 
