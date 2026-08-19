@@ -44,18 +44,22 @@ image and silently runs the old code. `docker compose build backend && docker co
 
 ## Phase 1: Setup
 
-- [ ] T001 Add `llm_model_match_analysis: str = "anthropic/claude-sonnet-5"` to
+- [x] T001 Add `llm_model_match_analysis: str = "anthropic/claude-sonnet-5"` to
       `backend/src/careerhq/config.py`, beside the existing per-task entries. **This ships in the
       same commit as the use case, not after it** — `model_for_task` falls back to
       `llm_provider_model`, which is Opus, so a missing entry runs every analysis at ~2.5× cost
       silently. The same fallback already caught CV extraction once.
-- [ ] T002 [P] Test in `backend/tests/unit/test_config.py`: `model_for_task("match_analysis")`
+- [x] T002 [P] Test in `backend/tests/unit/test_config.py`: `model_for_task("match_analysis")`
       returns the configured Sonnet model and **is not equal to** `llm_provider_model`. Watch it
       fail with T001 reverted — a test that cannot detect the fallback is not a test of it.
-      (Contract T6.)
-- [ ] T003 [P] Confirm `backend/tests/conftest.py` drops before creating, so schema-shaped
+      (Contract T6.) **Watched failing**: `assert 'anthropic/claude-opus-5' ==
+      'anthropic/claude-sonnet-5'` — the fallback was live, which is the trap itself.
+- [x] T003 [P] Confirm `backend/tests/conftest.py` drops before creating, so schema-shaped
       assertions in this slice test the current schema rather than a stale snapshot. If it does
       not, fix it here before anything else asserts a constraint.
+      **Verified, no change needed** — `conftest.py:141-142` runs `drop_all` then `create_all`,
+      carrying the comment "Dropped first, because `create_all` skips tables that already exist".
+      Slice 003 fixed this; the twelve absence-asserting tasks below can rely on it.
 
 ---
 
