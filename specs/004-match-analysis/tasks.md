@@ -232,35 +232,37 @@ applications table with no further interaction.
 
 ### Wiring it to saving a job
 
-- [ ] T034 [P] [US1] Test in `backend/tests/integration/test_match_analysis.py`: saving an
+- [x] T034 [P] [US1] **Written in `backend/tests/integration/test_match_api.py`** rather than
+      `test_match_analysis.py` — it exercises the route, so it belongs with the other endpoint
+      tests. Saving an
       application creates the analysis row `pending` **in the same transaction**, and the response
       returns without waiting for the completion. (FR-004, FR-005.)
-- [ ] T035 [US1] Create the analysis row and dispatch the FastAPI background task from
+- [x] T035 [US1] Create the analysis row and dispatch the FastAPI background task from
       `backend/src/careerhq/application/record_application.py`.
-- [ ] T036 [US1] In `backend/src/careerhq/application/analyze_match.py`, ensure a background
+- [x] T036 [US1] In `backend/src/careerhq/application/analyze_match.py`, ensure a background
       failure moves the row to `failed` rather than leaving it
       `pending` forever. An exception with nowhere to go is the known weakness of fire-and-forget;
       the `pending` row exists precisely so failure has somewhere to land.
-- [ ] T037 [P] [US1] Test in `backend/tests/integration/test_match_analysis.py`: an analysis that
+- [x] T037 [P] [US1] Test in `backend/tests/integration/test_match_analysis.py`: an analysis that
       completes after its application is deleted is discarded without error.
 
 ### API
 
-- [ ] T038 [P] [US1] Test in `backend/tests/integration/test_match_api.py`: `GET
+- [x] T038 [P] [US1] Test in `backend/tests/integration/test_match_api.py`: `GET
       /api/applications/{id}/match` returns the right `state` for each of the four cases —
       `running`, `ready`, `failed`, `nothing_to_score`. **The server decides the state**; a client
       inferring "no score means failed" is the conflation FR-022 forbids.
-- [ ] T039 [P] [US1] Test in `backend/tests/integration/test_match_api.py`: the endpoint returns
+- [x] T039 [P] [US1] Test in `backend/tests/integration/test_match_api.py`: the endpoint returns
       404 — not 403 — for another user's application, so it cannot enumerate ids.
-- [ ] T040 [P] [US1] Test in `backend/tests/integration/test_match_api.py`: `cost` serialises as a
+- [x] T040 [P] [US1] Test in `backend/tests/integration/test_match_api.py`: `cost` serialises as a
       **string**, never a float.
-- [ ] T041 [US1] Add `GET /api/applications/{id}/match` to
+- [x] T041 [US1] Add `GET /api/applications/{id}/match` to
       `backend/src/careerhq/api/routes/applications.py` per
       [contracts/http-api.md](./contracts/http-api.md).
-- [ ] T042 [US1] Add the compact match summary (`state`, `band`, `overall_score`) to
+- [x] T042 [US1] Add the compact match summary (`state`, `band`, `overall_score`) to
       `GET /api/applications` in `backend/src/careerhq/api/routes/applications.py`, via **one join** on `current_match_analysis_id` — not one query
       per row.
-- [ ] T043 [P] [US1] Test in `backend/tests/integration/test_match_content.py`: every stored
+- [x] T043 [P] [US1] Test in `backend/tests/integration/test_match_content.py`: every stored
       analysis and requirement column reaches the API response, read from the models' own columns.
       Slice 003's equivalent found a fourth dropped display bug on its first run — a fixture only
       contains what its author thought to include. (Contract T5, FR-029.)
