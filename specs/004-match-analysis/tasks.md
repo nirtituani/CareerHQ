@@ -457,7 +457,7 @@ surfaced and a re-run can be triggered.
       `frontend/src/components/applications/match-tab.tsx`.
 - [x] T073 [P] [US3] Keep the previous band visible while a re-run is in flight, in
       `frontend/src/components/applications/match-score.tsx`. It must not blank to a spinner.
-- [ ] T074 👁 **OBSERVE** [US3] Run quickstart step 7. Confirm the notice appears, **no other job
+- [x] T074 👁 **OBSERVE** [US3] Run quickstart step 7. Confirm the notice appears, **no other job
       was re-scored**, the previous band stays visible throughout the re-run, and the analysis
       count went up rather than the old row being replaced.
 
@@ -479,30 +479,42 @@ Both paths tested, both watched failing first.
 
 ## Phase 6: Polish & Cross-Cutting Concerns
 
-- [ ] T075 **Re-measure cost against a real analysis.** R8's figures ($0.022–0.026) assumed three
+      **Verified in a browser.** The notice and *Score it again* render, and the analysis count
+      stayed at 1 — the profile edit re-scored nothing.
+- [x] T075 **Re-measure cost against a real analysis.** R8's figures ($0.022–0.026) assumed three
       verdicts and no `shortfall` field; five verdicts with grounded gaps produce more output, and
       output is 57–86% of the bill. Update [research.md](./research.md) R8 with measured numbers
       and confirm SC-004 ($0.03/job) still holds. If it does not, say so rather than adjusting the
       criterion.
-- [ ] T076 [P] Amend `docs/05_Implementation_Plan.md` §5.4. It defines slice 004 as the Resume
+      **Measured: $0.035510** — 3,700 in / **2,811 out** on a 12-requirement posting. Output is
+      79% of the cost, inside the predicted band, but nearly double the 1,500-token estimate.
+      **SC-004 is missed** ($0.0355 against $0.03; $3.55 per hundred against $3). Recorded in R8
+      with three ways out, none applied — each trades away something the feature exists for.
+- [x] T076 [P] Amend `docs/05_Implementation_Plan.md` §5.4. It defines slice 004 as the Resume
       Tailoring Agent; match analysis was pulled out ahead of it. **Decide the numbering** — either
       renumber the tailoring agent to 005 and cascade, or record that 004 split — and make the
       roadmap say the same thing as this spec.
-- [ ] T077 [P] Update `docs/08_Technical_Spec.md` capability status markers for what is now built.
-- [ ] T078 [P] Update `docs/07_Capabilities.md` if match analysis warrants its own entry rather
+- [x] T077 [P] Update `docs/08_Technical_Spec.md` capability status markers for what is now built.
+- [x] T078 [P] Update `docs/07_Capabilities.md` if match analysis warrants its own entry rather
       than living under the Resume Optimizer.
-- [ ] T079 [P] Update `CLAUDE.md` with what carries into the tailoring agent, and any gotcha this
+- [x] T079 [P] Update `CLAUDE.md` with what carries into the tailoring agent, and any gotcha this
       slice proved. The seam now has **three** call sites.
 - [ ] T080 [P] Regenerate `HANDOFF.md` with `/handoff` — measured numbers, not copied.
-- [ ] T081 [P] Confirm `infrastructure/ai/litellm_gateway.py` is still the only module importing
+- [x] T081 [P] Confirm `infrastructure/ai/litellm_gateway.py` is still the only module importing
       `litellm`, and that `domain/` imports no framework code. (Seam obligation O5, Principle V.)
-- [ ] T082 Confirm the scope guards held: **no agent loop, no embeddings, no vector retrieval, and
+      **Confirmed**: `test_architecture.py` green — `litellm` imported by the gateway alone, and
+      `domain/` imports no framework code.
+- [x] T082 Confirm the scope guards held: **no agent loop, no embeddings, no vector retrieval, and
       no call site reacting to its own output.** T096 of slice 003 amended this guard to allow
       multiple call sites; three is still three independent calls.
-- [ ] T083 Run every gate from the host and confirm green: `ruff format --check .`, `ruff check .`,
+      **Confirmed**: three `complete()` call sites, none looping; no embeddings, vector or
+      similarity code anywhere in the slice; no call site reads its own previous output.
+- [x] T083 Run every gate from the host and confirm green: `ruff format --check .`, `ruff check .`,
       `mypy src`, `pytest` at ≥80%; frontend `lint`, `typecheck`, `test`, `build`. **Gates run on
       the host, not in the container** — `backend/.dockerignore` excludes `tests/`, so
       `docker compose exec backend pytest` collects nothing and looks much like a pass.
+      **All green from the host**: ruff format 86 files, ruff check, mypy 49 files, pytest 285 at
+      81%; frontend lint, typecheck, 99 tests, build.
 - [ ] T084 👁 **OBSERVE** Walk [quickstart.md](./quickstart.md) end to end **as written** and
       correct it where it is wrong. Slice 001's T069, slice 002's T052 and slice 003's T095 each
       found real errors this way.

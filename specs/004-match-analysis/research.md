@@ -174,6 +174,37 @@ charged $0.014332, which matches the introductory rate exactly):
 | Typical posting | 3,420 | ~1,500 | **$0.022** | $0.033 |
 | Long posting | 5,560 | ~1,500 | **$0.026** | $0.039 |
 
+### Measured (T075) — the estimate was low, and SC-004 is missed
+
+Those were projections made before the feature existed. A real analysis, billed:
+
+| | input | output | charged | after 31 Aug 2026 |
+|---|---:|---:|---:|---:|
+| **12-requirement posting** | 3,700 | **2,811** | **$0.035510** | $0.053265 |
+
+Output is **79%** of the cost — inside the predicted 57–86% band, so that part held. But it is
+nearly **double** the 1,500-token estimate, and that is the whole miss. The estimate assumed three
+verdicts and neither an `importance` nor a `shortfall` field. v2 has five verdicts, both fields,
+and requires evidence on `gap` as well as on the positive verdicts. Every one of those decisions
+was right, and each of them costs output.
+
+**SC-004 asks for $0.03 per job and $3 per hundred. Measured: $0.0355 and $3.55 — about 18% over,
+on a short posting.** A 38-requirement posting would be materially worse, and after 31 August the
+same call costs $0.053.
+
+Recorded rather than adjusted. Three ways out, in the order worth trying:
+
+1. **Return references instead of quoting both sides** — the lever §R8 already names. Evidence
+   strings are the bulk of the output and both texts are stored, so they can be joined at render
+   time: roughly half the output at no information loss. **It weakens the grounding check**, which
+   is why it was deferred, so it needs design rather than a flag.
+2. **Measure Haiku 4.5** at half the price. The task is schema-validated, so a weaker model fails
+   loudly rather than silently — but five verdicts is a harder task than three, which is an
+   argument for measuring rather than assuming.
+3. **Revise SC-004.** $0.0355 for a grounded, per-requirement analysis of a whole posting may
+   simply be what this costs. The target came from a projection that no longer describes the
+   feature, and saying so is better than meeting it by making the analysis worse.
+
 **Output is 57–86% of the cost**, because output bills at 5× input. The dominant output cost is
 per-requirement evidence quoting profile text the database already holds.
 

@@ -280,6 +280,10 @@ staleness is surfaced and a re-run can be triggered by hand.
 - **SC-003**: A person shown the four states can tell *not scored yet*, *scored*, *failed*, and
   *nothing to score against* apart, in greyscale — as can they the five requirement verdicts.
 - **SC-004**: Scoring one job costs no more than $0.03, and a hundred jobs no more than $3.
+  **Not met as measured — $0.0355 and $3.55** on a 12-requirement posting (T075). The target
+  was set from a projection assuming three verdicts and no `importance` or `shortfall` field;
+  v2 has five verdicts and both, and output nearly doubled. Options are in research.md R8;
+  none has been applied, because each trades away something the feature exists for.
 - **SC-005**: A failed or running analysis never prevents a person from opening, editing, or
   progressing the job record — measured as zero blocked interactions.
 - **SC-006**: After a re-run fails, the previously displayed score is still shown. No score is

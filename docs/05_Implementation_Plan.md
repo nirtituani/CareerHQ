@@ -186,7 +186,19 @@ by removing a field rather than adding one.
 
 ---
 
-## 5.4 Slice 004 — Resume Tailoring Agent
+## 5.4 Slice 004 — Match Analysis, then the Resume Tailoring Agent
+
+> **Split during implementation.** Match analysis — scoring a recorded job against the profile —
+> was pulled out ahead of the tailoring agent and **built as slice 004**, because it is
+> independently valuable, independently shippable, and needs none of the tailoring machinery: no
+> workflow engine, no retrieval, no Reviewer, no version lineage. It answers *is this worth
+> applying to, and where am I weak*, which is the question a person asks **before** any resume
+> work, so building it first also puts the tailoring agent's inputs on screen.
+>
+> Specified in [`specs/004-match-analysis/`](../specs/004-match-analysis/). The tailoring agent
+> below is unchanged in scope and is **the next slice**; the numbering of 005–007 has deliberately
+> not been shifted, because renumbering three downstream slices to record one split costs more
+> than the sentence you are reading.
 
 **The flagship.** Everything before it exists to make this possible; everything after builds on it.
 

@@ -67,6 +67,32 @@ database and by code, never by a model. This is Constitution Principle V.
 
 ---
 
+## 3.1a Match Analysis — *built, slice 004*
+
+Answers **"is this worth applying to, and where am I weak?"** for one recorded job, read before
+any resume work.
+
+| | |
+|---|---|
+| **Does** | Score the whole posting against the approved Professional Profile, and say which requirements it supports, which it does not, and what to do about each |
+| **Input** | The stored posting + the approved Professional Profile |
+| **Output** | A 0–100 score with the four judgements it is made of, a band, and one row per requirement with a verdict and quoted evidence |
+| **Not an agent** | One structured call. No loop, no tools, no self-critique, no retrieval — the entire profile fits in the prompt many times over |
+| **Memory** | Reads the profile; writes only to its own tables |
+| **Evaluated by** | Grounding (every verdict but one quotes the profile), and Match Score calibration over history via `criteria_version` |
+| **Slice** | 004 ✅ |
+
+**The rule it must never break:** it may not assert experience the profile does not contain — and
+**may not assert its absence either**. A profile silent about a requirement supports neither claim,
+which is why `unverified` exists beside `gap` and is the only verdict carrying no evidence.
+
+**Not the same measurement as the Optimizer's Match Score below.** This one asks *how well does my
+profile fit this job*, read before applying. That one asks *how well does this tailored resume
+match*, read after drafting. They share a schema so the two numbers stay comparable, and a later
+slice can show "54 before tailoring → 71 after".
+
+---
+
 ## 3.2 Resume Optimizer Agent — *the flagship*
 
 Takes a job description and adapts the CV to it.
