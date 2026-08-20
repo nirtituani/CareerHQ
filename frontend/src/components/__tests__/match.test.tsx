@@ -146,6 +146,46 @@ describe("the match tab", () => {
     expect(screen.queryByText(/56%/)).toBeNull();
   });
 
+  it("draws the score as a ring, sized to the score", () => {
+    const { container } = render(<MatchTab state="ready" analysis={ANALYSIS} stale={false} />);
+
+    const arc = container.querySelector<SVGCircleElement>("[data-testid='score-arc']");
+    expect(arc).not.toBeNull();
+
+    // The sweep is the score: a full circle at 100, nothing at 0. Asserted on
+    // the geometry rather than the animation, because the animation is a
+    // presentation of this value and `prefers-reduced-motion` removes it.
+    const circumference = 2 * Math.PI * 32;
+    const offset = Number(arc?.style.strokeDashoffset);
+    expect(offset).toBeCloseTo(circumference * (1 - 56 / 100), 1);
+  });
+
+  it("lands on the finished ring when motion is reduced, never on an empty one", () => {
+    const { container } = render(<MatchTab state="ready" analysis={ANALYSIS} stale={false} />);
+    const arc = container.querySelector<SVGCircleElement>("[data-testid='score-arc']");
+
+    // The base style *is* the finished state and the keyframe only supplies the
+    // start. The global reduced-motion rule collapses animations to 0.01ms, so
+    // the ring snaps to its true value — if the base style were the empty ring
+    // instead, reduced motion would leave the score permanently at zero.
+    expect(arc?.style.strokeDashoffset).toBeTruthy();
+    expect(Number(arc?.style.strokeDashoffset)).toBeLessThan(2 * Math.PI * 32);
+  });
+
+  it("names the score for assistive technology, not only in the drawing", () => {
+    render(<MatchTab state="ready" analysis={ANALYSIS} stale={false} />);
+
+    expect(screen.getByRole("img", { name: /56 out of 100.*stretch/i })).toBeInTheDocument();
+  });
+
+  it("draws no ring for an analysis with no score", () => {
+    const { container } = render(
+      <MatchTab state="ready" analysis={{ ...ANALYSIS, overall_score: null }} stale={false} />,
+    );
+
+    expect(container.querySelector("[data-testid='score-arc']")).toBeNull();
+  });
+
   it("breaks the score into the four parts it is made of", () => {
     render(<MatchTab state="ready" analysis={ANALYSIS} stale={false} />);
 
