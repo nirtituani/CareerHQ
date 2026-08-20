@@ -3,107 +3,167 @@
 /**
  * The Match tab — why this job fits, and what is missing.
  *
- * The applications table answers *whether* with one word. This answers *why*,
- * and it is what makes the number trustworthy rather than merely present.
+ * Written as a **reading surface**, per docs/09 §4: hairline rules, one line
+ * per requirement, no card grid. A person opening this has often just been
+ * rejected, so it stays calm and useful — never chipper, never alarming.
  *
- * Three decisions here are load-bearing and none of them would show up in a
- * passing build:
+ * Four decisions carry the design, and none would show up in a passing build:
  *
- * 1. **`unverified` sits with the gaps, not in a bucket of its own.** A
- *    requirement your CV does not evidence costs you the interview whether or
- *    not the shortfall is provable — a recruiter reads the same profile the
- *    model does. Filing it separately would make the most actionable finding
- *    the least visible.
- * 2. **What's missing is ordered by importance, not by the posting.** The thing
- *    that actually costs you the role has to be first; posting order buries it
- *    under boilerplate the model already rated 15.
- * 3. **Nothing here is red.** docs/09 §3 reserves that for things that broke,
- *    and a normal posting produces plenty of unmet requirements — painting them
- *    red makes an ordinary application look like a catastrophe.
+ * 1. **A section says its meaning once.** Everything under WHAT'S MISSING is
+ *    missing; tagging each row "Not on your CV" restated the heading on every
+ *    line and buried the one row that meant something else. The section's
+ *    default verdict goes unlabelled and only the exception is marked.
+ * 2. **Importance is shown, not merely implied by order.** A three-segment
+ *    meter — the pattern docs/09 §5 already uses for confidence, because it is
+ *    the same shape of signal: a 0–100 value that informs a person without
+ *    deciding for them.
+ * 3. **`unverified` sits with the gaps.** A requirement your CV does not
+ *    evidence costs the interview whether or not the shortfall is provable.
+ * 4. **Nothing is red.** docs/09 §3 reserves that for things that broke, and an
+ *    ordinary posting produces plenty of unmet requirements.
  */
 
 import { useState } from "react";
 
 import {
   VERDICT_GLYPH,
+  type MatchBand as Band,
   type Verdict,
   bandLabel,
-  type MatchBand as Band,
 } from "@/components/applications/match-score";
 import { type MatchAnalysis, type MatchRequirement, type MatchState, runMatch } from "@/lib/api";
 
 /**
- * What each verdict is called on screen.
+ * What each verdict is called, used only where it is *not* the section default.
  *
- * Every one names what to do about it. `unverified` was "Not stated", which
- * read as a technicality — it is now "Not on your CV", which is true whether or
- * not you have the skill, states what it costs, and points at the fix. It never
- * says you lack the skill, because the profile does not show that.
+ * Every one names the thing rather than describing it. `unverified` reads "Not
+ * on your CV" — true whether or not you have the skill, and never a claim that
+ * you lack it.
  */
 const LABEL: Record<Verdict, string> = {
   confirmed: "On your CV",
   partial: "Partly shown",
-  transferable: "Related experience",
+  transferable: "Related",
   gap: "Below what they ask",
   unverified: "Not on your CV",
 };
 
-/** What to do next, which is the whole reason `shortfall` exists (FR-011c). */
-const ACTION: Record<string, string> = {
-  wording: "You have this — say it in their words.",
-  evidence: "Plausible from your profile, but not proven. Add the specifics.",
-  capability: "A real gap. Decide whether to apply anyway.",
-};
+/** Three tiers, matching the bands the prompt anchors the model to. */
+function tier(importance: number): { filled: number; name: string } {
+  if (importance >= 70) return { filled: 3, name: "critical" };
+  if (importance >= 40) return { filled: 2, name: "important" };
+  return { filled: 1, name: "minor" };
+}
 
-const SUPPORTED: Verdict[] = ["confirmed", "partial", "transferable"];
+/**
+ * How much this requirement matters, as segments rather than a number.
+ *
+ * Twelve numbers down a column is noise; three segments is a shape you read
+ * without stopping. The value still reaches assistive technology and the
+ * tooltip, so the meter is never the only channel (docs/09 §7).
+ */
+function Priority({ requirement }: { requirement: MatchRequirement }) {
+  const { filled, name } = tier(requirement.importance);
 
-function Chip({ verdict }: { verdict: Verdict }) {
   return (
     <span
-      className="inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-xs"
-      style={{ background: "var(--surface-sunken)", color: "var(--muted)" }}
+      className="mt-1.5 inline-flex shrink-0 gap-0.5"
+      title={`${name} to this role (${requirement.importance}/100)`}
+      aria-label={`${requirement.text} — ${name} to this role`}
     >
-      {/* The glyph carries the meaning so it survives greyscale and colour
-          blindness (docs/09 §7). Colour alone would collapse `unverified` and
-          `gap` into one another, which is the distinction that matters most. */}
-      <span aria-hidden>{VERDICT_GLYPH[verdict]}</span>
-      {LABEL[verdict]}
+      {[0, 1, 2].map((i) => (
+        <span
+          key={i}
+          aria-hidden
+          className="block h-3 w-1 rounded-[1px]"
+          style={{ background: i < filled ? "var(--color-brand-500)" : "var(--border)" }}
+        />
+      ))}
     </span>
   );
 }
 
-function Requirement({ requirement }: { requirement: MatchRequirement }) {
+function Row({ requirement, showLabel }: { requirement: MatchRequirement; showLabel: boolean }) {
   return (
-    <li className="border-b py-3 last:border-0" style={{ borderColor: "var(--border)" }}>
-      <div className="flex items-start justify-between gap-3">
-        <span className="text-sm">{requirement.text}</span>
-        <Chip verdict={requirement.verdict} />
+    <li
+      className="flex items-start gap-3 border-b py-2.5 last:border-0"
+      style={{ borderColor: "var(--border)" }}
+    >
+      <Priority requirement={requirement} />
+
+      <div className="min-w-0 flex-1">
+        <p className="text-sm">{requirement.text}</p>
+        {/* The proof, one line, clipped. It is the grounding AI-008 depends on,
+            so it stays on the page rather than behind a click — but it is set
+            quiet, because the requirement is what a person scans. */}
+        {requirement.evidence && (
+          <p
+            className="truncate text-xs italic"
+            style={{ color: "var(--faint)" }}
+            title={requirement.evidence}
+          >
+            {requirement.evidence}
+          </p>
+        )}
       </div>
 
-      {requirement.evidence && (
-        <p
-          className="mt-1.5 border-l-2 pl-3 text-xs italic"
-          style={{ borderColor: "var(--border)", color: "var(--muted)" }}
+      {showLabel && (
+        <span
+          className="mt-0.5 shrink-0 text-xs whitespace-nowrap"
+          style={{ color: "var(--muted)" }}
         >
-          {requirement.evidence}
-        </p>
-      )}
-
-      {requirement.shortfall && (
-        <p className="mt-1.5 text-xs" style={{ color: "var(--muted)" }}>
-          {ACTION[requirement.shortfall]}
-        </p>
-      )}
-
-      {requirement.verdict === "unverified" && (
-        <p className="mt-1.5 text-xs" style={{ color: "var(--muted)" }}>
-          Your profile does not mention this. If you have it, add it to your profile and score
-          again.
-        </p>
+          <span aria-hidden>{VERDICT_GLYPH[requirement.verdict]}</span> {LABEL[requirement.verdict]}
+        </span>
       )}
     </li>
   );
 }
+
+function Section({
+  title,
+  note,
+  requirements,
+  defaultVerdict,
+  testId,
+}: {
+  title: string;
+  note: string;
+  requirements: MatchRequirement[];
+  /** The verdict this section is *about*. Rows carrying it go unlabelled. */
+  defaultVerdict: Verdict;
+  testId: string;
+}) {
+  if (requirements.length === 0) return null;
+
+  return (
+    <section className="mt-8" data-testid={testId}>
+      <div className="flex items-baseline justify-between gap-4">
+        <h3
+          className="text-xs font-medium tracking-wide uppercase"
+          style={{ color: "var(--muted)" }}
+        >
+          {title}
+        </h3>
+        <span className="tabular text-xs" style={{ fontFamily: "var(--font-mono)", color: "var(--faint)" }}>
+          {requirements.length}
+        </span>
+      </div>
+
+      {/* Said once, for the section, instead of on every row. */}
+      <p className="mt-1 text-xs" style={{ color: "var(--faint)" }}>
+        {note}
+      </p>
+
+      <ul className="mt-2">
+        {requirements.map((r) => (
+          <Row key={r.ordinal} requirement={r} showLabel={r.verdict !== defaultVerdict} />
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+const SUPPORTED: Verdict[] = ["confirmed", "partial", "transferable"];
 
 export function MatchTab({
   state,
@@ -154,29 +214,36 @@ export function MatchTab({
 
   const supported = analysis.requirements.filter((r) => SUPPORTED.includes(r.verdict));
   // Importance first, so the requirement that actually costs the interview is
-  // read first. `unverified` is in here with the gaps deliberately.
-  const missing = analysis.requirements
-    .filter((r) => !SUPPORTED.includes(r.verdict))
-    .sort((a, b) => b.importance - a.importance);
+  // read first. Posting order buries it under boilerplate.
+  const byImportance = (a: MatchRequirement, b: MatchRequirement) => b.importance - a.importance;
+  const missing = analysis.requirements.filter((r) => !SUPPORTED.includes(r.verdict)).sort(byImportance);
 
   return (
     <div className="py-6">
-      <div className="flex flex-wrap items-baseline gap-3">
-        <span className="text-2xl font-semibold">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        {/* A large figure, so the serif — docs/09 §2. */}
+        <span
+          className="text-3xl"
+          style={{ fontFamily: "var(--font-display)", color: "var(--fg)" }}
+        >
           {analysis.band ? bandLabel(analysis.band as Band) : "—"}
         </span>
         <span data-testid="coverage" className="text-sm" style={{ color: "var(--muted)" }}>
-          {supported.length} / {analysis.requirements.length} requirements shown on your profile
+          <span className="tabular" style={{ fontFamily: "var(--font-mono)" }}>
+            {supported.length}/{analysis.requirements.length}
+          </span>{" "}
+          requirements shown on your profile
         </span>
       </div>
 
-      {analysis.verdict && <p className="mt-2 text-sm">{analysis.verdict}</p>}
+      {analysis.verdict && (
+        <p className="mt-2 max-w-prose text-sm" style={{ color: "var(--muted)" }}>
+          {analysis.verdict}
+        </p>
+      )}
 
       {stale && (
-        <div
-          className="mt-4 border-l-2 pl-3 text-sm"
-          style={{ borderColor: "var(--border)", color: "var(--muted)" }}
-        >
+        <p className="mt-4 text-sm" style={{ color: "var(--muted)" }}>
           Your profile has changed since this was scored.{" "}
           {applicationId && (
             <button
@@ -192,45 +259,36 @@ export function MatchTab({
               {running ? "Scoring…" : "Score it again"}
             </button>
           )}
-        </div>
+        </p>
       )}
 
-      {supported.length > 0 && (
-        <section className="mt-6">
-          <h3 className="text-xs font-semibold tracking-wide" style={{ color: "var(--muted)" }}>
-            WHY IT FITS
-          </h3>
-          <ul className="mt-1">
-            {supported.map((r) => (
-              <Requirement key={r.ordinal} requirement={r} />
-            ))}
-          </ul>
-        </section>
-      )}
+      <Section
+        testId="whats-missing"
+        title="What's missing"
+        note="Not on your CV — add anything you have and score again."
+        requirements={missing}
+        defaultVerdict="unverified"
+      />
 
-      {missing.length > 0 && (
-        <section className="mt-6" data-testid="whats-missing">
-          <h3 className="text-xs font-semibold tracking-wide" style={{ color: "var(--muted)" }}>
-            WHAT&rsquo;S MISSING
-          </h3>
-          <ul className="mt-1">
-            {missing.map((r) => (
-              <Requirement key={r.ordinal} requirement={r} />
-            ))}
-          </ul>
-        </section>
-      )}
+      <Section
+        testId="why-it-fits"
+        title="Why it fits"
+        note="Quoted from your profile."
+        requirements={supported}
+        defaultVerdict="confirmed"
+      />
 
       <p
         data-testid="analysis-provenance"
-        className="mt-6 border-t pt-3 text-xs"
-        style={{ borderColor: "var(--border)", color: "var(--muted)" }}
+        className="mt-8 border-t pt-3 text-xs"
+        style={{ borderColor: "var(--border)", color: "var(--faint)" }}
       >
         {/* Principle III: visibly AI-generated, with what produced it and what
-            it cost. `is_fixture` is called out because canned content mistaken
-            for a real analysis would mean acting on a score nothing produced. */}
-        Scored by AI · {analysis.model ?? "unknown model"} · ${analysis.cost ?? "0"} ·{" "}
-        {analysis.criteria_version}
+            it cost. Monospace, because it is reported verbatim (docs/09 §1). */}
+        <span style={{ fontFamily: "var(--font-mono)" }}>
+          Scored by AI · {analysis.model ?? "unknown"} · ${analysis.cost ?? "0"} ·{" "}
+          {analysis.criteria_version}
+        </span>
         {analysis.is_fixture && " · FIXTURE DATA — not a real analysis"}
       </p>
     </div>

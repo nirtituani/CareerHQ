@@ -134,6 +134,27 @@ the current `job_description` semantics would be wrong in a way no later task co
       `CRITERIA_VERSION = "v1-weighted"`, the weights, the band thresholds and the must-have cap.
       One module, so a v2 is a new module rather than an edit to history.
 
+### The Match tab was rebuilt after reading it — not in the plan
+
+The first version passed every test and was hard to read. Three problems, all obvious on screen
+and invisible to the suite:
+
+- **Every row restated its own section.** Four rows under WHAT'S MISSING each tagged
+  *"Not on your CV"* and each carried the same two-sentence explanation. The heading already says
+  it. Now the section's default verdict goes unlabelled, the note is written once, and **only the
+  exception is marked** — a `gap` still reads *"Below what they ask"*, so the distinction the
+  five-verdict taxonomy exists for survives the tidying.
+- **Importance was invisible.** Ordering implied it; nothing stated it, so a requirement rated 15
+  looked exactly as serious as one rated 80. Now a **three-segment meter**, which is the pattern
+  docs/09 §5 already uses for confidence — the same shape of signal, so the interface stays one
+  language rather than growing a second.
+- **It read as prose, not as a reading surface.** Four to five lines per requirement × twelve.
+  Now one line each with the evidence clipped beneath, hairline rules, no cards (docs/09 §4).
+
+Two smaller decisions came with it: **WHAT'S MISSING now comes first**, because it is the half a
+person can act on; and the band is set in the serif, since docs/09 §2 reserves it for large
+figures.
+
 ### Found while running T049 — three defects the suite could not see
 
 All three were invisible to a green test run, and all three now have tests.

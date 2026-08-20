@@ -169,13 +169,40 @@ describe("the match tab", () => {
     expect(screen.getByText(/Eight years, not ten/)).toBeInTheDocument();
   });
 
-  it("labels an unverified requirement as missing from the CV, not as absent", () => {
+  it("does not repeat the section's own meaning on every row", () => {
     render(<MatchTab state="ready" analysis={ANALYSIS} stale={false} />);
 
-    // "Not on your CV" is true whether or not you have the skill, states the
-    // cost, and points at the fix. "Not stated" read as a technicality.
-    expect(screen.getAllByText("Not on your CV").length).toBeGreaterThan(0);
+    // Everything under WHAT'S MISSING is missing — saying "Not on your CV" on
+    // each row restates the heading four times and buries the one row that
+    // means something different. `unverified` is the default here and goes
+    // unlabelled; the explanation appears once, for the section.
+    expect(screen.queryAllByText("Not on your CV")).toHaveLength(0);
+    expect(screen.getAllByText(/add anything you have and score again/i)).toHaveLength(1);
+
+    // And it still never claims you lack the skill.
     expect(screen.queryByText(/you do not have/i)).toBeNull();
+  });
+
+  it("still marks the one verdict that is not the section default", () => {
+    render(<MatchTab state="ready" analysis={ANALYSIS} stale={false} />);
+
+    // A `gap` is a *proven* shortfall, not a silence. It is the exception in
+    // this section, so it is the thing that earns a label — the distinction
+    // the five-verdict taxonomy exists for stays visible while the noise goes.
+    expect(screen.getByText(/below what they ask/i)).toBeInTheDocument();
+  });
+
+  it("shows how much each requirement matters", () => {
+    render(<MatchTab state="ready" analysis={ANALYSIS} stale={false} />);
+
+    // Ordering implies priority; nothing stated it. A three-segment meter is
+    // the pattern docs/09 §5 already uses for confidence — same shape of
+    // signal, so the interface stays one language.
+    const critical = screen.getByLabelText(/Kubernetes in production.*critical/i);
+    const minor = screen.getByLabelText(/fast-paced startup.*minor/i);
+
+    expect(critical).toBeInTheDocument();
+    expect(minor).toBeInTheDocument();
   });
 
   it("shows the coverage count", () => {
