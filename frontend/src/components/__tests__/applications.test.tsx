@@ -452,6 +452,20 @@ describe("editing from the row", () => {
   });
 });
 
+describe("the record's tab order", () => {
+  it("runs Details, Match, Versions before the research tabs", () => {
+    render(<DetailTabs application={application()} match={NO_MATCH} />);
+
+    // The order is the workflow: what the job is, whether it is worth applying
+    // to, what you sent. Company research and interview prep belong to later
+    // stages and sit after them — a tab order that does not follow the work
+    // makes a person hunt for the next step.
+    const labels = screen.getAllByRole("tab").map((t) => t.textContent?.replace(/\W+$/, ""));
+
+    expect(labels).toEqual(["Details", "Match", "Versions", "Company", "Interview"]);
+  });
+});
+
 describe("the Add form's Requirements field", () => {
   /**
    * T088. Slice 004 gave `job_description` back its plain meaning — the whole

@@ -29,15 +29,22 @@ import type { Application, MatchResult } from "@/lib/api";
  * never read as **failed** and never as **empty data**; those are three
  * distinct states, and the first must never look like the third.
  */
+// The order is the work, in the order it happens: what the job is, whether it
+// is worth applying to, and what you sent. Company research and interview
+// preparation belong to later stages and follow. A tab order that does not
+// follow the work makes a person hunt for the next step.
+//
+// `arrives` used to sit here too and was never read — `UNBUILT` below supplies
+// it. One of its values had also gone stale, still calling tailored versions
+// "Slice 004" after match analysis took that number.
 const TABS = [
   { value: "details", label: "Details", built: true },
-  // Second, per the design: read before any resume work, because "is this
-  // worth applying to, and where am I weak" is the question that decides
-  // whether the rest of the page is worth opening.
+  // Read before any resume work: "is this worth applying to, and where am I
+  // weak" is the question that decides whether the rest of the page matters.
   { value: "match", label: "Match", built: true },
-  { value: "company", label: "Company", built: false, arrives: "Slice 006" },
-  { value: "interview", label: "Interview", built: false, arrives: "Not yet on the roadmap" },
-  { value: "versions", label: "Versions", built: false, arrives: "Slice 004" },
+  { value: "versions", label: "Versions", built: false },
+  { value: "company", label: "Company", built: false },
+  { value: "interview", label: "Interview", built: false },
 ] as const;
 
 /** What each unbuilt panel will hold, in the user's terms rather than ours. */
