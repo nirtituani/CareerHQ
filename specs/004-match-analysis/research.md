@@ -410,8 +410,15 @@ Re-run on the same job with the same posting: **5 confirmed where v2 found 2, an
 
 The four dimension columns stay on the table — v2 analyses have stored scores that must remain
 explicable — but nothing new writes them, and `overall_score(...)` survives only to read them
-back. The interface's breakdown is now the requirement list grouped by verdict, showing what each
-group earned of what it was worth, and it **sums to the score**.
+back. The interface's breakdown is the requirement list grouped by verdict, shown as **counts** — 5/7,
+1/7, 1/7.
+
+It was built twice before that, both times showing the arithmetic: first raw importance sums
+("360 of 360", an internal unit that means nothing without the formula), then points rescaled to
+100 so the column summed to the score. The second version was correct and auditable, and still
+wrong for the reader: it answers *how was this calculated*, which is a question almost nobody
+asks. The count answers *how many of these do I meet*, which is the one they do. The weighting is
+still visible per row, on the importance meter beside each requirement.
 
 **A side effect worth noting: cost fell.** Dropping four ratings from the output took the same job
 from $0.0715 to **$0.039576**. Still over SC-004's $0.03, but the gap is now 32% rather than 138%.

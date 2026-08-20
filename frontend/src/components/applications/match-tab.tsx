@@ -182,119 +182,57 @@ const GROUPS: { verdict: Verdict; label: string }[] = [
  * the score, so the number is checkable rather than asserted (research.md R11).
  */
 /**
- * Share `total` across `values` in whole numbers that still sum to `total`.
+ * How the requirements fell out, by verdict.
  *
- * Rounding each row on its own makes them sum to 86 beside a ring reading 87,
- * and an off-by-one is exactly what stops a person trusting a number they were
- * invited to add up. Largest remainder gives the rounding error to the rows
- * with the strongest claim to it.
+ * **Counts, not the scoring arithmetic.** Earlier versions showed importance
+ * points — "360 of 360", then "77 of 77 points" — which is the formula shown as
+ * working, and a question almost nobody is asking. What a person wants here is
+ * how many of the requirements they meet.
+ *
+ * The score is still earned from these requirements weighted by importance
+ * (research.md R11); that weighting is visible per row below, on the meter
+ * beside each one. It simply is not what this summary is for.
  */
-function allocate(values: number[], total: number, caps?: number[]): number[] {
-  const sum = values.reduce((a, b) => a + b, 0);
-  if (sum === 0) return values.map(() => 0);
-
-  const exact = values.map((v) => (v / sum) * total);
-  const ceiling = (i: number) => caps?.[i] ?? Number.POSITIVE_INFINITY;
-  const out = exact.map((v, i) => Math.min(Math.floor(v), ceiling(i)));
-  let left = Math.round(total) - out.reduce((a, b) => a + b, 0);
-
-  const order = exact
-    .map((v, i) => ({ i, remainder: v - Math.floor(v) }))
-    .sort((a, b) => b.remainder - a.remainder);
-
-  // Two passes: the spare points go by remainder, and any row already at its
-  // ceiling passes them on. Without the cap a group could be handed a point it
-  // has no room for and print "78 of 77" — arithmetic that is harmless and
-  // reads as a typo, which is enough to stop someone checking the rest.
-  while (left > 0) {
-    const room = order.filter(({ i }) => out[i] < ceiling(i));
-    if (room.length === 0) break;
-    for (const { i } of room) {
-      if (left <= 0) break;
-      out[i] += 1;
-      left -= 1;
-    }
-  }
-  return out;
-}
-
 function Breakdown({ analysis }: { analysis: MatchAnalysis }) {
-  // Only a guard: a posting whose requirements are all rated zero has no
-  // shares to divide, and inventing some would be arithmetic about nothing.
-  const weighted = analysis.requirements.reduce((sum, r) => sum + r.importance, 0);
-  if (weighted === 0) return null;
+  const total = analysis.requirements.length;
+  if (total === 0) return null;
 
-  const groups = GROUPS.map(({ verdict, label }) => {
-    const group = analysis.requirements.filter((r) => r.verdict === verdict);
-    const worth = group.reduce((sum, r) => sum + r.importance, 0);
-    return { label, count: group.length, worth, earned: worth * (analysis.credit[verdict] ?? 0) };
-  }).filter((row) => row.count > 0);
-
-  // Rescaled to points, so the right-hand column *is* the score. The raw
-  // importance sums are an internal unit — "360 of 360" says nothing to anyone
-  // who has not read the formula.
-  const worthPoints = allocate(
-    groups.map((g) => g.worth),
-    100,
-  );
-  // Capped at what each group is worth, so the rows both sum to the score and
-  // never claim more than the group had to give.
-  const earnedPoints = allocate(
-    groups.map((g) => g.earned),
-    analysis.overall_score ?? 0,
-    worthPoints,
-  );
-
-  const rows = groups.map((g, i) => ({
-    ...g,
-    worth: worthPoints[i],
-    earned: earnedPoints[i],
-  }));
+  const rows = GROUPS.map(({ verdict, label }) => ({
+    label,
+    count: analysis.requirements.filter((r) => r.verdict === verdict).length,
+  })).filter((row) => row.count > 0);
 
   return (
     <dl className="mt-5 space-y-2" data-testid="breakdown">
-      {rows.map(({ label, count, worth, earned }) => (
+      {rows.map(({ label, count }) => (
         <div key={label} className="flex items-baseline gap-3 text-sm">
-          <dt className="w-56 shrink-0 whitespace-nowrap">
-            {label}
-            <span className="ml-1.5 text-xs" style={{ color: "var(--faint)" }}>
-              {count} {count === 1 ? "requirement" : "requirements"}
-            </span>
-          </dt>
+          <dt className="w-52 shrink-0 whitespace-nowrap">{label}</dt>
           <dd className="flex min-w-0 flex-1 items-center gap-3">
-            {/* Width is the group's share of the whole posting; the fill is
-                what it earned of that share. Both are now in points, so the
-                bar and the number describe the same thing — it previously
-                divided points by the raw importance total, which made every
-                bar a meaningless sliver. */}
+            <span
+              data-testid="group-count"
+              className="tabular w-12 shrink-0 text-xs"
+              style={{ fontFamily: "var(--font-mono)", color: "var(--muted)" }}
+            >
+              {count}/{total}
+            </span>
+            {/* Every row measured against the same width, so the bars can be
+                compared to each other rather than only read individually. */}
             <span
               aria-hidden
-              className="h-1.5 shrink-0 overflow-hidden rounded-full"
-              style={{ background: "var(--border)", width: `${Math.max(worth, 2)}%`, maxWidth: "9rem" }}
+              className="h-1.5 w-36 shrink-0 overflow-hidden rounded-full"
+              style={{ background: "var(--border)" }}
             >
               <span
                 className="block h-full rounded-full"
                 style={{
-                  width: `${worth === 0 ? 0 : (earned / worth) * 100}%`,
+                  width: `${(count / total) * 100}%`,
                   background: "var(--color-brand-500)",
                 }}
               />
             </span>
-            <span
-              data-testid="earned"
-              data-earned={earned}
-              data-worth={worth}
-              className="tabular shrink-0 text-xs"
-              style={{ fontFamily: "var(--font-mono)", color: "var(--muted)" }}
-            >
-              {earned} of {worth} points
-            </span>
           </dd>
         </div>
       ))}
-      <p className="pt-1 text-xs" style={{ color: "var(--faint)" }}>
-        Points are shares of 100, weighted by how much each requirement matters to this role.
-      </p>
     </dl>
   );
 }

@@ -197,85 +197,39 @@ describe("the match tab", () => {
     }
   });
 
-  it("states the units, and they are points out of 100", () => {
+  it("counts requirements rather than showing the scoring arithmetic", () => {
     render(<MatchTab state="ready" analysis={ANALYSIS} stale={false} />);
 
-    // It used to read "360 of 360" — the internal importance weighting, which
-    // means nothing without the formula. Rescaled to points, the right-hand
-    // column *is* the score and can be added up on screen.
+    // The breakdown used to show importance points — "360 of 360", then "77 of
+    // 77 points". Both were the scoring formula shown as working, which is a
+    // question almost nobody is asking. What a person wants from this row is
+    // how many of the requirements they meet.
     const breakdown = screen.getByTestId("breakdown").textContent ?? "";
-    expect(breakdown).toMatch(/points/i);
+    expect(breakdown).not.toMatch(/points/i);
     expect(breakdown).not.toMatch(/\b360\b/);
   });
 
-  it("labels the count rather than leaving a bare number", () => {
+  it("shows each group as a share of all the requirements", () => {
     render(<MatchTab state="ready" analysis={ANALYSIS} stale={false} />);
 
-    expect(screen.getByTestId("breakdown").textContent).toMatch(/requirement/i);
+    // The fixture: 1 confirmed, 1 partial, 1 transferable, 1 gap, 3 unverified
+    // of 7. Every row reads against the same denominator, so the rows can be
+    // compared to each other at a glance.
+    const counts = screen.getAllByTestId("group-count").map((el) => el.textContent?.trim());
+    expect(counts).toContain("1/7");
+    expect(counts).toContain("3/7");
   });
 
-  it("never earns more points than a group is worth", () => {
+  it("accounts for every requirement across the groups", () => {
     render(<MatchTab state="ready" analysis={ANALYSIS} stale={false} />);
 
-    // Two independent largest-remainder allocations gave one group the spare
-    // point on the earned side but not the available side, printing "78 of 77".
-    // Harmless arithmetic that reads as a typo — and a person invited to check
-    // a number will not check the rest of it after seeing that.
-    for (const row of screen.getAllByTestId("earned")) {
-      expect(Number(row.dataset.earned)).toBeLessThanOrEqual(Number(row.dataset.worth));
-    }
-  });
+    // Nothing may fall between the groups: a requirement missing from the
+    // breakdown is one a person never learns the verdict of.
+    const shown = screen
+      .getAllByTestId("group-count")
+      .reduce((sum, el) => sum + Number((el.textContent ?? "0/0").split("/")[0]), 0);
 
-  it("adds up and stays inside its bounds on the shape that broke it", () => {
-    // The real DriveNets analysis: five confirmed worth 360, one partial worth
-    // 55, one unverified worth 50, scoring 87. Two independent roundings gave
-    // the confirmed group 78 points of a possible 77.
-    const real = {
-      ...ANALYSIS,
-      overall_score: 87,
-      requirements: [
-        req(0, "a", "must_have", 95, "confirmed", null, "e"),
-        req(1, "b", "must_have", 90, "confirmed", null, "e"),
-        req(2, "c", "must_have", 85, "confirmed", null, "e"),
-        req(3, "d", "preferred", 45, "confirmed", null, "e"),
-        req(4, "e", "preferred", 45, "confirmed", null, "e"),
-        req(5, "f", "must_have", 55, "partial", "evidence", "e"),
-        req(6, "g", "must_have", 50, "unverified", null, null),
-      ],
-    };
-    render(<MatchTab state="ready" analysis={real} stale={false} />);
-
-    const rows = screen.getAllByTestId("earned");
-    const earned = rows.map((r) => Number(r.dataset.earned));
-    const worth = rows.map((r) => Number(r.dataset.worth));
-
-    expect(earned.reduce((a, b) => a + b, 0)).toBe(87);
-    expect(worth.reduce((a, b) => a + b, 0)).toBe(100);
-    earned.forEach((e, i) => expect(e).toBeLessThanOrEqual(worth[i]));
-  });
-
-  it("shows a breakdown that adds up to the score", () => {
-    render(<MatchTab state="ready" analysis={ANALYSIS} stale={false} />);
-
-    // The fixture: 85 confirmed, 85 partial, 80+65+15 unverified, 40 gap,
-    // 35 transferable. Worth 405; earned 85 + 51 + 32 + 10 + 28 = 206 → 51.
-    const rows = screen.getAllByTestId("earned");
-    const totalEarned = rows.reduce((sum, el) => sum + Number(el.dataset.earned), 0);
-    const totalWorth = rows.reduce((sum, el) => sum + Number(el.dataset.worth), 0);
-
-    // Exactly, not approximately. Naive rounding makes these sum to 86 against
-    // a ring reading 87, and an off-by-one is precisely what stops a person
-    // trusting a number they were invited to check.
-    expect(totalEarned).toBe(ANALYSIS.overall_score);
-    expect(totalWorth).toBe(100);
-  });
-
-  it("says which requirement held the band down", () => {
-    render(<MatchTab state="ready" analysis={ANALYSIS} stale={false} />);
-
-    // 56 sits in Moderate's range; the band reads Stretch. Unexplained that is
-    // a contradiction on screen, so the requirement responsible is named.
-    expect(screen.getByTestId("cap-reason").textContent).toMatch(/Kubernetes in production/);
+    expect(shown).toBe(ANALYSIS.requirements.length);
   });
 
   it("shows no breakdown when there are no requirements to group", () => {
