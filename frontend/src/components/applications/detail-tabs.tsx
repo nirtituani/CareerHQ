@@ -81,14 +81,20 @@ function RequirementList({ text }: { text: string }) {
     return <p className="whitespace-pre-wrap">{text}</p>;
   }
 
+  return <BulletList items={lines} />;
+}
+
+/** One marker, used by both the stored list and the legacy split-by-line path,
+ *  so a row recorded before slice 004 and one recorded after look identical. */
+function BulletList({ items }: { items: string[] }) {
   return (
     <ul className="space-y-1.5">
-      {lines.map((line, index) => (
+      {items.map((item, index) => (
         <li key={index} className="flex gap-2.5">
           <span aria-hidden style={{ color: "var(--color-brand-600)" }}>
             •
           </span>
-          <span className="min-w-0 flex-1">{line}</span>
+          <span className="min-w-0 flex-1">{item}</span>
         </li>
       ))}
     </ul>
@@ -195,25 +201,70 @@ export function DetailTabs({
           </div>
         )}
 
+        {/* Two fields, two jobs. `requirements` is what a person reads; the
+            posting is what match analysis scores and is kept behind a
+            disclosure so it does not drown the list.
+
+            Before slice 004 there was one field doing both, and after R1 gave
+            `job_description` back its plain meaning this panel showed several
+            hundred words of company blurb under a heading reading
+            "Requirements" (T057). */}
         <div className="mt-8">
           <h3 className="text-xs font-medium tracking-wide uppercase" style={{ color: "var(--muted)" }}>
-            Job description - Requirements
+            Requirements
           </h3>
 
-          {application.job_description ? (
-            // On --surface-sunken (docs/09 §3, §6.3), and deliberately not a
-            // link out: the posting may have expired, and this is what slice
-            // 004 tailors against.
+          {/* `null` means no posting was ever captured — a row recorded before
+              slice 004, whose `job_description` holds a joined requirements
+              list rather than an advert. There is nothing to recover, so it
+              says so plainly and offers the fix. Ordinary, not an error: it is
+              the state of every older record (T058, research.md R1). */}
+          {application.requirements === null ? (
+            <>
+              {application.job_description ? (
+                <div
+                  className="mt-2 rounded-lg p-5 text-sm leading-relaxed"
+                  style={{ background: "var(--surface-sunken)" }}
+                >
+                  <RequirementList text={application.job_description} />
+                </div>
+              ) : (
+                <p className="mt-2 text-sm" style={{ color: "var(--faint)" }}>
+                  No requirements saved for this job.
+                </p>
+              )}
+              <p className="mt-2 text-sm" style={{ color: "var(--muted)" }}>
+                No job posting was saved for this job, so it cannot be scored against your
+                profile. Add it again from its URL or paste the posting to fix that.
+              </p>
+            </>
+          ) : application.requirements.length > 0 ? (
             <div
               className="mt-2 rounded-lg p-5 text-sm leading-relaxed"
               style={{ background: "var(--surface-sunken)" }}
             >
-              <RequirementList text={application.job_description} />
+              <BulletList items={application.requirements} />
             </div>
           ) : (
             <p className="mt-2 text-sm" style={{ color: "var(--faint)" }}>
-              No requirements saved for this job. Add them to tailor a resume against them.
+              No requirements were found in this posting.
             </p>
+          )}
+
+          {/* Deliberately not a link out: the posting may have expired, and
+              this stored text is what gets scored. */}
+          {application.requirements !== null && application.job_description && (
+            <details className="mt-3">
+              <summary className="cursor-pointer text-sm" style={{ color: "var(--muted)" }}>
+                Read the full posting
+              </summary>
+              <div
+                className="mt-2 rounded-lg p-5 text-sm leading-relaxed whitespace-pre-wrap"
+                style={{ background: "var(--surface-sunken)" }}
+              >
+                {application.job_description}
+              </div>
+            </details>
           )}
         </div>
 
