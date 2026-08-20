@@ -180,7 +180,16 @@ Those were projections made before the feature existed. A real analysis, billed:
 
 | | input | output | charged | after 31 Aug 2026 |
 |---|---:|---:|---:|---:|
-| **12-requirement posting** | 3,700 | **2,811** | **$0.035510** | $0.053265 |
+| 12-requirement posting (1,890-char advert) | 3,700 | 2,811 | **$0.035510** | $0.053265 |
+| **8-requirement posting (3,785-char advert)** | 4,437 | **6,263** | **$0.071504** | $0.107271 |
+
+**The second measurement is the alarming one, and it is not the requirement count.** Eight
+requirements produced **more than twice** the output of twelve — because the posting was twice as
+long, and the model reasons about the whole of it. So output does not scale with the requirement
+list, which was the assumption behind both the original estimate and the first measurement. It
+scales with how much there is to read.
+
+At **$0.0715**, that single job is 2.4× the SC-004 target on its own, and $7.15 per hundred.
 
 Output is **79%** of the cost — inside the predicted 57–86% band, so that part held. But it is
 nearly **double** the 1,500-token estimate, and that is the whole miss. The estimate assumed three
@@ -188,9 +197,8 @@ verdicts and neither an `importance` nor a `shortfall` field. v2 has five verdic
 and requires evidence on `gap` as well as on the positive verdicts. Every one of those decisions
 was right, and each of them costs output.
 
-**SC-004 asks for $0.03 per job and $3 per hundred. Measured: $0.0355 and $3.55 — about 18% over,
-on a short posting.** A 38-requirement posting would be materially worse, and after 31 August the
-same call costs $0.053.
+**SC-004 asks for $0.03 per job and $3 per hundred. Measured: $0.0355 and $0.0715 on two real
+jobs — 18% and 138% over.** After 31 August the same two calls cost $0.053 and $0.107.
 
 Recorded rather than adjusted. Three ways out, in the order worth trying:
 

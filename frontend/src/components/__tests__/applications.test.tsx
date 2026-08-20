@@ -507,6 +507,96 @@ describe("the Add form's Requirements field", () => {
   });
 });
 
+describe("fetching a posting for a job already recorded", () => {
+  /**
+   * A record whose posting was never captured cannot be scored, and until now
+   * the only way to fix that was to delete it and add it again — losing its
+   * date added, status history, notes and contacts.
+   *
+   * The form already had the two fields this needs: a **Job Description Link**
+   * and **+ Add the requirements**. The link was simply inert — stored, never
+   * read. So the fix is to make the field that already implies an action
+   * perform one, not to add a third field beside it.
+   */
+  const EXTRACTION = {
+    posting: {
+      company: "Should Not Overwrite",
+      job_title: "Should Not Overwrite",
+      location: null,
+      salary_text: null,
+      job_description: "About Acme. We operate services at scale.",
+      requirements: ["5+ years of Python", "Experience with PostgreSQL"],
+      company_domain: null,
+    },
+    provenance: "model",
+    usage: null,
+  };
+
+  it("fills the requirements and the posting from the link", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(EXTRACTION), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    render(
+      <AddApplication
+        open
+        onOpenChange={() => {}}
+        editing={application({
+          job_title: "AI Engineer",
+          company: { id: "c1", name: "Acme Corporation", domain: null },
+          job_description: "old joined requirements",
+          requirements: null,
+          job_description_url: "https://example.com/posting",
+        })}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: /Fetch/ }));
+
+    const box = (await screen.findByLabelText("Requirements")) as HTMLTextAreaElement;
+    expect(box.value).toBe("5+ years of Python\nExperience with PostgreSQL");
+
+    const posting = screen
+      .getByRole("dialog")
+      .querySelector<HTMLInputElement>('input[name="job_description"]');
+    expect(posting?.value).toBe("About Acme. We operate services at scale.");
+  });
+
+  it("does not overwrite what the person already recorded", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(EXTRACTION), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    render(
+      <AddApplication
+        open
+        onOpenChange={() => {}}
+        editing={application({
+          job_title: "AI Engineer",
+          company: { id: "c1", name: "Acme Corporation", domain: null },
+          requirements: null,
+          job_description_url: "https://example.com/posting",
+        })}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: /Fetch/ }));
+    await screen.findByLabelText("Requirements");
+
+    // You clicked fetch on the *description* link, so you get the description
+    // and its requirements. A page that guesses the company differently must
+    // not silently rewrite a title and employer you already checked.
+    expect(screen.getByLabelText("Company Name *")).toHaveValue("Acme Corporation");
+    expect(screen.getByLabelText("Job Title *")).toHaveValue("AI Engineer");
+  });
+});
+
 describe("the Details tab after job_description became the posting", () => {
   /**
    * T057/T058. R1 gave `job_description` back its plain meaning — the whole

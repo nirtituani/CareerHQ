@@ -3,7 +3,7 @@
 import { X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Dialog } from "radix-ui";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { JobImport } from "@/components/applications/job-import";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ import {
   type Application,
   type JobExtraction,
   createApplication,
+  extractJob,
   updateApplication,
 } from "@/lib/api";
 
@@ -101,6 +102,19 @@ export function AddApplication({
   // is nothing to read off a URL that the record does not already hold.
   const [step, setStep] = useState<"import" | "form">(editing ? "form" : "import");
   const [extracted, setExtracted] = useState<JobExtraction | null>(null);
+  /**
+   * A posting fetched from the link *after* the form opened.
+   *
+   * Kept apart from `extracted` because it merges differently: only the
+   * posting and its requirements are taken. You clicked fetch on the
+   * description link, so you get the description — a page that guesses the
+   * employer differently must not silently rewrite a title and company you
+   * already checked.
+   */
+  const [refetched, setRefetched] = useState<JobExtraction | null>(null);
+  const [fetching, setFetching] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  const linkRef = useRef<HTMLInputElement>(null);
   const [sourceUrl, setSourceUrl] = useState("");
   const [status, setStatus] = useState(editing?.status ?? "Pre-Applied");
   const [showDescription, setShowDescription] = useState(false);
@@ -108,7 +122,7 @@ export function AddApplication({
   const [error, setError] = useState<string | null>(null);
 
   /** Values the form opens with: the record being edited, or an extraction. */
-  const filled = editing
+  const base = editing
     ? {
         company: editing.company.name,
         company_domain: editing.company.domain,
@@ -120,11 +134,21 @@ export function AddApplication({
       }
     : extracted?.posting;
 
+  const filled = refetched
+    ? {
+        ...base,
+        job_description: refetched.posting.job_description,
+        requirements: refetched.posting.requirements,
+      }
+    : base;
+
   /** Reset to the first step whenever the modal is reopened. */
   function change(next: boolean) {
     if (!next) {
       setStep(editing ? "form" : "import");
       setExtracted(null);
+      setRefetched(null);
+      setFetchError(null);
       setSourceUrl("");
       setStatus(editing?.status ?? "Pre-Applied");
       setShowDescription(false);
@@ -307,15 +331,56 @@ export function AddApplication({
               </Labelled>
 
               <Labelled label="Job Description Link">
-                {/* Prefilled with the link that was just fetched. */}
-                <input
-                  name="job_description_url"
-                  type="url"
-                  defaultValue={editing?.job_description_url ?? editing?.job_url ?? sourceUrl}
-                  placeholder="https://…"
-                  className={FIELD}
-                  style={FIELD_STYLE}
-                />
+                {/* The field already implied an action and did not perform one:
+                    it was stored and never read. A job whose posting was never
+                    captured cannot be scored, and without this the only repair
+                    was to delete the record and add it again — losing its date
+                    added, status history, notes and contacts. */}
+                <div className="flex gap-2">
+                  <input
+                    ref={linkRef}
+                    name="job_description_url"
+                    type="url"
+                    defaultValue={editing?.job_description_url ?? editing?.job_url ?? sourceUrl}
+                    placeholder="https://…"
+                    className={FIELD}
+                    style={FIELD_STYLE}
+                  />
+                  <button
+                    type="button"
+                    disabled={fetching}
+                    onClick={async () => {
+                      const url = linkRef.current?.value.trim();
+                      if (!url) {
+                        setFetchError("Add the link first.");
+                        return;
+                      }
+                      setFetching(true);
+                      setFetchError(null);
+                      try {
+                        setRefetched(await extractJob({ url }));
+                        setShowDescription(true);
+                      } catch (error) {
+                        setFetchError(
+                          error instanceof ApiError
+                            ? error.message
+                            : "That link could not be read. Paste the posting instead.",
+                        );
+                      } finally {
+                        setFetching(false);
+                      }
+                    }}
+                    className="shrink-0 rounded-lg px-3 text-sm underline underline-offset-4 disabled:opacity-50"
+                    style={{ color: "var(--muted)" }}
+                  >
+                    {fetching ? "Reading…" : "Fetch"}
+                  </button>
+                </div>
+                {fetchError && (
+                  <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>
+                    {fetchError}
+                  </p>
+                )}
               </Labelled>
 
               <Labelled label="Company Website (for logo)">
@@ -376,6 +441,9 @@ export function AddApplication({
                 {showDescription || filled?.requirements?.length ? (
                   <Labelled label="Requirements">
                     <textarea
+                      // Remounts when a fetch replaces the contents; a
+                      // `defaultValue` alone is read once, on mount.
+                      key={refetched ? "refetched" : "initial"}
                       name="requirements"
                       rows={8}
                       defaultValue={(filled?.requirements ?? []).join("\n")}

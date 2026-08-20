@@ -280,7 +280,8 @@ staleness is surfaced and a re-run can be triggered by hand.
 - **SC-003**: A person shown the four states can tell *not scored yet*, *scored*, *failed*, and
   *nothing to score against* apart, in greyscale — as can they the five requirement verdicts.
 - **SC-004**: Scoring one job costs no more than $0.03, and a hundred jobs no more than $3.
-  **Not met as measured — $0.0355 and $3.55** on a 12-requirement posting (T075). The target
+  **Not met as measured — $0.0355 and $0.0715** on two real jobs (T075), the second 2.4x the
+  target. Output scales with the *length of the posting*, not the requirement count. The target
   was set from a projection assuming three verdicts and no `importance` or `shortfall` field;
   v2 has five verdicts and both, and output nearly doubled. Options are in research.md R8;
   none has been applied, because each trades away something the feature exists for.
