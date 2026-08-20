@@ -237,7 +237,10 @@ export type JobPostingExtraction = {
   job_title: string | null;
   location: string | null;
   salary_text: string | null;
+  /** The **whole posting**, which match analysis scores against. */
   job_description: string | null;
+  /** The extracted list, kept beside the posting rather than in place of it. */
+  requirements: string[];
   company_domain: string | null;
 };
 

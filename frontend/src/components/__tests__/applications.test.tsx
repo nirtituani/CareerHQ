@@ -262,7 +262,8 @@ describe("adding a job automatically", () => {
             job_title: "Senior Backend Engineer",
             location: "Tel Aviv, IL",
             salary_text: "USD 90,000-110,000 year",
-            job_description: "Build and operate services.",
+            job_description: "About Acme. We build and operate services at scale.",
+            requirements: ["5+ years of Python", "Experience with PostgreSQL"],
             company_domain: "acme.com",
           },
           provenance: "structured_data",
@@ -280,9 +281,21 @@ describe("adding a job automatically", () => {
     expect(screen.getByLabelText("Job Title *")).toHaveValue("Senior Backend Engineer");
     expect(screen.getByLabelText("Location")).toHaveValue("Tel Aviv, IL");
     expect(screen.getByLabelText("Company Website (for logo)")).toHaveValue("acme.com");
-    // The description is shown rather than hidden behind a disclosure: it is
-    // the field the person is being asked to approve.
-    expect(screen.getByLabelText("Requirements")).toHaveValue("Build and operate services.");
+    // The requirements are shown rather than hidden behind a disclosure: they
+    // are what the person is being asked to approve. **Amended in slice 004**:
+    // this box used to hold `job_description`, which since research.md R1 is
+    // the whole posting — so it filled with the entire advert under a label
+    // saying "Requirements".
+    expect(screen.getByLabelText("Requirements")).toHaveValue(
+      "5+ years of Python\nExperience with PostgreSQL",
+    );
+
+    // And the posting rides along, unedited and unlost — it is what match
+    // analysis scores.
+    expect(
+      screen.getByRole("dialog").querySelector<HTMLInputElement>('input[name="job_description"]')
+        ?.value,
+    ).toBe("About Acme. We build and operate services at scale.");
   });
 
   it("says where the fields came from, so they get the right trust", async () => {
@@ -431,6 +444,61 @@ describe("editing from the row", () => {
     const [url, init] = patch.mock.calls.at(-1) as [string, RequestInit];
     expect(url).toMatch(/\/api\/applications\/[0-9a-f-]+$/);
     expect(init.method).toBe("PATCH");
+  });
+});
+
+describe("the Add form's Requirements field", () => {
+  /**
+   * T088. Slice 004 gave `job_description` back its plain meaning — the whole
+   * posting — and moved the extracted list to `requirements` (research.md R1).
+   *
+   * This form did not follow. Its one textarea is labelled **Requirements**,
+   * placeholder "One requirement per line…", and was bound to
+   * `job_description` — so opening it on an extracted job filled that box with
+   * the entire advert.
+   *
+   * Cosmetic is the least of it. The label invites trimming the box down to a
+   * list, and saving writes it straight back to `job_description` — silently
+   * restoring the requirements-only storage R1 reversed, after which every
+   * analysis scores against a requirements list while the prompt claims to be
+   * reading a whole posting. The number would look entirely normal.
+   */
+  const POSTING =
+    "About Cognita\n\nWe build the AI platform that underwrites commercial insurance.";
+  const REQUIREMENTS = ["5+ years building production backend services", "Strong Python"];
+
+  it("fills Requirements from requirements, not from the posting", () => {
+    render(
+      <AddApplication
+        open
+        onOpenChange={() => {}}
+        editing={application({ job_description: POSTING, requirements: REQUIREMENTS })}
+      />,
+    );
+
+    const field = screen.getByLabelText("Requirements") as HTMLTextAreaElement;
+
+    expect(field.value).toBe(REQUIREMENTS.join("\n"));
+    expect(field.value).not.toContain("underwrites commercial insurance");
+  });
+
+  it("keeps the posting through the form rather than dropping it", () => {
+    // The posting is what match analysis scores. A person who opens this form
+    // on an extracted job and saves must not silently discard it.
+    render(
+      <AddApplication
+        open
+        onOpenChange={() => {}}
+        editing={application({ job_description: POSTING, requirements: REQUIREMENTS })}
+      />,
+    );
+
+    const carried = screen
+      .getByRole("dialog")
+      .querySelector<HTMLInputElement>('input[name="job_description"]');
+
+    expect(carried).not.toBeNull();
+    expect(carried?.value).toBe(POSTING);
   });
 });
 
