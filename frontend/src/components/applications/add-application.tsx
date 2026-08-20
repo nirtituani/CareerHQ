@@ -116,6 +116,7 @@ export function AddApplication({
         location: editing.location,
         salary_text: editing.salary_text,
         job_description: editing.job_description,
+        requirements: editing.requirements ?? [],
       }
     : extracted?.posting;
 
@@ -163,6 +164,13 @@ export function AddApplication({
         contact_email: text("contact_email"),
         notes: text("notes"),
         job_description: text("job_description"),
+        // One per line, blanks dropped. `[]` and absent are different facts
+        // downstream, so an emptied box means "the posting states none" rather
+        // than "no posting was captured".
+        requirements: ((data.get("requirements") as string | null) ?? "")
+          .split("\n")
+          .map((line) => line.trim())
+          .filter(Boolean),
         // Only sent once the job has actually been applied to.
         ...(applied ? { source: text("source"), date_applied: text("date_applied") } : {}),
       };
@@ -365,14 +373,14 @@ export function AddApplication({
                     ask for up front. It stays reachable because the tailoring
                     in the next slice works from stored text, so an application
                     with nothing here cannot be tailored against. */}
-                {showDescription || filled?.job_description ? (
+                {showDescription || filled?.requirements?.length ? (
                   <Labelled label="Requirements">
                     <textarea
-                      name="job_description"
+                      name="requirements"
                       rows={8}
-                      defaultValue={filled?.job_description ?? ""}
+                      defaultValue={(filled?.requirements ?? []).join("\n")}
                       placeholder="One requirement per line…"
-                      autoFocus={!filled?.job_description}
+                      autoFocus={!filled?.requirements?.length}
                       className="w-full rounded-lg border-0 px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-600)]"
                       style={FIELD_STYLE}
                     />
@@ -387,6 +395,18 @@ export function AddApplication({
                     + Add the requirements
                   </button>
                 )}
+
+                {/* The posting rides along untouched. It is what match analysis
+                    scores, and it is not shown here because this box is the
+                    *requirements* — editing the two in one field is what put a
+                    requirements list into `job_description` in the first place
+                    (research.md R1). Dropping it on save would silently make
+                    the job unscoreable. */}
+                <input
+                  type="hidden"
+                  name="job_description"
+                  value={filled?.job_description ?? ""}
+                />
               </div>
             </div>
 

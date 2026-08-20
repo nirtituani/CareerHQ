@@ -187,14 +187,18 @@ URL pre-fills that box with the entire advert.
 These depend on the `requirements` column (T010) and the API returning it, so they run after
 Phase 2's data model rather than beside T007.
 
-- [ ] T088 [P] Test in `frontend/src/components/__tests__/applications.test.tsx`: the Requirements
+- [x] T088 [P] Test in `frontend/src/components/__tests__/applications.test.tsx`: the Requirements
       field is populated from `requirements`, one per line — **not** from `job_description`. Watch
       it fail; today the binding is to the posting.
-- [ ] T089 In `frontend/src/components/applications/add-application.tsx`, bind the Requirements
+- [x] T089 In `frontend/src/components/applications/add-application.tsx`, bind the Requirements
       textarea to `requirements` and carry `job_description` through the form without displaying
       it in that box. **The posting must survive a form round-trip** — a person who opens the form
       on an extracted job and saves it must not silently discard the text match analysis scores
       against.
+      **Verified against the real record**: a PATCH carrying a two-item requirements list left the
+      1,890-character posting intact and updated only `requirements`. Before the fix the same edit
+      would have replaced the posting with the list, and every later analysis would have scored
+      against it while the prompt claimed to be reading a whole advert.
 
 ---
 
