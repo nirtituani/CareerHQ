@@ -56,8 +56,8 @@ export function bandLabel(band: MatchBand): string {
 
 /** Weight, not hue: a strong match reads as present, a long shot as receded. */
 const BAND_STYLE: Record<MatchBand, { color: string; fontWeight: number }> = {
-  strong: { color: "var(--fg)", fontWeight: 600 },
-  moderate: { color: "var(--fg)", fontWeight: 500 },
+  strong: { color: "var(--foreground)", fontWeight: 600 },
+  moderate: { color: "var(--foreground)", fontWeight: 500 },
   stretch: { color: "var(--muted)", fontWeight: 500 },
   low_probability: { color: "var(--muted)", fontWeight: 400 },
 };
