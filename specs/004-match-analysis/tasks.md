@@ -356,13 +356,22 @@ and missing must-haves are distinguishable from missing preferences.
 - [x] T056 [P] [US2] In `frontend/src/components/applications/match-tab.tsx`, show the
       wording/evidence/capability shortfall on each unmet requirement, so
       the list carries a next step rather than only a problem (FR-011c).
-- [ ] T057 [P] [US2] Render the full posting behind a disclosure on the Details tab in
+- [x] T057 [P] [US2] Render the full posting behind a disclosure on the Details tab in
       `frontend/src/components/applications/detail-tabs.tsx`, with
       `requirements` continuing to show as bullets — so nothing changes on screen for a person who
       liked the old view.
-- [ ] T058 [P] [US2] Handle the legacy row (`requirements === null`) in
+      **Amended**: something *did* change on screen, and had to. The panel rendered
+      `job_description` under a heading reading "Job description - Requirements", so after R1 a
+      real advert appeared as several hundred words of blurb labelled as the requirements — the
+      same mislabelling the Add form had. **Verified in a browser**: the heading now reads
+      REQUIREMENTS with the twelve extracted lines as bullets, and the advert sits behind a
+      collapsed *Read the full posting*.
+- [x] T058 [P] [US2] Handle the legacy row (`requirements === null`) in
       `frontend/src/components/applications/detail-tabs.tsx` and `match-tab.tsx`: *nothing to score against yet*, with an offer to re-add the job. **Not an error**,
       and not a score.
+      Says *no job posting was saved … add it again from its URL or paste the posting*, and still
+      shows whatever the row does hold. `[]` stays distinct from `null`: a posting that stated no
+      requirements keeps its advert on screen.
 - [x] T059 👁 **OBSERVE** [US2] Run quickstart step 4 and **read the evidence against your own
       profile**. Every supported requirement must quote text you recognise. A plausible sentence
       that is not in your profile is the failure this feature exists to prevent, and no automated
