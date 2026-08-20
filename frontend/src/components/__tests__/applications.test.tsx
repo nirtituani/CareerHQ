@@ -507,6 +507,101 @@ describe("the Add form's Requirements field", () => {
   });
 });
 
+describe("the Details tab after job_description became the posting", () => {
+  /**
+   * T057/T058. R1 gave `job_description` back its plain meaning — the whole
+   * advert — and moved the extracted list to `requirements`. This panel did not
+   * follow: it rendered `job_description` under a heading reading
+   * "Job description - Requirements", so a real posting appeared as several
+   * hundred words of company blurb labelled as the requirements.
+   *
+   * The same mislabelling as the Add form, one screen over, and found the same
+   * way — by looking at it with real data in a browser.
+   */
+  const POSTING =
+    "About Cognita\n\nWe underwrite commercial insurance for carriers across EMEA.";
+  const REQUIREMENTS = ["5+ years building production backend services", "Strong Python"];
+
+  it("shows the requirements as the requirements", () => {
+    render(
+      <DetailTabs
+        application={application({ job_description: POSTING, requirements: REQUIREMENTS })}
+        match={NO_MATCH}
+      />,
+    );
+
+    const items = screen.getAllByRole("listitem").map((li) => li.textContent);
+    expect(items).toEqual(REQUIREMENTS.map((r) => `•${r}`));
+  });
+
+  it("keeps the posting reachable, but not masquerading as the requirements", () => {
+    render(
+      <DetailTabs
+        application={application({ job_description: POSTING, requirements: REQUIREMENTS })}
+        match={NO_MATCH}
+      />,
+    );
+
+    // Present — it is what match analysis scores and the posting may expire —
+    // but behind a disclosure, so it does not drown the list a person reads.
+    const disclosure = screen.getByText(/full posting/i);
+    expect(disclosure).toBeInTheDocument();
+    expect(disclosure.closest("details")).not.toBeNull();
+    expect(screen.getByText(/underwrite commercial insurance/)).toBeInTheDocument();
+  });
+
+  it("does not bullet the posting", () => {
+    render(
+      <DetailTabs
+        application={application({ job_description: POSTING, requirements: REQUIREMENTS })}
+        match={NO_MATCH}
+      />,
+    );
+
+    // Two requirements means exactly two list items. Bulleting the advert as
+    // well is how it looked before, and it read as a broken feature.
+    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+  });
+
+  it("says a posting was never captured rather than inventing one", () => {
+    // A row recorded before slice 004: `requirements` is null and
+    // `job_description` holds a joined requirements list, not an advert. There
+    // is nothing to recover, so it says so and offers the fix.
+    render(
+      <DetailTabs
+        application={application({
+          job_description: "5+ years of Python\nExperience with PostgreSQL",
+          requirements: null,
+        })}
+        match={NO_MATCH}
+      />,
+    );
+
+    expect(screen.getByText(/no job posting was saved/i)).toBeInTheDocument();
+    // Not an error — this is the ordinary state of every older record.
+    expect(screen.queryByRole("alert")).toBeNull();
+    // And what it does hold is still shown, as the list it actually is.
+    expect(screen.getAllByRole("listitem").map((li) => li.textContent)).toEqual([
+      "•5+ years of Python",
+      "•Experience with PostgreSQL",
+    ]);
+  });
+
+  it("distinguishes a posting that stated no requirements from one never captured", () => {
+    render(
+      <DetailTabs
+        application={application({ job_description: POSTING, requirements: [] })}
+        match={NO_MATCH}
+      />,
+    );
+
+    // `[]` means the posting was read and stated none — the advert is there.
+    expect(screen.getByText(/no requirements/i)).toBeInTheDocument();
+    expect(screen.queryByText(/no job posting was saved/i)).toBeNull();
+    expect(screen.getByText(/underwrite commercial insurance/)).toBeInTheDocument();
+  });
+});
+
 describe("requirements rendering", () => {
   it("shows one bullet per requirement", () => {
     // Stored one per line. As a single pre-wrapped block a scannable list read
