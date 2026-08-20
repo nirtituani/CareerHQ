@@ -173,6 +173,59 @@ export type Application = {
   status_history: StatusChange[];
 };
 
+export type MatchState = "running" | "ready" | "failed" | "nothing_to_score";
+
+/** One requirement, and how the profile answers it. */
+export type MatchRequirement = {
+  ordinal: number;
+  text: string;
+  /** What the posting **said**. */
+  kind: "must_have" | "preferred";
+  /** What the model **judged** it is worth for this role, 0-100. */
+  importance: number;
+  verdict: "confirmed" | "partial" | "transferable" | "gap" | "unverified";
+  /** Absent on `confirmed` (nothing to explain) and on `unverified` (nothing
+   *  to explain it with — guessing why a CV is silent is inference). */
+  shortfall: "wording" | "evidence" | "capability" | null;
+  /** Quoted from the profile. Null only on `unverified`. */
+  evidence: string | null;
+};
+
+export type MatchAnalysis = {
+  id: string;
+  band: "strong" | "moderate" | "stretch" | "low_probability" | null;
+  /** Kept for sorting and calibration. Never rendered as a bare percentage. */
+  overall_score: number | null;
+  verdict: string | null;
+  criteria_version: string;
+  error: string | null;
+  coverage: Record<string, number>;
+  requirements: MatchRequirement[];
+  model: string | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  /** A string, because a Decimal audit value must not become a float. */
+  cost: string | null;
+  is_fixture: boolean;
+  created_at: string;
+  completed_at: string | null;
+};
+
+export type MatchResult = {
+  state: MatchState;
+  analysis: MatchAnalysis | null;
+  /** The profile changed after this was scored. Computed by the server. */
+  stale: boolean;
+};
+
+export function fetchMatch(applicationId: string): Promise<MatchResult> {
+  return request<MatchResult>(`/api/applications/${applicationId}/match`);
+}
+
+export function runMatch(applicationId: string): Promise<MatchResult> {
+  return request<MatchResult>(`/api/applications/${applicationId}/match`, { method: "POST" });
+}
+
 export type MatchSummary = {
   state: "running" | "ready" | "failed" | "nothing_to_score";
   band: "strong" | "moderate" | "stretch" | "low_probability" | null;

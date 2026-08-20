@@ -2,8 +2,9 @@
 
 import { Tabs } from "radix-ui";
 
+import { MatchTab } from "@/components/applications/match-tab";
 import { NotBuiltYet } from "@/components/not-built-yet";
-import type { Application } from "@/lib/api";
+import type { Application, MatchResult } from "@/lib/api";
 
 /**
  * The tabbed application detail — docs/09 §6.3.
@@ -30,6 +31,10 @@ import type { Application } from "@/lib/api";
  */
 const TABS = [
   { value: "details", label: "Details", built: true },
+  // Second, per the design: read before any resume work, because "is this
+  // worth applying to, and where am I weak" is the question that decides
+  // whether the rest of the page is worth opening.
+  { value: "match", label: "Match", built: true },
   { value: "company", label: "Company", built: false, arrives: "Slice 006" },
   { value: "interview", label: "Interview", built: false, arrives: "Not yet on the roadmap" },
   { value: "versions", label: "Versions", built: false, arrives: "Slice 004" },
@@ -111,7 +116,15 @@ function formatDate(value: string | null): string | null {
   return date.toLocaleDateString(undefined, { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
-export function DetailTabs({ application }: { application: Application }) {
+export function DetailTabs({
+  application,
+  match,
+}: {
+  application: Application;
+  /** Fetched by the page alongside the record, so the tab has no loading state
+   *  of its own — the four states already say everything about readiness. */
+  match: MatchResult;
+}) {
   return (
     <Tabs.Root defaultValue="details">
       <Tabs.List
@@ -137,6 +150,15 @@ export function DetailTabs({ application }: { application: Application }) {
           </Tabs.Trigger>
         ))}
       </Tabs.List>
+
+      <Tabs.Content value="match" className="outline-none">
+        <MatchTab
+          state={match.state}
+          analysis={match.analysis}
+          stale={match.stale}
+          applicationId={application.id}
+        />
+      </Tabs.Content>
 
       <Tabs.Content value="details" className="pt-6 outline-none">
         <dl className="grid gap-5 sm:grid-cols-3">
