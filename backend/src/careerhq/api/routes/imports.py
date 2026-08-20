@@ -12,6 +12,7 @@ through all of them:
 
 from __future__ import annotations
 
+import re
 import uuid
 from typing import Annotated, Any
 
@@ -35,6 +36,7 @@ from careerhq.domain.models import (
     ProfessionalProfile,
     Source,
 )
+from careerhq.infrastructure import storage
 from careerhq.infrastructure.documents import UnsupportedDocumentError
 
 router = APIRouter(prefix="/imports", tags=["imports"])
@@ -147,6 +149,84 @@ async def get_import(
 ) -> dict[str, Any]:
     record = await _owned(session, user, import_id)
     return _import_out(record, await existing_keys(session, profile.id))
+
+
+@router.get("", summary="The caller's uploads, newest first")
+async def list_imports(session: DbSession, user: CurrentUser) -> dict[str, Any]:
+    """Where the profile's facts came from.
+
+    The profile shows facts without saying which document produced them,
+    and a person may have imported more than once — the profile is a merge.
+    This is how the viewer knows which upload to render.
+
+    `storage_key` is deliberately absent: it is an internal address, and
+    the file is reached through the route that checks ownership rather than
+    by naming a bucket location.
+    """
+    records = (
+        await session.scalars(
+            select(ImportedResume)
+            .where(ImportedResume.user_id == user.id)
+            .order_by(ImportedResume.created_at.desc())
+        )
+    ).all()
+
+    return {
+        "imports": [
+            {
+                "id": str(record.id),
+                "filename": record.filename,
+                "content_type": record.content_type,
+                "byte_size": record.byte_size,
+                "status": record.status,
+                "is_fixture": record.is_fixture,
+                "created_at": record.created_at.isoformat(),
+                "approved_at": (record.approved_at.isoformat() if record.approved_at else None),
+            }
+            for record in records
+        ]
+    }
+
+
+@router.get("/{import_id}/file", summary="The retained original, as uploaded")
+async def read_original(import_id: uuid.UUID, session: DbSession, user: CurrentUser) -> Response:
+    """Serve the uploaded CV back to the person who uploaded it.
+
+    Three things are deliberate here.
+
+    **The stored content type is not echoed back.** It came from the
+    upload, so it is attacker-controlled, and serving arbitrary content
+    inline from our own origin is an XSS vector — a file declared
+    `text/html` would run as a same-origin page. Only PDF renders inline;
+    anything else is sent as an attachment.
+
+    **`X-Frame-Options` is narrowed to `SAMEORIGIN`.**
+    `SecurityHeadersMiddleware` sets `DENY` on every response, which is the
+    right default and wrong for the one response the profile renders in a
+    frame. The middleware uses `setdefault`, so a route may narrow it —
+    better than weakening the default everywhere for one viewer.
+
+    **The filename is quoted and stripped of quotes and control
+    characters**, because it is user-supplied and goes into a header.
+    """
+    record = await _owned(session, user, import_id)
+
+    data = await storage.get_object(record.storage_key)
+
+    inline = record.content_type == "application/pdf"
+    safe_name = re.sub(r"[^\w.\- ]", "_", record.filename)[:120] or "cv"
+    disposition = "inline" if inline else "attachment"
+
+    return Response(
+        content=data,
+        media_type="application/pdf" if inline else "application/octet-stream",
+        headers={
+            "Content-Disposition": f'{disposition}; filename="{safe_name}"',
+            "X-Frame-Options": "SAMEORIGIN",
+            # Never cached by a shared proxy: this is one person's CV.
+            "Cache-Control": "private, no-store",
+        },
+    )
 
 
 @router.patch("/{import_id}/items/{item_id}", summary="Correct, accept or discard one item")

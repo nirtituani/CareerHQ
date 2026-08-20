@@ -110,12 +110,21 @@ def test_the_uploaded_file_is_read_by_exactly_one_module() -> None:
     when a second reader appears — the feature works, and the architectural
     claim quietly stops being true.
 
-    `extract_resume` writes the key; `imports.py` returns the record. Neither
-    reads the bytes back, and nothing else may.
+    `extract_resume` writes the key; `imports.py` reads it in exactly one route,
+    to serve the file back to the person who uploaded it. Nothing else may.
+
+    **Widened once, deliberately.** The list held two entries until the profile
+    gained a viewer for the original CV. The distinction that keeps ADR-013
+    intact is that *looking at* the upload is not *deriving from* it: no
+    extraction, scoring or tailoring path may read these bytes, and the
+    structured profile remains the only thing the system reasons over. If a
+    fourth entry is ever proposed, ask which of those two it is — a reader that
+    feeds a capability is the thing this test exists to stop.
     """
     permitted = {
         "domain/models/imports.py",  # declares the column
         "application/extract_resume.py",  # writes it
+        "api/routes/imports.py",  # serves it back, and only to its owner
     }
     readers: set[str] = set()
 

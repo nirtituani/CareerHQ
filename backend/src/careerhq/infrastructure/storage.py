@@ -73,6 +73,23 @@ async def ensure_bucket() -> None:
     await asyncio.to_thread(_create)
 
 
+async def get_object(key: str) -> bytes:
+    """Read a retained upload back.
+
+    Added so a person can look at the CV they uploaded. **Looking at it is
+    not deriving from it**: ADR-013 keeps the structured profile as the
+    source of truth, and nothing in extraction, scoring or tailoring may
+    read this. `test_architecture.py` still enforces which modules touch
+    `storage_key`, and now permits exactly one more — the download route.
+    """
+    settings = get_settings()
+    response = await asyncio.to_thread(
+        get_s3_client().get_object, Bucket=settings.s3_bucket, Key=key
+    )
+    body: bytes = await asyncio.to_thread(response["Body"].read)
+    return body
+
+
 async def put_object(key: str, data: bytes, *, content_type: str) -> None:
     """Store the uploaded file under `key`.
 

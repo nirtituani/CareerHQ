@@ -173,6 +173,18 @@ export type Application = {
   status_history: StatusChange[];
 };
 
+/** One retained upload. `storage_key` is deliberately not exposed. */
+export type ImportRecord = {
+  id: string;
+  filename: string;
+  content_type: string;
+  byte_size: number;
+  status: string;
+  is_fixture: boolean;
+  created_at: string;
+  approved_at: string | null;
+};
+
 export type MatchState = "running" | "ready" | "failed" | "nothing_to_score";
 
 /** One requirement, and how the profile answers it. */
