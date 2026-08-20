@@ -181,54 +181,119 @@ const GROUPS: { verdict: Verdict; label: string }[] = [
  * grouped, showing what each group earned of what it was worth. The total is
  * the score, so the number is checkable rather than asserted (research.md R11).
  */
-function Breakdown({ analysis }: { analysis: MatchAnalysis }) {
-  const total = analysis.requirements.reduce((sum, r) => sum + r.importance, 0);
-  if (total === 0) return null;
+/**
+ * Share `total` across `values` in whole numbers that still sum to `total`.
+ *
+ * Rounding each row on its own makes them sum to 86 beside a ring reading 87,
+ * and an off-by-one is exactly what stops a person trusting a number they were
+ * invited to add up. Largest remainder gives the rounding error to the rows
+ * with the strongest claim to it.
+ */
+function allocate(values: number[], total: number, caps?: number[]): number[] {
+  const sum = values.reduce((a, b) => a + b, 0);
+  if (sum === 0) return values.map(() => 0);
 
-  const rows = GROUPS.map(({ verdict, label }) => {
+  const exact = values.map((v) => (v / sum) * total);
+  const ceiling = (i: number) => caps?.[i] ?? Number.POSITIVE_INFINITY;
+  const out = exact.map((v, i) => Math.min(Math.floor(v), ceiling(i)));
+  let left = Math.round(total) - out.reduce((a, b) => a + b, 0);
+
+  const order = exact
+    .map((v, i) => ({ i, remainder: v - Math.floor(v) }))
+    .sort((a, b) => b.remainder - a.remainder);
+
+  // Two passes: the spare points go by remainder, and any row already at its
+  // ceiling passes them on. Without the cap a group could be handed a point it
+  // has no room for and print "78 of 77" — arithmetic that is harmless and
+  // reads as a typo, which is enough to stop someone checking the rest.
+  while (left > 0) {
+    const room = order.filter(({ i }) => out[i] < ceiling(i));
+    if (room.length === 0) break;
+    for (const { i } of room) {
+      if (left <= 0) break;
+      out[i] += 1;
+      left -= 1;
+    }
+  }
+  return out;
+}
+
+function Breakdown({ analysis }: { analysis: MatchAnalysis }) {
+  // Only a guard: a posting whose requirements are all rated zero has no
+  // shares to divide, and inventing some would be arithmetic about nothing.
+  const weighted = analysis.requirements.reduce((sum, r) => sum + r.importance, 0);
+  if (weighted === 0) return null;
+
+  const groups = GROUPS.map(({ verdict, label }) => {
     const group = analysis.requirements.filter((r) => r.verdict === verdict);
     const worth = group.reduce((sum, r) => sum + r.importance, 0);
     return { label, count: group.length, worth, earned: worth * (analysis.credit[verdict] ?? 0) };
   }).filter((row) => row.count > 0);
 
+  // Rescaled to points, so the right-hand column *is* the score. The raw
+  // importance sums are an internal unit — "360 of 360" says nothing to anyone
+  // who has not read the formula.
+  const worthPoints = allocate(
+    groups.map((g) => g.worth),
+    100,
+  );
+  // Capped at what each group is worth, so the rows both sum to the score and
+  // never claim more than the group had to give.
+  const earnedPoints = allocate(
+    groups.map((g) => g.earned),
+    analysis.overall_score ?? 0,
+    worthPoints,
+  );
+
+  const rows = groups.map((g, i) => ({
+    ...g,
+    worth: worthPoints[i],
+    earned: earnedPoints[i],
+  }));
+
   return (
     <dl className="mt-5 space-y-2" data-testid="breakdown">
       {rows.map(({ label, count, worth, earned }) => (
         <div key={label} className="flex items-baseline gap-3 text-sm">
-          <dt className="w-44 shrink-0">
+          <dt className="w-56 shrink-0 whitespace-nowrap">
             {label}
             <span className="ml-1.5 text-xs" style={{ color: "var(--faint)" }}>
-              {count}
+              {count} {count === 1 ? "requirement" : "requirements"}
             </span>
           </dt>
           <dd className="flex min-w-0 flex-1 items-center gap-3">
+            {/* Width is the group's share of the whole posting; the fill is
+                what it earned of that share. Both are now in points, so the
+                bar and the number describe the same thing — it previously
+                divided points by the raw importance total, which made every
+                bar a meaningless sliver. */}
             <span
               aria-hidden
-              className="h-1 w-28 shrink-0 overflow-hidden rounded-full"
-              style={{ background: "var(--border)" }}
+              className="h-1.5 shrink-0 overflow-hidden rounded-full"
+              style={{ background: "var(--border)", width: `${Math.max(worth, 2)}%`, maxWidth: "9rem" }}
             >
               <span
                 className="block h-full rounded-full"
                 style={{
-                  width: `${(worth / total) * 100}%`,
+                  width: `${worth === 0 ? 0 : (earned / worth) * 100}%`,
                   background: "var(--color-brand-500)",
                 }}
               />
             </span>
             <span
               data-testid="earned"
-              data-earned={Math.round(earned)}
+              data-earned={earned}
               data-worth={worth}
               className="tabular shrink-0 text-xs"
               style={{ fontFamily: "var(--font-mono)", color: "var(--muted)" }}
             >
-              {Math.round(earned)} of {worth}
+              {earned} of {worth} points
             </span>
           </dd>
         </div>
       ))}
       <p className="pt-1 text-xs" style={{ color: "var(--faint)" }}>
-        Weighted by how much each requirement matters to this role.
+        Points are shares of 100, weighted by how much each requirement matters to this role.
       </p>
     </dl>
   );
