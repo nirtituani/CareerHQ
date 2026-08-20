@@ -25,6 +25,7 @@ from careerhq.application.match_criteria import (
     CRITERIA_VERSION,
     Judged,
     band_for,
+    cap_bit,
     overall_score,
 )
 from careerhq.domain.models import MatchBand, RequirementKind, RequirementVerdict
@@ -172,3 +173,29 @@ def test_the_cap_fires_on_values_read_back_from_the_database() -> None:
     from_the_database = Judged(kind="must_have", verdict="gap", importance=90)  # type: ignore[arg-type]
 
     assert band_for(90, requirements=[from_the_database]) is MatchBand.STRETCH
+
+
+def test_a_cap_that_changed_nothing_is_not_reported_as_one() -> None:
+    """Reporting a cap that did not bite claims a causation that did not happen.
+
+    A score of 54 is already `stretch` by arithmetic. An unmet critical
+    requirement caps *to* `stretch` — so the band is the same either way, and
+    telling a person their score was "capped by Kubernetes" would be false:
+    removing Kubernetes entirely would not move the band.
+
+    Found on the first real analysis after the breakdown shipped, where the
+    interface was about to say exactly that.
+    """
+    critical_unmet = [_req(RequirementVerdict.UNVERIFIED, 75)]
+
+    assert band_for(54, requirements=critical_unmet) is MatchBand.STRETCH
+    assert band_for(54, requirements=[]) is MatchBand.STRETCH
+    # Same band either way, so nothing was capped.
+    assert cap_bit(54, requirements=critical_unmet) is False
+
+    # A score that *would* have been moderate is genuinely held down.
+    assert cap_bit(70, requirements=critical_unmet) is True
+
+
+def test_a_cap_that_changed_nothing_is_not_reported_as_one_marker() -> None:
+    assert cap_bit(90, requirements=[]) is False

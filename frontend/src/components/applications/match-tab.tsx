@@ -163,6 +163,81 @@ function Section({
   );
 }
 
+/**
+ * What each dimension is called on screen, and what it means.
+ *
+ * Deliberately not the names from the reference this borrows its shape
+ * from: those measure a *document* (impact, brevity, style), while these
+ * measure a *fit*. The sub-labels matter more than the names — nobody knows
+ * what "adjacent" means until they are told.
+ */
+const DIMENSION: { key: keyof MatchAnalysis["dimensions"]; name: string; means: string }[] = [
+  { key: "direct", name: "Direct experience", means: "Same work, same domain" },
+  { key: "transferable", name: "Transferable", means: "Same skill, different context" },
+  { key: "adjacent", name: "Adjacent", means: "Secondary or related work" },
+  { key: "impact", name: "Impact fit", means: "Outcomes this role values" },
+];
+
+/**
+ * The score, shown as the four judgements it is made of.
+ *
+ * This is what earns the number. A bare "56%" implies a measurement nobody
+ * took — the pseudo-scientific fit percentage one of the rubric sources warns
+ * against. The same 56 beside its parts and their weights is arithmetic a
+ * person can check against stated judgements, and disagree with.
+ *
+ * No red-to-green gradient: docs/09 §3 reserves red for things that broke,
+ * and warns specifically against someone later reaching for semantic red. A
+ * low dimension is not an error.
+ */
+function Breakdown({ analysis }: { analysis: MatchAnalysis }) {
+  const rated = DIMENSION.filter((d) => analysis.dimensions[d.key] !== null);
+  // An analysis scored before the parts were kept has a correct total that
+  // cannot be explained. Inventing parts that sum to it would fabricate the
+  // explanation, so it simply shows no breakdown.
+  if (rated.length === 0) return null;
+
+  return (
+    <dl className="mt-5 space-y-2" data-testid="breakdown">
+      {rated.map(({ key, name, means }) => {
+        const value = analysis.dimensions[key] ?? 0;
+        const weight = Math.round((analysis.weights[key] ?? 0) * 100);
+        return (
+          <div key={key} className="flex items-baseline gap-3 text-sm">
+            <dt className="w-40 shrink-0">
+              {name}
+              <span className="ml-1.5 text-xs" style={{ color: "var(--faint)" }}>
+                {weight}%
+              </span>
+            </dt>
+            <dd className="flex min-w-0 flex-1 items-center gap-3">
+              <span
+                aria-hidden
+                className="h-1 w-28 shrink-0 overflow-hidden rounded-full"
+                style={{ background: "var(--border)" }}
+              >
+                <span
+                  className="block h-full rounded-full"
+                  style={{ width: `${value}%`, background: "var(--color-brand-500)" }}
+                />
+              </span>
+              <span
+                className="tabular w-8 shrink-0 text-xs"
+                style={{ fontFamily: "var(--font-mono)", color: "var(--muted)" }}
+              >
+                {value}
+              </span>
+              <span className="truncate text-xs" style={{ color: "var(--faint)" }}>
+                {means}
+              </span>
+            </dd>
+          </div>
+        );
+      })}
+    </dl>
+  );
+}
+
 const SUPPORTED: Verdict[] = ["confirmed", "partial", "transferable"];
 
 export function MatchTab({
@@ -228,6 +303,15 @@ export function MatchTab({
         >
           {analysis.band ? bandLabel(analysis.band as Band) : "—"}
         </span>
+        {analysis.overall_score !== null && (
+          <span
+            data-testid="score"
+            className="tabular text-sm"
+            style={{ fontFamily: "var(--font-mono)", color: "var(--muted)" }}
+          >
+            {analysis.overall_score}/100
+          </span>
+        )}
         <span data-testid="coverage" className="text-sm" style={{ color: "var(--muted)" }}>
           <span className="tabular" style={{ fontFamily: "var(--font-mono)" }}>
             {supported.length}/{analysis.requirements.length}
@@ -235,6 +319,20 @@ export function MatchTab({
           requirements shown on your profile
         </span>
       </div>
+
+      {/* Without this the label and the number contradict each other: 56 sits
+          in Moderate's range while the band reads Stretch. Naming the
+          requirement turns an apparent bug into the most actionable line here. */}
+      {analysis.capped_by && (
+        <p data-testid="cap-reason" className="mt-1 text-sm" style={{ color: "var(--muted)" }}>
+          {/* The band is right above; repeating it here would restate the
+              screen. Say the part that is new: which requirement, and why. */}
+          Capped by “{analysis.capped_by.text}” — critical to this role, and not shown on your
+          profile.
+        </p>
+      )}
+
+      <Breakdown analysis={analysis} />
 
       {analysis.verdict && (
         <p className="mt-2 max-w-prose text-sm" style={{ color: "var(--muted)" }}>

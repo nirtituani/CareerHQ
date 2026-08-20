@@ -194,8 +194,25 @@ export type MatchRequirement = {
 export type MatchAnalysis = {
   id: string;
   band: "strong" | "moderate" | "stretch" | "low_probability" | null;
-  /** Kept for sorting and calibration. Never rendered as a bare percentage. */
+  /** The weighted sum of `dimensions`. Shown beside the band, never alone. */
   overall_score: number | null;
+  /** The four rated parts. `null` on analyses scored before they were kept. */
+  dimensions: {
+    direct: number | null;
+    transferable: number | null;
+    adjacent: number | null;
+    impact: number | null;
+  };
+  /** What each part contributes, so the arithmetic is checkable on screen. */
+  weights: Record<string, number>;
+  /**
+   * The requirement holding the band below its arithmetic, if one is.
+   *
+   * The band is not the score bucketed. Without this the label and the number
+   * disagree on screen and it reads as a bug; with it, it is the most useful
+   * line on the page.
+   */
+  capped_by: { ordinal: number; text: string; importance: number } | null;
   verdict: string | null;
   criteria_version: string;
   error: string | null;
