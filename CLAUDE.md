@@ -153,6 +153,68 @@ line the guard actually protects.
 `llm_provider_model`, which is **Opus** — so a task with no entry silently runs at 2.5× the price
 for no gain. It has already caught CV extraction once.
 
+### Slice 004 — Match Analysis: what it built, and what carries forward
+
+Score a recorded job against the approved profile. **One structured call — the third `complete()`
+call site.** No loop, no tools, no retrieval, no embeddings.
+
+**Five verdicts, not three, and the fifth is the point.** `confirmed`, `partial`, `transferable`,
+`gap`, `unverified`. AI-008 forbids inventing experience the profile lacks; an earlier draft with a
+single evidence-free `missing` verdict left the model free to invent its **absence**, which is the
+same fabrication pointed the other way. Now every verdict except `unverified` must quote the
+profile — **including `gap`, which quotes the shortfall** — and `unverified` is the only
+evidence-free one because it is the only one that asserts nothing.
+
+**A silent profile still costs you.** `unverified` is weighed like a gap, because a recruiter reads
+exactly the profile the model reads and draws the same conclusion from silence. The *claim* stays
+honest; only the weighing changed. The two are shown differently and only `unverified` is
+recoverable — add it to your profile and re-run.
+
+**Importance is judged, never read off the heading.** A posting's "must have" list is routinely a
+wishlist, so each requirement carries an `importance` 0–100 and the band caps at 70. The prompt
+tells the model that requirements stated **earlier** matter more, because recruiters lead with what
+they care about and pad the end.
+
+**Criteria are versioned and the version is stored.** `v2-importance`. Changing a weight, a band
+threshold or the cap rule is a **new version**, never an edit — otherwise every historical score
+silently becomes incomparable, and docs/07 evaluates this on Match Score calibration. The band is
+stored too, not derived at render time: re-banding history rewrites what a person was told.
+
+**What carries into the tailoring agent**: the seam is unchanged and now has three call sites;
+`llm_model_<task>` must exist for every new one; and docs/08 §3.2.3's model-per-node decision is
+still un-implemented and must flow into that slice rather than being re-derived.
+
+### Gotchas this slice proved
+
+Every one of these passed a green suite.
+
+- **`is` against an enum silently never matches a value read from the database.** These are
+  `String(16)` columns, so a row loaded in a *fresh* session returns a plain `str`. `run_analysis`
+  guarded with `status is not MatchStatus.PENDING` and therefore returned immediately on every real
+  call: nothing raised, nothing logged, and every analysis sat `pending` forever. Tests missed it
+  because they pass the session that created the row, whose identity map still holds the enum
+  member. **Use `==`, and test any such path through a second session.**
+- **A lazy relationship on a freshly added object raises `MissingGreenlet`.** Serialising a
+  just-created analysis read `.requirements`, which async SQLAlchemy cannot fetch outside an
+  awaited context. Assign the collection at construction.
+- **An undefined CSS custom property fails silently and differently per property.** `var(--fg)` was
+  written for `--foreground` in four places. Three used `color:`, which inherits, so they looked
+  correct by accident; the fourth used `fill:` and rendered black text on a dark ground.
+  `frontend/src/components/__tests__/tokens.test.ts` now scans every component and requires each
+  token to be declared.
+- **Build a CSS reveal so that *removing* the animation lands on the finished state.** The
+  reduced-motion rule collapses animations to 0.01ms. If the base style is the empty state and the
+  animation draws it in, every user who reduces motion sees zero — and nobody testing with motion
+  on will ever see it. Put the final value in the element's style and let the keyframe supply only
+  the start.
+- **Next.js dev mode 403s its own chunks when the browser is on `127.0.0.1`.** The page renders and
+  nothing hydrates, with no console error. Use `localhost` in a browser. Note this is the *opposite*
+  of the Playwright rule below, and both are real.
+- **`drop_all` emits statements from the metadata, not from the database.** Adding the first
+  `use_alter` foreign key broke it outright against an existing test database. `conftest.py` now
+  drops the schema, which is also stronger for the reason T003 exists.
+- **A `use_alter` foreign key must be named**, or it cannot be dropped.
+
 ### Reading a job posting from a URL
 
 Requested during implementation, so the spec does not carry it. Three steps, tried in order,

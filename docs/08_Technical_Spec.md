@@ -190,10 +190,11 @@ map plus honest status.
 | Capability | Agent? | Slice | Status |
 |---|---|---|---|
 | Platform foundation — containers, auth, CI | No | 001 | ✅ **Built and verified** |
-| Deployment — public HTTPS, continuous deploy | No | 002 | ⏭️ **Next** |
-| Application Management Core | No — deliberately CRUD | 003 | 📋 Planned |
-| Professional Profile + CV import | No | 003 | 📋 Planned |
-| **Resume Optimizer** — the flagship | Yes | 004 | 📋 Planned |
+| Deployment — public HTTPS, continuous deploy | No | 002 | ✅ **Built and verified** |
+| Application Management Core | No — deliberately CRUD | 003 | ✅ **Built** (JobTracker import outstanding) |
+| Professional Profile + CV import | No | 003 | ✅ **Built and verified** |
+| **Match analysis** — score a job against the profile | No — one structured call | 004 | ✅ **Built and verified** |
+| **Resume Optimizer** — the flagship | Yes | next | ⏭️ **Next** |
 | **Reviewer / evaluation layer** | Yes | 004 loop, 005 metrics | 📋 Planned |
 | Company Research | Yes — web search MCP | 006 | 📋 Planned |
 | Career Advisor | Yes | 007 | 📋 Planned |
@@ -330,11 +331,11 @@ Principle II, not a separate design effort.
 
 | Layer | Tool | Gate | Current |
 |---|---|---|---|
-| Backend unit + integration | pytest | **≥80% coverage** | ✅ 55 tests, 89% |
-| Backend format | `ruff format --check` | zero diffs | ✅ 33 files |
+| Backend unit + integration | pytest | **≥80% coverage** | ✅ 285 tests, 81% |
+| Backend format | `ruff format --check` | zero diffs | ✅ 86 files |
 | Backend lint | `ruff check` | zero findings | ✅ passing |
-| Backend types | `mypy` strict | zero errors | ✅ 20 files |
-| Frontend components | Vitest | passing | ✅ 3 tests |
+| Backend types | `mypy` strict | zero errors | ✅ 49 files |
+| Frontend components | Vitest | passing | ✅ 99 tests |
 | Frontend lint | oxlint | zero findings | ✅ passing |
 | Frontend types | `tsc --noEmit` | zero errors | ✅ passing |
 | Frontend build | `next build` | exit 0 | ✅ passing |
