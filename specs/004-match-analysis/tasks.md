@@ -499,7 +499,9 @@ Both paths tested, both watched failing first.
       than living under the Resume Optimizer.
 - [x] T079 [P] Update `CLAUDE.md` with what carries into the tailoring agent, and any gotcha this
       slice proved. The seam now has **three** call sites.
-- [ ] T080 [P] Regenerate `HANDOFF.md` with `/handoff` — measured numbers, not copied.
+- [x] T080 [P] Regenerate `HANDOFF.md` with `/handoff` — measured numbers, not copied.
+      **Regenerated with `/handoff`.** Every number measured this session. It records that nothing
+      in slice 004 is pushed and that the deployed database has no `match_analyses` table.
 - [x] T081 [P] Confirm `infrastructure/ai/litellm_gateway.py` is still the only module importing
       `litellm`, and that `domain/` imports no framework code. (Seam obligation O5, Principle V.)
       **Confirmed**: `test_architecture.py` green — `litellm` imported by the gateway alone, and
@@ -515,9 +517,14 @@ Both paths tested, both watched failing first.
       `docker compose exec backend pytest` collects nothing and looks much like a pass.
       **All green from the host**: ruff format 86 files, ruff check, mypy 49 files, pytest 285 at
       81%; frontend lint, typecheck, 99 tests, build.
-- [ ] T084 👁 **OBSERVE** Walk [quickstart.md](./quickstart.md) end to end **as written** and
+- [x] T084 👁 **OBSERVE** Walk [quickstart.md](./quickstart.md) end to end **as written** and
       correct it where it is wrong. Slice 001's T069, slice 002's T052 and slice 003's T095 each
       found real errors this way.
+      **Walked as written and corrected in three places**: the expected `criteria_version` still
+      said `v1-weighted`; the dimension columns were missing from the step-3 query; and there was no
+      step for importance ratings or for an abandoned run, both of which shipped after it was
+      written. Steps 1, 3, 4 and 4b re-run clean — 54, dimensions 45/62/55/60 summing correctly,
+      **0** grounding violations.
 - [ ] T085 🔧 **MANUAL** Set `LLM_MODEL_MATCH_ANALYSIS` on the deployed backend service, **before**
       deploying — a variable that arrives after the build is too late for anything read at build
       time, and this one is read at runtime but still needs to exist before the first analysis runs.

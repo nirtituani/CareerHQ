@@ -1,10 +1,13 @@
 # HANDOFF
 
-**Last updated:** 2026-08-18 · **Commit:** `9e88039` · **Branch:** `main`, clean, pushed
+**Last updated:** 2026-08-20 · **Commit:** `a7c50ff` · **Branch:** `004-match-analysis`
+
+> **Nothing in slice 004 is pushed.** Remote `main` is still at `9e88039`, and the deployed
+> database has **no `match_analyses` table**. Everything below is local.
 
 This file is the volatile half of the project's memory: what is true *right now* and what to do
-next. `CLAUDE.md` is the durable half — conventions, gotchas, and how the project works. When
-those two disagree about status, **this file wins**.
+next. `CLAUDE.md` is the durable half — conventions, gotchas, and how the project works. When those
+two disagree about status, **this file wins**.
 
 ---
 
@@ -14,13 +17,13 @@ CareerHQ is an AI-powered career intelligence platform. A user imports a CV, tra
 and an agent tailors the resume to a specific job description — **with the user's approval on
 every change**.
 
-Built solo as a course project on a four-to-six-week budget. That constraint is real and drives
-the slice ordering (`docs/05_Implementation_Plan.md` §2). Two things are graded requirements and
-are not optional: **deployment** (slice 002, done) and the **Reviewer / evaluation layer**
-(slice 005, not started).
+Built solo as a course project on a four-to-six-week budget. That constraint drives the slice
+ordering (`docs/05_Implementation_Plan.md` §2). Two things are graded requirements and are not
+optional: **deployment** (slice 002, done) and the **Reviewer / evaluation layer** (slice 005, not
+started).
 
-The seven non-negotiable principles are in `.specify/memory/constitution.md`. Violations of
-II–IV are release blockers.
+The seven non-negotiable principles are in `.specify/memory/constitution.md`. Violations of II–IV
+are release blockers.
 
 ---
 
@@ -28,126 +31,81 @@ II–IV are release blockers.
 
 | Slice | Tasks | State |
 |---|---|---|
-| 001 — Platform Foundation | 69 / 69 | **Complete.** Docker stack, Google sign-in, per-user isolation, health checks |
-| 002 — Deployment | 52 / 52 | **Complete.** Live on Railway over HTTPS |
-| 003 — Data Foundation | **97 / 109** | **US1 and US2 done and deployed. US3 blocked** |
-| 004 — Match analysis | — | Design approved and committed. **No code written** |
+| 001 — Platform Foundation | 69 / 69 | **Complete** |
+| 002 — Deployment | 52 / 52 | **Complete.** Live on Railway |
+| 003 — Data Foundation | 97 / 109 | US1 and US2 done. **US3 blocked on a JobTracker CSV** |
+| **004 — Match Analysis** | **84 / 89** | **All three user stories complete. 5 open, all deployment** |
 | 005 — Reviewer / evaluation | — | Not started. Graded requirement |
+| next — Resume Tailoring Agent | — | Not started. Was slice 004; see docs/05 §5.4 |
 
-**Verified on 2026-08-18, not copied forward:** `189 backend tests passed, 81% coverage`
-(gate is 80%) and `64 component tests passed (6 files)`. 6 Playwright e2e specs exist and need
-the stack running.
+**Measured 2026-08-20, not copied:** `285 backend tests passed, 81.02% coverage` (gate 80%),
+`99 frontend tests passed (8 files)`, ruff format 86 files, ruff check clean, mypy clean across 49
+source files, `next build` succeeds.
 
 ### Live system
 
-**https://frontend-production-02ac.up.railway.app** — real Google sign-in works end to end.
+**https://frontend-production-02ac.up.railway.app** — Google sign-in works end to end.
 
-Railway project `CareerHQ`, three services: `frontend` (Next.js, **the only public door**,
-proxies `/api/*`), `backend` (FastAPI at `backend.railway.internal:8000`), `pgvector`
-(PostgreSQL 18.4 + vector 0.8.6, no public TCP proxy).
+Deployed database, checked this session: **`users 1 | professional_profiles 1 | applications 0`**,
+and `match_analyses` **does not exist** — slice 004 has never been deployed.
 
-Deployed database state, checked this session:
+### What slice 004 built
 
-```
-users | professional_profiles | applications
-  1   |          1            |      0
-```
+Score a recorded job against the approved profile. **One structured call — the third `complete()`
+call site.** No loop, no tools, no retrieval, no embeddings.
 
-The profile holds 3 roles, 10 bullets, 23 skills. **Zero applications — this is what blocks T089.**
-
-Readiness reports `database ok, cache not_configured, object_storage ok, ai_provider ok`.
-Redis is deliberately not deployed: nothing reads a cache yet, and a placeholder would make the
-app believe it has one and fail at first use.
-
-### What slice 003 actually built
-
-**US1 — a CV becomes a reviewed profile.** Upload → review item by item → correct → approve.
-Nothing reaches the profile without approval. A second import **merges** rather than appends,
-and never overwrites a value the user corrected.
-
-**US2 — a job becomes a record to tailor against.** Add from a posting URL, from pasted text, or
-by hand; move it through statuses; open a record holding the description slice 004 works from.
-
-**The artifact to understand first is the structured completion seam** —
-`specs/003-data-foundation/contracts/extraction-seam.md`. One call in, one validated object out:
-`complete(task, schema, prompt) -> Completion[T]`. A schema is required, so unvalidated text
-cannot come back; the model is chosen **by task name**, which is what lets slice 004 express
-docs/08 §3.2.3 as configuration rather than branches; usage is returned so the audit record
-Principle V requires is written in the same transaction as the work.
-
-There are two call sites — `extract_resume` and `extract_job`. Neither loops, uses tools, or
-reacts to its own output, which is the line the scope guard actually protects.
+- **Five verdicts**: `confirmed`, `partial`, `transferable`, `gap`, `unverified`. Every one except
+  `unverified` must quote the profile, **including `gap`**, which quotes the shortfall.
+  `unverified` is the only evidence-free verdict because it is the only one asserting nothing.
+- **`unverified` is weighed like a gap** — a recruiter reads the same profile the model does — but
+  never *claimed* like one, and only it is recoverable by editing the profile.
+- **Importance is judged per requirement**, 0–100, not read off the posting's heading. The band
+  caps at 70. On the reference posting the model rated "excellent communication in English" **30**
+  and "fast-paced startup environment" **15**, both listed under *Requirements*.
+- **`criteria_version = v2-importance`**, stored on every analysis, as is the band — re-banding
+  history would rewrite what a person was told.
+- **The interface** shows a score ring, the four weighted dimensions it is the sum of, and the
+  requirements split into what is missing (importance-ordered) and what fits (with evidence).
 
 ---
 
 ## 3. Files modified
 
-Slice 003 spans commits `3e526bb..9e88039` (24 commits). Regenerate this list any time with:
+Slice 004 spans `84de85e..a7c50ff`. Regenerate the list with:
 
 ```bash
-git diff --name-status 3e526bb~1..HEAD -- backend/src frontend/src
+git diff --name-status 84de85e~1..HEAD -- backend/src frontend/src
 ```
 
-### Read these four first
+### Read these first
 
 | File | Why |
 |---|---|
-| `backend/src/careerhq/infrastructure/ai/litellm_gateway.py` | The completion seam. Everything AI goes through it |
-| `backend/src/careerhq/infrastructure/jobs/fetch.py` | **The only place a user-supplied URL is requested** — the one SSRF surface |
-| `backend/src/careerhq/infrastructure/jobs/parse.py` | Posting parsing, and where the failed strategies in §4 are encoded |
-| `backend/src/careerhq/application/approve_import.py` | The approval boundary — the constitutional promise that nothing lands unapproved |
+| `backend/src/careerhq/application/analyze_match.py` | The use case, the prompt, and the abandoned-run rule |
+| `backend/src/careerhq/application/match_criteria.py` | `v2-importance` — weights, bands, the cap, and `cap_bit` |
+| `backend/src/careerhq/domain/schemas/match.py` | The grounding validator: which verdicts must quote the profile |
+| `frontend/src/components/applications/match-tab.tsx` | Everything the person actually reads |
 
-### Backend — added
-
-```
-api/routes/applications.py            api/routes/imports.py
-application/approve_import.py         application/extract_job.py
-application/extract_resume.py         application/ports.py
-application/record_application.py
-domain/models/{application,imports,profile,provenance}.py
-domain/schemas/{extraction,job}.py
-infrastructure/ai/{litellm_gateway,fixture_gateway}.py
-infrastructure/documents/{pdf,docx}.py
-infrastructure/jobs/{fetch,parse,comeet}.py
-```
-
-### Backend — modified / moved
+### Backend
 
 ```
-M  api/deps.py  api/routes/health.py  api/routes/profile.py
-M  config.py  infrastructure/storage.py  main.py
-R  domain/models.py   -> domain/models/identity.py     (100% rename)
-R  domain/schemas.py  -> domain/schemas/identity.py    (100% rename)
+NEW  application/analyze_match.py      application/match_criteria.py
+NEW  domain/models/match.py            domain/schemas/match.py
+MOD  api/routes/applications.py        application/extract_job.py
+MOD  application/record_application.py config.py
+MOD  domain/models/application.py      domain/schemas/job.py
+MIG  0006_match_analysis · 0007_requirement_importance
+     0008_unverified_no_shortfall · 0009_match_dimensions
 ```
 
-### Frontend — added
+### Frontend
 
 ```
-app/{import,profile,applications,applications/[id]}/page.tsx
-components/applications/{applications-page,applications-view,add-application,
-                         job-import,detail-tabs,status-pill,company-logo}.tsx
-components/import-review/{import-flow,review,item-actions,item-editor}.tsx
-components/profile/{edit-mode,entry,profile-menu,remove,row-editor,section}.tsx
-components/{provenance,sidebar-nav,not-built-yet}.tsx
-lib/{imports,session}.ts
-components/__tests__/{applications,import-review,profile-menu,provenance}.test.tsx
-lib/__tests__/imports.test.ts
-```
-
-### Frontend — modified
-
-```
-M  app/dashboard/page.tsx  app/layout.tsx
-M  components/app-shell.tsx  components/__tests__/app-shell.test.tsx
-M  lib/api.ts
-```
-
-### Design / spec artifacts
-
-```
-docs/superpowers/specs/2026-08-17-match-analysis-design.md   (approved, no code)
-specs/003-data-foundation/{tasks.md,observations.md,contracts/extraction-seam.md}
-specs/002-deployment/observations.md                          (deployment evidence, FR-015)
+NEW  components/applications/match-tab.tsx   components/applications/match-score.tsx
+MOD  components/applications/detail-tabs.tsx components/applications/add-application.tsx
+MOD  components/applications/applications-view.tsx  lib/api.ts
+MOD  app/applications/[id]/page.tsx  app/globals.css
+NEW  components/__tests__/match.test.tsx  components/__tests__/tokens.test.ts
 ```
 
 ---
@@ -249,95 +207,112 @@ Docker or Railway. The two that cost the most time:
 
 ---
 
+### Match analysis (slice 004) — every one of these passed a green suite
+
+- **`is` against an enum, on a value read from the database.** These are `String(16)` columns, so a
+  row loaded in a **fresh** session comes back a plain `str`. `run_analysis` guarded with
+  `status is not MatchStatus.PENDING`, so it returned immediately on every real call — nothing
+  raised, nothing logged, and every analysis sat `pending` forever while 270 tests stayed green.
+  The tests missed it because they pass the session that *created* the row, whose identity map
+  still holds the enum member. Use `==`, and exercise such paths through a second session.
+- **A lazy relationship on a freshly added object.** Serialising a just-created analysis read
+  `.requirements`, which async SQLAlchemy cannot fetch outside an awaited context —
+  `MissingGreenlet`, as a 500. The branch was never exercised because the existing test accepted
+  `{202, 409}` and always got 409.
+- **Demanding a `shortfall` on `unverified`.** A real completion failed validation on it, and the
+  model was right: the profile says nothing, so choosing between *wording*, *evidence* and
+  *capability* means guessing **why** it is silent. That is the invented absence the taxonomy
+  exists to prevent, reappearing in the field added to make shortfalls actionable.
+- **Reporting a cap that did not bite.** `capped_by` named a requirement whenever one *could* cap.
+  At 54 the band is `stretch` by arithmetic anyway, so removing the requirement would not move it —
+  saying it capped the score claimed a causation that did not happen.
+- **`var(--fg)` where the token is `--foreground`.** An undefined custom property does not throw or
+  warn. Three uses were `color:`, which inherits, so they looked right by accident; the fourth was
+  `fill:` on SVG text and rendered **black on a dark ground**. `tokens.test.ts` now scans for it.
+- **Building a CSS reveal the natural way round.** Reduced motion collapses animations to 0.01ms,
+  so a base style of "empty ring" plus an animation that draws it in shows **zero** to everyone who
+  reduces motion — invisible to anyone testing with motion on. Put the final value in the element's
+  own style and let the keyframe supply only the start.
+- **Trusting `drop_all` against an existing test database.** It emits statements from the
+  *metadata*, not from the database, so the first `use_alter` foreign key broke it outright.
+  `conftest.py` drops the schema now. A `use_alter` constraint must also be **named**, or it cannot
+  be dropped at all.
+- **Assuming a stuck run could be recovered.** R7 said "a re-run fixes it"; the in-flight guard
+  answered 409, so the one action that recovers the job was the one action refused. Hit three
+  times, each needing SQL by hand. A `pending` row older than an hour is now reaped.
+- **Estimating output tokens.** R8 projected ~1,500 output for three verdicts and no `importance`
+  or `shortfall`. Measured with five verdicts and both: **2,811**, so $0.0355 against SC-004's
+  $0.03. The estimate's *share* was right (79%, inside the predicted 57–86%); its magnitude was not.
+
+### Browser and tooling
+
+- **Next.js dev mode 403s its own chunks when the browser is on `127.0.0.1`.** The page renders,
+  nothing hydrates, no console error. Use `localhost` in a browser — the **opposite** of the
+  Playwright rule, and both are real.
+
+
+---
+
 ## 5. Exact next steps
 
-Twelve tasks are open in slice 003. **Two of the three blockers are on the author, not on code.**
+**Five tasks remain in slice 004, and all five are deployment.** They are blocked on one decision
+that is the author's.
 
-### A — T089 · blocked on the author · ~1 minute
+### A — Deploy slice 004 · **blocked on the author's go-ahead**
 
-Add **one real job** at https://frontend-production-02ac.up.railway.app. The task requires the
-deployed system to hold *both* of slice 004's inputs; the profile half alone does not count.
+Nothing is pushed. Remote `main` is at `9e88039`; the branch is `004-match-analysis` at `a7c50ff`.
 
-Verify:
+```bash
+git push -u origin 004-match-analysis     # then merge to main, which Railway deploys
+```
+
+Railway runs `alembic upgrade head` pre-deploy, so migrations 0006–0009 apply on the way in. **Set
+`LLM_MODEL_MATCH_ANALYSIS=anthropic/claude-sonnet-5` on the backend service first** (T085) — the
+fallback is Opus at 2.5× the cost, silently.
+
+Then T086 and T087, which need **a real job on the deployed system** — the same thing slice 003's
+T089 has been waiting for. One job, added at the deployed URL, closes both:
 
 ```bash
 railway ssh --service pgvector "PGHOST=localhost PGPORT=5432 psql -U postgres -d railway \
-  -c \"SELECT count(*) FROM applications;\""
+  -c \"SELECT status, overall_score, band, model, is_fixture FROM match_analyses;\""
+# and the grounding check, which must return 0:
+#   SELECT count(*) FROM match_requirements WHERE (verdict='unverified') <> (evidence IS NULL);
 ```
 
-Expect `1`. Then tick T089 in `specs/003-data-foundation/tasks.md`.
+### B — Slice 003 User Story 3 · **blocked on the author** · 11 tasks
 
-### B — User Story 3, T074–T084 · blocked on the author
+A JobTracker export (`GET /api/export`) saved to `backend/tests/fixtures/jobtracker_export.csv`.
+The mapping is written; this proves it against real data, and the messy cases are the point.
 
-Produce a JobTracker export (`GET /api/export`) and save it to
-`backend/tests/fixtures/jobtracker_export.csv`. **The mapping is already written from the source**,
-so this proves it against real data — and the messy cases are the entire point: blank dates,
-`"competitive"` salaries, and custom statuses that live in browser storage and reach no export.
+### C — Decide what to do about SC-004 · **the author's call**
 
-Once the file exists, the order is fixed and TDD applies (write the test, **watch it fail for the
-right reason**, then implement):
+Measured cost is **$0.0355 per job** against a $0.03 target — the criterion is marked *not met* in
+`spec.md` rather than quietly adjusted. `research.md` R8 lists three ways out and explains what
+each trades away. Doing nothing is a legitimate choice; leaving it unrecorded was not.
 
-1. **T075** — idempotency: `test_jobtracker_import.py`
-2. **T076–T080** `[P]` — mapping unit tests: `rejected=true` keeps its label and normalizes to
-   `rejected`; unrecognised status; date parsing; source attribution
-3. **T081** — `backend/src/careerhq/application/import_jobtracker.py`
-4. **T082** — endpoint in `api/routes/applications.py`
-5. **T083** `[P]` — import screen and its report
-6. **T084** 👁 — import the real export against the running stack and confirm counts
+### D — The Reviewer / evaluation layer (slice 005) · unblocked, not started
 
-### C — Match analysis / slice 004 · **the only path that needs nothing from the author**
-
-Design is approved and committed:
-[`docs/superpowers/specs/2026-08-17-match-analysis-design.md`](docs/superpowers/specs/2026-08-17-match-analysis-design.md).
-No code written. It was **paused** waiting for the author's scoring rubric, which was going to
-arrive via GitHub — **checked 2026-08-18: no rubric file, no issues, no PRs, no branches. It has
-not arrived.**
-
-It does not have to block. Design §10 anticipates exactly this: *"Until then the rubric is the
-model's own judgement... `criteria_version` exists so the first real rubric is distinguishable
-from that."* The slots were built so a v0 ships uncalibrated and the real rubric lands later as a
-new `criteria_version` **without rework** — a rubric slot in §3, and a vocabulary slot beside
-requirement extraction for a skills taxonomy.
-
-Design §9 says this folds into **slice 004's Spec-Kit specification**, not a fourth thing slice
-003 quietly grows. So the next step is `speckit-specify` for slice 004, carrying in:
-
-- the approved match-analysis design
-- **docs/08 §3.2.3's model-per-node decision**, which must *flow in* rather than be re-derived:
-  **Sonnet** to analyze, draft and revise; **Opus** for the Reviewer and for a revision that has
-  already failed once. The Reviewer gets the stronger model because it enforces Principle III, a
-  release blocker; escalating Revise on the second attempt stops the loop where an Opus reviewer
-  rejects work a Sonnet reviser cannot fix. ≈ $0.17 per tailoring run against $0.24 all-Opus.
-
-Three questions stay open and are recorded in design §10 — do not silently resolve them:
-the scoring criteria themselves; whether a canonical skill vocabulary is needed for v0; and
-**whether Haiku 4.5 suffices** — decide that with a measured comparison once real analyses exist,
-not before, because the seam raises rather than accepting partial data.
+A graded requirement. Nothing about it depends on A, B or C.
 
 ### Also worth doing when convenient
 
-- **Rotate the database password** and restart `pgvector`. It was on screen while the public TCP
-  proxy was still open, and the stale `PGHOST` in the running container has since sent an
-  authentication attempt to whichever tenant now owns the recycled port. `DATABASE_URL`
-  references `${{pgvector.PGPASSWORD}}`, so rotation propagates — but run `ALTER USER … WITH
-  PASSWORD` first; changing the variable alone does not change the password.
+- **Rotate the database password** and restart `pgvector` — see CLAUDE.md.
 - **Rotate the logo.dev token** hardcoded in public source at `ApplicationTable.jsx:4` in
   `nirtituani/job-tracker-web`.
-- **Run a full `/security-review` of the branch diff.** T068 was scoped to cookies, headers and
-  secret handling only.
+- **Run `/security-review` on the branch diff.** T068 covered cookies, headers and secrets only,
+  and slice 004 added a new user-facing surface.
 
 ---
 
 ## 6. Process reminders
 
-- **Spec-Driven Development** via GitHub Spec-Kit: `specify → plan → tasks → analyze → implement
-  → verify`. **Do not skip `analyze`** — it has caught real gaps before code was written.
-- **Tests first**, and the failure message matters. `ImportError` because the module does not
-  exist yet is a valid red; a test that passes before implementation is a broken test.
-- **Verify in Docker, not just in pytest.** Every user story ends with a task that runs the real
-  stack, and that step has caught bugs the suite could not.
-- **Update `tasks.md` as you go** — tick boxes, and amend a task's text when the implementation
-  deviates. A task list that lies about what happened is worse than none.
-- **Reading the source app is cheaper than guessing at it.** `nirtituani/job-tracker-web` is
-  public and settled the status vocabulary, the Applied Via options, `match_rating * 20`, and the
-  query that proved why the `rejected` flag had to go.
+- **Spec-Driven Development** via Spec-Kit: `specify → plan → tasks → analyze → implement →
+  verify`. **Do not skip `analyze`.**
+- **Tests first**, and the failure message matters. A test that passes before implementation is a
+  broken test — and slice 004 is the case study: five defects shipped under a green suite, each
+  found by running the thing rather than testing it.
+- **Verify in Docker, and then in a browser.** Every display bug in this project was found by a
+  person looking at real data.
+- **Update `tasks.md` as you go**, and amend a task's text when the implementation deviates.
+- **`/handoff` before `/clear`.** It does not run automatically.
