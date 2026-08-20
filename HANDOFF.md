@@ -1,11 +1,11 @@
 # HANDOFF
 
-**Last updated:** 2026-08-20 · **Commit:** `5c8aeb2` · **Branch:** `main`, clean, pushed
+**Last updated:** 2026-08-20 · **Commit:** `44d6dbc` · **Branch:** `main`, clean, pushed
 
 > **Slice 004 is complete — 89 of 89 — and verified on the deployed system.**
 >
-> Four commits are **not yet live**: three Railway deploys have been stuck since 15:00 and a fourth
-> is queued behind them. All four are presentation-only, so the deployed site scores identically to
+> **Six commits are not yet live.** Railway has been stuck since 15:00 — one deploy `DEPLOYING`,
+> five `QUEUED` behind it. None of them changes a score; the deployed site scores identically to
 > local (see §2).
 
 This file is the volatile half of the project's memory: what is true *right now* and what to do
@@ -40,7 +40,7 @@ are release blockers.
 | **005 — Reviewer / evaluation** | — | **Not started. Graded requirement** |
 | next — Resume Tailoring Agent | — | Not started. The flagship |
 
-**Measured 2026-08-20, not copied:** `287 backend tests passed, 81.06% coverage` (gate 80%),
+**Measured 2026-08-20, not copied:** `293 backend tests passed, 80.81% coverage` (gate 80%),
 `109 frontend tests passed (8 files)`, ruff format + check clean, mypy clean across 49 source
 files, `next build` succeeds.
 
@@ -61,10 +61,12 @@ $0.039222`. That closed T086, T087 and slice 003's long-open T089 in one action.
 | `401e339` | Counts (`5/7`) instead of points in the breakdown |
 | `e49a800` | The loading ring while an analysis runs |
 | `648535d` | Tab order — Versions before Company |
-| `5c8aeb2` | Documentation only |
+| `5c8aeb2` · `eff470d` | Documentation only |
+| `44d6dbc` | **The Original CV viewer** — new endpoints, so this one is not cosmetic |
 
-**Nothing functional is missing** — v3 scoring, the cap, and the grounding rule all shipped in
-`c942a38`, which is live. A deployed job scores exactly as it would locally.
+**Nothing about scoring is missing** — v3, the cap and the grounding rule all shipped in
+`c942a38`, which is live, so a deployed job scores exactly as it would locally. The CV viewer
+in `44d6dbc` *is* new behaviour and will only work once the queue clears.
 
 The stall looks like Railway rather than this repository: CI is green on every commit, the stuck
 frontend container **starts** (`Next.js ✓ Ready`), both services jammed at the same minute, and
@@ -86,6 +88,20 @@ call site.** No loop, no tools, no retrieval, no embeddings.
   the total explains the list rather than arguing with it. `criteria_version = v3-earned`.
 - **The interface** shows a score ring, the requirement counts by verdict, and the requirements
   split into what is missing (importance-ordered) and what fits (with quoted evidence).
+
+### Added after slice 004 closed
+
+**The original CV is viewable on the profile** (`44d6dbc`). Two tabs — *Profile* and *Original CV*
+— with the browser's own PDF viewer in an iframe, and a picker, because the profile is a **merge**
+of every approved import and showing only the newest is misleading.
+
+Deliberately no hosted viewer: one would have to fetch the file itself, making a CV publicly
+reachable. New endpoints are `GET /api/imports` and `GET /api/imports/{id}/file`.
+
+**`test_architecture.py`'s `storage_key` guard was widened by one entry, on purpose.** ADR-013
+still holds: *looking at* the upload is not *deriving from* it, and no extraction, scoring or
+tailoring path may read those bytes. The reasoning is written beside the permitted list, with a
+note to ask which of the two any future entry is.
 
 ---
 
@@ -126,6 +142,8 @@ MOD  applications/detail-tabs.tsx  applications/add-application.tsx
 MOD  applications/applications-view.tsx  lib/api.ts
 MOD  app/applications/[id]/page.tsx  app/globals.css
 NEW  __tests__/match.test.tsx  __tests__/tokens.test.ts
+NEW  profile/original-cv.tsx  profile/tabs.tsx        (44d6dbc)
+MOD  app/profile/page.tsx                              (44d6dbc)
 ```
 
 ---
@@ -307,6 +325,16 @@ my own design, and two rounds of interface polish.
   display is gone, and the class of bug went with it.)
 
 
+### Serving an uploaded file back (found before they bit)
+
+- **`SecurityHeadersMiddleware` sets `X-Frame-Options: DENY` on every response.** Right as a
+  default, fatal for a file meant to render in an iframe — the panel is blank and the only
+  evidence is a console message. The middleware uses `setdefault`, so a route may narrow it to
+  `SAMEORIGIN`; use that rather than weakening the default everywhere.
+- **Never echo a stored `content_type` back.** It came from the upload. Serving arbitrary
+  user-supplied content inline from our own origin runs a file declaring itself `text/html` as a
+  same-origin page. Allowlist what renders inline; everything else downloads.
+
 ---
 
 ## 5. Exact next steps
@@ -324,7 +352,8 @@ railway deployment list --service frontend
 ```
 
 If the top entries still read `DEPLOYING`/`QUEUED`:
-`railway redeploy --service frontend --from-source`. Nothing is degraded meanwhile.
+`railway redeploy --service frontend --from-source`. Nothing is degraded meanwhile — but the
+CV viewer stays unavailable in production until this clears, unlike the earlier backlog.
 
 ### C — Slice 003 User Story 3 · **blocked on the author** · 11 tasks
 
