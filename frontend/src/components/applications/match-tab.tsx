@@ -293,7 +293,7 @@ function ScoreRing({ score, band }: { score: number; band: string }) {
         y="42"
         textAnchor="middle"
         dominantBaseline="central"
-        style={{ fontFamily: "var(--font-display)", fontSize: "22px", fill: "var(--fg)" }}
+        style={{ fontFamily: "var(--font-display)", fontSize: "22px", fill: "var(--foreground)" }}
       >
         {score}
       </text>
@@ -370,7 +370,7 @@ export function MatchTab({
           {/* A large figure, so the serif — docs/09 §2. */}
           <p
             className="text-3xl leading-none"
-            style={{ fontFamily: "var(--font-display)", color: "var(--fg)" }}
+            style={{ fontFamily: "var(--font-display)", color: "var(--foreground)" }}
           >
             {analysis.band ? bandLabel(analysis.band as Band) : "—"}
           </p>
