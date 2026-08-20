@@ -23,6 +23,7 @@ from sqlalchemy import select
 from careerhq.api.deps import CompletionClient, CurrentUser, DbSession
 from careerhq.application.analyze_match import create_pending_analysis, run_analysis
 from careerhq.application.extract_job import extract_job_from_text, extract_job_from_url
+from careerhq.application.match_criteria import WEIGHTS, Judged, cap_bit, caps_band
 from careerhq.application.ports import StructuredCompletion
 from careerhq.application.record_application import (
     apply_changes,
@@ -31,6 +32,7 @@ from careerhq.application.record_application import (
 from careerhq.domain.models import (
     Application,
     MatchAnalysis,
+    MatchRequirement,
     MatchStatus,
     NormalizedStatus,
     ProfessionalProfile,
@@ -308,6 +310,30 @@ async def _latest_analysis(session: DbSession, record: Application) -> MatchAnal
     return latest
 
 
+def _capped_by(analysis: MatchAnalysis, rows: list[MatchRequirement]) -> dict[str, Any] | None:
+    """The requirement that held the band below its arithmetic, if one did.
+
+    Only when the cap actually *bit*. A score already inside the ceiling band
+    reaches it with or without an unmet critical requirement, and naming one
+    there would claim a causation that did not happen.
+    """
+    if analysis.overall_score is None:
+        return None
+
+    judged = [Judged(kind=row.kind, verdict=row.verdict, importance=row.importance) for row in rows]
+    if not cap_bit(analysis.overall_score, requirements=judged):
+        return None
+
+    return next(
+        (
+            {"ordinal": row.ordinal, "text": row.text_, "importance": row.importance}
+            for row in rows
+            if caps_band(row.kind, row.verdict, row.importance)
+        ),
+        None,
+    )
+
+
 def _analysis_out(analysis: MatchAnalysis | None) -> dict[str, Any] | None:
     if analysis is None:
         return None
@@ -318,6 +344,19 @@ def _analysis_out(analysis: MatchAnalysis | None) -> dict[str, Any] | None:
         # sorting and calibration and must not be rendered bare (FR-001a).
         "band": analysis.band,
         "overall_score": analysis.overall_score,
+        # The parts, so the total is arithmetic a person can check rather than
+        # a number they must take on trust.
+        "dimensions": {
+            "direct": analysis.direct,
+            "transferable": analysis.transferable,
+            "adjacent": analysis.adjacent,
+            "impact": analysis.impact,
+        },
+        "weights": WEIGHTS,
+        # The band is not the score bucketed. When an important unmet
+        # requirement holds it down, say which one -- otherwise the label and
+        # the number disagree on screen and it reads as a bug.
+        "capped_by": _capped_by(analysis, rows),
         "verdict": analysis.verdict,
         "criteria_version": analysis.criteria_version,
         "error": analysis.error,

@@ -220,6 +220,81 @@ async def test_triggering_a_run_returns_202_and_the_pending_analysis(
     assert response.json()["analysis"]["requirements"] == []
 
 
+async def test_the_response_explains_the_score_and_the_cap(
+    client: httpx.AsyncClient, db_session: AsyncSession, stub_completion: None
+) -> None:
+    """The number, its four parts, and — when it fired — why the band was capped.
+
+    The band is **not** the score bucketed: an important unmet requirement caps
+    it. Showing both without saying so reads as a bug, because the number sits
+    in one band's range while the label says another. `capped_by` names the
+    requirement responsible, which turns an apparent contradiction into the most
+    useful line on the page.
+    """
+    alice = await _user_with_profile(db_session, ALICE)
+    created = await _create(client, alice)
+    await _as(client, alice).post(f"/api/applications/{created['id']}/match")
+
+    body = (await _as(client, alice).get(f"/api/applications/{created['id']}/match")).json()
+    if body["state"] != "ready":
+        pytest.skip("analysis had not completed")
+
+    analysis = body["analysis"]
+    assert analysis["dimensions"] == {
+        "direct": 88,
+        "transferable": 82,
+        "adjacent": 75,
+        "impact": 80,
+    }
+    assert analysis["weights"] == {
+        "direct": 0.4,
+        "transferable": 0.3,
+        "adjacent": 0.2,
+        "impact": 0.1,
+    }
+    # This fixture's only unmet requirement is below the cap threshold, so the
+    # band follows the arithmetic and nothing is reported as capping it.
+    assert analysis["capped_by"] is None
+
+
+async def test_an_important_unmet_requirement_is_named_as_the_cap(
+    client: httpx.AsyncClient, db_session: AsyncSession, app: object
+) -> None:
+    """Naming it is the difference between an explanation and a contradiction."""
+
+    class _Critical:
+        async def complete[T: BaseModel](self, *, task: str, schema: type[T], prompt: str) -> Any:
+            from careerhq.application.ports import Completion, Usage
+
+            payload = (
+                {
+                    **_JUDGEMENT,
+                    "requirements": [{**_JUDGEMENT["requirements"][1], "importance": 90}],
+                }
+                if task == "match_analysis"
+                else {"job_title": "Senior Engineer"}
+            )
+            return Completion(
+                value=schema.model_validate(payload),
+                usage=Usage(model="m", input_tokens=1, output_tokens=1, cost=Decimal("0")),
+            )
+
+    app.dependency_overrides[get_structured_completion] = _Critical  # type: ignore[attr-defined]
+    try:
+        alice = await _user_with_profile(db_session, ALICE)
+        created = await _create(client, alice)
+        await _as(client, alice).post(f"/api/applications/{created['id']}/match")
+        body = (await _as(client, alice).get(f"/api/applications/{created['id']}/match")).json()
+    finally:
+        app.dependency_overrides.pop(get_structured_completion, None)  # type: ignore[attr-defined]
+
+    if body["state"] != "ready":
+        pytest.skip("analysis had not completed")
+
+    assert body["analysis"]["band"] == "stretch"
+    assert body["analysis"]["capped_by"]["text"] == "Kubernetes in production"
+
+
 async def test_another_users_analysis_is_404_not_403(
     client: httpx.AsyncClient, db_session: AsyncSession, stub_completion: None
 ) -> None:

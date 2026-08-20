@@ -135,6 +135,13 @@ class MatchAnalysis(Base):
     __table_args__ = (
         # FR-007. At most one run in flight per application, enforced where it
         # cannot be raced. An application-level check loses to two clicks.
+        CheckConstraint(
+            "(direct IS NULL OR direct BETWEEN 0 AND 100) "
+            "AND (transferable IS NULL OR transferable BETWEEN 0 AND 100) "
+            "AND (adjacent IS NULL OR adjacent BETWEEN 0 AND 100) "
+            "AND (impact IS NULL OR impact BETWEEN 0 AND 100)",
+            name="ck_match_analysis_dimensions",
+        ),
         Index(
             "uq_match_analysis_one_pending_per_application",
             "application_id",
@@ -159,9 +166,24 @@ class MatchAnalysis(Base):
     #: disclosure applies to anything a browser renders.
     error: Mapped[str | None] = mapped_column(Text)
 
-    #: Retained for sorting and calibration; never rendered as a bare
-    #: percentage (FR-001a).
+    #: The weighted sum of the four dimensions below. Retained for sorting and
+    #: calibration, and shown **beside** the band rather than instead of it.
     overall_score: Mapped[int | None] = mapped_column(SmallInteger)
+
+    #: The four rated dimensions, kept rather than discarded once combined.
+    #:
+    #: A bare total implies a measurement nobody can audit — the
+    #: "pseudo-scientific fit percentage" one of the rubric sources warns
+    #: against. Kept beside it, the total is arithmetic a person can check
+    #: against four stated judgements, with the weights on screen. The parts
+    #: are what earn the number.
+    #:
+    #: NULL on analyses written before they were stored; the total is still
+    #: correct for those, it simply cannot be explained.
+    direct: Mapped[int | None] = mapped_column(SmallInteger)
+    transferable: Mapped[int | None] = mapped_column(SmallInteger)
+    adjacent: Mapped[int | None] = mapped_column(SmallInteger)
+    impact: Mapped[int | None] = mapped_column(SmallInteger)
     band: Mapped[MatchBand | None] = mapped_column(String(16))
     verdict: Mapped[str | None] = mapped_column(Text)
 

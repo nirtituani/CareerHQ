@@ -111,6 +111,9 @@ describe("the match tab", () => {
     verdict: "Strong backend fit, but Kubernetes and Terraform are unproven.",
     criteria_version: "v2-importance",
     error: null,
+    dimensions: { direct: 45, transferable: 65, adjacent: 55, impact: 60 },
+    weights: { direct: 0.4, transferable: 0.3, adjacent: 0.2, impact: 0.1 },
+    capped_by: { ordinal: 2, text: "Kubernetes in production", importance: 80 },
     coverage: { confirmed: 2, partial: 1, transferable: 1, gap: 1, unverified: 2, total: 7 },
     requirements: [
       req(0, "5+ years backend", "must_have", 85, "confirmed", null, "Eight years at Sapiens."),
@@ -130,12 +133,50 @@ describe("the match tab", () => {
     completed_at: "2026-08-20T07:50:30Z",
   };
 
-  it("shows the band and the verdict, not a bare percentage", () => {
+  it("shows the band, the score, and the verdict", () => {
     render(<MatchTab state="ready" analysis={ANALYSIS} stale={false} />);
 
     expect(screen.getByText(/Stretch/)).toBeInTheDocument();
     expect(screen.getByText(/Kubernetes and Terraform are unproven/)).toBeInTheDocument();
+
+    // The number is shown **beside** the band, never as a bare percentage: a
+    // "56% match" implies a measurement nobody took, while a total sitting next
+    // to its four parts and their weights is arithmetic a person can check.
+    expect(screen.getByTestId("score").textContent).toMatch(/56\s*\/\s*100/);
     expect(screen.queryByText(/56%/)).toBeNull();
+  });
+
+  it("breaks the score into the four parts it is made of", () => {
+    render(<MatchTab state="ready" analysis={ANALYSIS} stale={false} />);
+
+    const breakdown = screen.getByTestId("breakdown").textContent ?? "";
+    for (const label of ["Direct experience", "Transferable", "Adjacent", "Impact fit"]) {
+      expect(breakdown).toContain(label);
+    }
+    // The weights are on screen, so the total can be checked rather than trusted.
+    expect(breakdown).toMatch(/40/);
+    expect(breakdown).toMatch(/45/);
+  });
+
+  it("says which requirement held the band down", () => {
+    render(<MatchTab state="ready" analysis={ANALYSIS} stale={false} />);
+
+    // 56 sits in Moderate's range; the band reads Stretch. Unexplained that is
+    // a contradiction on screen, so the requirement responsible is named.
+    expect(screen.getByTestId("cap-reason").textContent).toMatch(/Kubernetes in production/);
+  });
+
+  it("does not claim a breakdown for an analysis that never kept one", () => {
+    const older = {
+      ...ANALYSIS,
+      dimensions: { direct: null, transferable: null, adjacent: null, impact: null },
+    };
+    render(<MatchTab state="ready" analysis={older} stale={false} />);
+
+    // Its total is still correct; it simply cannot be explained. Inventing
+    // parts that sum to it would be fabricating the explanation.
+    expect(screen.queryByTestId("breakdown")).toBeNull();
+    expect(screen.getByTestId("score")).toBeInTheDocument();
   });
 
   it("puts what is missing in importance order, hardest first", () => {

@@ -107,6 +107,36 @@ class Judged:
     importance: int
 
 
+#: Named so the interface can show the arithmetic rather than assert the total.
+WEIGHTS: dict[str, float] = {
+    "direct": WEIGHT_DIRECT,
+    "transferable": WEIGHT_TRANSFERABLE,
+    "adjacent": WEIGHT_ADJACENT,
+    "impact": WEIGHT_IMPACT,
+}
+
+
+def caps_band(kind: RequirementKind, verdict: RequirementVerdict, importance: int) -> bool:
+    """Whether this one requirement is enough to hold the band down.
+
+    Exposed so the interface can *name* the requirement responsible. A band
+    that disagrees with its own score reads as a bug unless the reason is on
+    screen."""
+    del kind  # The posting's own word; `importance` is what is judged.
+    return verdict in _UNMET and importance >= CAP_IMPORTANCE
+
+
+def cap_bit(score: int, *, requirements: Sequence[Judged]) -> bool:
+    """Whether the cap actually lowered the band, rather than merely applying.
+
+    A score already at or below the ceiling reaches the same band with or
+    without an unmet critical requirement. Reporting a cap there would claim
+    a causation that did not happen -- removing the requirement entirely
+    would not move the band -- so the interface must not say one was capped.
+    """
+    return band_for(score, requirements=requirements) is not band_for(score, requirements=[])
+
+
 def band_for(score: int, *, requirements: Sequence[Judged]) -> MatchBand:
     """The band shown to the person, which is not simply the score bucketed.
 
@@ -131,10 +161,7 @@ def band_for(score: int, *, requirements: Sequence[Judged]) -> MatchBand:
     """
     banded = next(band for lower, band in _BANDS if score >= lower)
 
-    unmet_and_important = any(
-        requirement.verdict in _UNMET and requirement.importance >= CAP_IMPORTANCE
-        for requirement in requirements
-    )
+    unmet_and_important = any(caps_band(r.kind, r.verdict, r.importance) for r in requirements)
     if not unmet_and_important:
         return banded
 
@@ -142,4 +169,13 @@ def band_for(score: int, *, requirements: Sequence[Judged]) -> MatchBand:
     return min(banded, _UNMET_CEILING, key=_ORDER.index)
 
 
-__all__ = ["CAP_IMPORTANCE", "CRITERIA_VERSION", "Judged", "band_for", "overall_score"]
+__all__ = [
+    "CAP_IMPORTANCE",
+    "CRITERIA_VERSION",
+    "WEIGHTS",
+    "Judged",
+    "band_for",
+    "cap_bit",
+    "caps_band",
+    "overall_score",
+]

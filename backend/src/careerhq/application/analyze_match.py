@@ -329,6 +329,12 @@ async def run_analysis(
 
     analysis.overall_score = score
     analysis.band = band_for(score, requirements=verdicts)
+    # Kept, not discarded once summed: they are what lets the interface say
+    # where the number came from instead of asserting it.
+    analysis.direct = judgement.direct
+    analysis.transferable = judgement.transferable
+    analysis.adjacent = judgement.adjacent
+    analysis.impact = judgement.impact
     analysis.verdict = judgement.verdict
     analysis.status = MatchStatus.READY
     analysis.completed_at = datetime.now(UTC)
