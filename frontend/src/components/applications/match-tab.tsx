@@ -376,6 +376,11 @@ export function MatchTab({
   }
 
   const supported = analysis.requirements.filter((r) => SUPPORTED.includes(r.verdict));
+  //: What the posting asks for and the profile plainly shows. Kept apart from
+  //: `supported` because the difference between "you have this" and "this
+  //: transfers" is the whole point of the taxonomy, and flattening it in the
+  //: summary undoes every per-row distinction below.
+  const direct = analysis.requirements.filter((r) => r.verdict === "confirmed");
   // Importance first, so the requirement that actually costs the interview is
   // read first. Posting order buries it under boilerplate.
   const byImportance = (a: MatchRequirement, b: MatchRequirement) => b.importance - a.importance;
@@ -409,12 +414,19 @@ export function MatchTab({
                 {analysis.overall_score}/100
               </span>
             )}
+            {/* Only `confirmed` counts here.
+                Adding `partial` and `transferable` in reported "8/8 shown on
+                your profile" for a profile with two direct matches — which
+                reads as a perfect fit and then contradicts itself with a low
+                score. It is also the error FR-011b names: presenting
+                transferable experience as direct experience, in the one line
+                most likely to be read. */}
             <span data-testid="coverage">
               {analysis.overall_score !== null && " · "}
               <span className="tabular" style={{ fontFamily: "var(--font-mono)" }}>
-                {supported.length}/{analysis.requirements.length}
+                {direct.length} of {analysis.requirements.length}
               </span>{" "}
-              requirements shown on your profile
+              requirements directly on your CV
             </span>
           </p>
         </div>
