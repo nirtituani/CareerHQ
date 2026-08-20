@@ -423,43 +423,55 @@ surfaced and a re-run can be triggered.
       **Done in greyscale via a CSS filter.** All four states and every verdict stay
       distinguishable: the glyph (✓ ≈ ↗ ?) and the text label both carry the meaning, and nothing
       relies on hue.
-- [ ] T062 [P] [US3] Test in `backend/tests/integration/test_match_api.py`: `stale` is true when
+- [x] T062 [P] [US3] Test in `backend/tests/integration/test_match_api.py`: `stale` is true when
       the profile's `updated_at` is newer than the analysis's `created_at`, and false otherwise.
       **The server computes it**; the client only renders the offer.
-- [ ] T063 [P] [US3] Test in `backend/tests/integration/test_match_analysis.py`: editing a profile
+- [x] T063 [P] [US3] Test in `backend/tests/integration/test_match_analysis.py`: editing a profile
       triggers **no** re-scoring of any application (FR-025). Watch it fail against an
       implementation that helpfully rescores.
-- [ ] T064 [P] [US3] Test in `backend/tests/integration/test_match_analysis.py`:
+- [x] T064 [P] [US3] Test in `backend/tests/integration/test_match_analysis.py`:
       `current_match_analysis_id` **never** points at a non-`ready` analysis, across a re-run that
       succeeds and one that fails. (Invariant I3, FR-015.)
-- [ ] T065 [P] [US3] Test in `backend/tests/integration/test_match_analysis.py`: a failed re-run
+- [x] T065 [P] [US3] Test in `backend/tests/integration/test_match_analysis.py`: a failed re-run
       leaves the previous `ready` analysis displayed and the previous score intact. This is the
       difference between a re-run and a gamble.
-- [ ] T066 [P] [US3] Test in `backend/tests/integration/test_match_analysis.py`: a successful
+- [x] T066 [P] [US3] Test in `backend/tests/integration/test_match_analysis.py`: a successful
       re-run **retains** the previous analysis row. Append-only, because calibration is measured
       over history. (FR-014, Invariant I2.)
-- [ ] T067 [P] [US3] Test in `backend/tests/integration/test_match_api.py`: `POST
+- [x] T067 [P] [US3] Test in `backend/tests/integration/test_match_api.py`: `POST
       /api/applications/{id}/match` returns 409 when one is already in flight, and 422 when there
       is nothing to score. Not 202, and not 500.
-- [ ] T068 [P] [US3] Test in `backend/tests/integration/test_match_analysis.py`: **no code path
+- [x] T068 [P] [US3] Test in `backend/tests/integration/test_match_analysis.py`: **no code path
       updates a `ready` analysis or deletes any analysis** — a source-tree scan, in the manner of
       slice 003's status-history test. An append-only table stays append-only only while nothing
       can write to it another way. (Invariant I2.)
-- [ ] T069 [P] [US3] Test in `backend/tests/integration/test_match_analysis.py`: a stored `band`
+- [x] T069 [P] [US3] Test in `backend/tests/integration/test_match_analysis.py`: a stored `band`
       is not recomputed when band thresholds change. Re-banding history would rewrite what the
       person was told. (Invariant I5a.)
-- [ ] T070 [US3] Add `POST /api/applications/{id}/match` to
+- [x] T070 [US3] Add `POST /api/applications/{id}/match` to
       `backend/src/careerhq/api/routes/applications.py`. **No request body** — a model, criteria
       version or prompt from the client would put cost and behaviour under the browser's control.
-- [ ] T071 [US3] Advance `current_match_analysis_id` only on `ready`, in the same transaction as
+- [x] T071 [US3] Advance `current_match_analysis_id` only on `ready`, in the same transaction as
       the result, in `backend/src/careerhq/application/analyze_match.py`.
-- [ ] T072 [P] [US3] Add the staleness notice and re-run control to
+- [x] T072 [P] [US3] Add the staleness notice and re-run control to
       `frontend/src/components/applications/match-tab.tsx`.
-- [ ] T073 [P] [US3] Keep the previous band visible while a re-run is in flight, in
+- [x] T073 [P] [US3] Keep the previous band visible while a re-run is in flight, in
       `frontend/src/components/applications/match-score.tsx`. It must not blank to a spinner.
 - [ ] T074 👁 **OBSERVE** [US3] Run quickstart step 7. Confirm the notice appears, **no other job
       was re-scored**, the previous band stays visible throughout the re-run, and the analysis
       count went up rather than the old row being replaced.
+
+### Found while closing Phase 5 — an abandoned run was a dead end
+
+R7 accepted that a process restart mid-analysis leaves a row `pending`, on the grounds that
+"a re-run fixes it". **It did not.** The in-flight guard answered 409, so the one action that
+recovers the job was the one action refused — hit three times while building this, each time
+needing SQL by hand, which is not something a user can do.
+
+A `pending` row older than `STALE_PENDING_AFTER` (one hour, against a ~12-second completion, so
+well past any possible success) is now **reaped rather than honoured**: the trigger marks it
+`failed` and starts a new run, and the read reports it as `failed` rather than spinning forever.
+Both paths tested, both watched failing first.
 
 **Checkpoint**: all three user stories complete.
 

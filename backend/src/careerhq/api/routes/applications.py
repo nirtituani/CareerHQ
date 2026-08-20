@@ -14,14 +14,18 @@ rules that run through `imports.py` run through here:
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Response, status
 from sqlalchemy import select
 
 from careerhq.api.deps import CompletionClient, CurrentUser, DbSession
-from careerhq.application.analyze_match import create_pending_analysis, run_analysis
+from careerhq.application.analyze_match import (
+    create_pending_analysis,
+    is_abandoned,
+    run_analysis,
+)
 from careerhq.application.extract_job import extract_job_from_text, extract_job_from_url
 from careerhq.application.match_criteria import WEIGHTS, Judged, cap_bit, caps_band
 from careerhq.application.ports import StructuredCompletion
@@ -287,6 +291,10 @@ def _state_of(record: Application, analysis: MatchAnalysis | None) -> str:
         return "ready"
     if analysis.status == MatchStatus.FAILED:
         return "failed"
+    # A run nothing will finish reads as failed rather than spinning
+    # forever, so the interface invites the re-run that recovers it.
+    if is_abandoned(analysis):
+        return "failed"
     return "running"
 
 
@@ -449,7 +457,14 @@ async def trigger_match(
             MatchAnalysis.status == MatchStatus.PENDING,
         )
     )
-    if in_flight is not None:
+    if in_flight is not None and is_abandoned(in_flight):
+        # Reaped, not honoured. Otherwise the row blocks every future run and
+        # the job is unrecoverable without SQL.
+        in_flight.status = MatchStatus.FAILED
+        in_flight.error = "The analysis stopped before it finished."
+        in_flight.completed_at = datetime.now(UTC)
+        await session.flush()
+    elif in_flight is not None:
         # 409 rather than 202: returning success here lets five clicks queue
         # five runs. The partial unique index is the enforcement; this is its
         # surface (FR-007).

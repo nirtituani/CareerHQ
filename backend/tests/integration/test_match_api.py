@@ -8,6 +8,7 @@ decision here means one implementation rather than one per surface.
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
@@ -18,12 +19,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from careerhq.api.deps import get_structured_completion
+from careerhq.application.match_criteria import CRITERIA_VERSION
 from careerhq.application.provision_user import provision_user
 from careerhq.domain.models import (
     Application,
     ContactInformation,
     ExperienceBullet,
     MatchAnalysis,
+    MatchStatus,
     ProfessionalProfile,
     User,
     WorkExperience,
@@ -358,3 +361,152 @@ async def test_the_detail_response_distinguishes_never_captured_from_none_found(
 
     body = (await _as(client, alice).get(f"/api/applications/{created['id']}")).json()
     assert body["requirements"] is None
+
+
+async def test_stale_is_true_once_the_profile_moves_on(
+    client: httpx.AsyncClient, db_session: AsyncSession, stub_completion: None
+) -> None:
+    """FR-025. The server decides; the client only renders the offer.
+
+    Computed at read time rather than stored: a flag goes wrong the moment a
+    profile is edited without every analysis being visited, and there is no
+    reason to keep a second copy of a comparison.
+    """
+    alice = await _user_with_profile(db_session, ALICE)
+    created = await _create(client, alice)
+    await _as(client, alice).post(f"/api/applications/{created['id']}/match")
+
+    body = (await _as(client, alice).get(f"/api/applications/{created['id']}/match")).json()
+    if body["state"] != "ready":
+        pytest.skip("analysis had not completed")
+    assert body["stale"] is False
+
+    profile = await db_session.scalar(
+        select(ProfessionalProfile).where(ProfessionalProfile.user_id == alice.id)
+    )
+    assert profile is not None
+    profile.updated_at = datetime.now(UTC) + timedelta(minutes=1)
+    await db_session.commit()
+
+    body = (await _as(client, alice).get(f"/api/applications/{created['id']}/match")).json()
+    assert body["stale"] is True
+
+
+async def test_a_second_run_while_one_is_in_flight_is_a_conflict(
+    client: httpx.AsyncClient, db_session: AsyncSession, stub_completion: None
+) -> None:
+    """FR-007. Returning 202 here would let five clicks queue five runs.
+
+    The in-flight row is planted rather than raced for. Under the test transport
+    a background task finishes before the next request is made, so nothing is
+    ever genuinely in flight — the guard would go untested by a race that cannot
+    happen here but happens easily with a real 12-second completion and an
+    impatient person.
+    """
+    alice = await _user_with_profile(db_session, ALICE)
+    created = await _create(client, alice)
+
+    await db_session.execute(
+        MatchAnalysis.__table__.delete().where(
+            MatchAnalysis.application_id == uuid.UUID(created["id"])
+        )
+    )
+    db_session.add(
+        MatchAnalysis(
+            application_id=uuid.UUID(created["id"]),
+            status=MatchStatus.PENDING,
+            criteria_version=CRITERIA_VERSION,
+        )
+    )
+    await db_session.commit()
+
+    response = await _as(client, alice).post(f"/api/applications/{created['id']}/match")
+
+    assert response.status_code == 409
+
+
+async def test_scoring_a_job_with_nothing_to_score_is_422(
+    client: httpx.AsyncClient, db_session: AsyncSession, stub_completion: None
+) -> None:
+    """The request was well formed; the answer is that this job cannot be scored.
+
+    Not a 500, and not an empty 202 that would leave the interface waiting for a
+    result nothing is going to produce.
+    """
+    alice = await _user_with_profile(db_session, ALICE)
+    created = await _create(client, alice, requirements=[], job_description="")
+
+    response = await _as(client, alice).post(f"/api/applications/{created['id']}/match")
+
+    assert response.status_code == 422
+
+
+async def test_an_abandoned_run_does_not_block_the_job_forever(
+    client: httpx.AsyncClient, db_session: AsyncSession, stub_completion: None
+) -> None:
+    """A `pending` row that will never finish must not be a dead end.
+
+    The background task is fire-and-forget, so a process restart mid-analysis
+    leaves a row `pending` with nothing left to complete it. R7 accepted that on
+    the grounds that "a re-run fixes it" — and it did not: the in-flight guard
+    answered 409, so the one action that would recover the job was the one
+    action refused. Hit three times while building this, each needing SQL by
+    hand, which is not a thing a user can do.
+
+    A run older than `STALE_PENDING_AFTER` is therefore reaped rather than
+    honoured. A real completion takes about twelve seconds, so the threshold is
+    not a judgement call about slowness — it is well past any possible success.
+    """
+    alice = await _user_with_profile(db_session, ALICE)
+    created = await _create(client, alice)
+
+    await db_session.execute(
+        MatchAnalysis.__table__.delete().where(
+            MatchAnalysis.application_id == uuid.UUID(created["id"])
+        )
+    )
+    abandoned = MatchAnalysis(
+        application_id=uuid.UUID(created["id"]),
+        status=MatchStatus.PENDING,
+        criteria_version=CRITERIA_VERSION,
+        created_at=datetime.now(UTC) - timedelta(hours=2),
+    )
+    db_session.add(abandoned)
+    await db_session.commit()
+
+    response = await _as(client, alice).post(f"/api/applications/{created['id']}/match")
+
+    assert response.status_code == 202, response.text
+
+    # The abandoned run is recorded as failed rather than left to sit `pending`
+    # forever, so history says what happened to it.
+    await db_session.refresh(abandoned)
+    assert abandoned.status == MatchStatus.FAILED
+    assert abandoned.error
+
+
+async def test_an_abandoned_run_reads_as_failed_not_as_still_running(
+    client: httpx.AsyncClient, db_session: AsyncSession, stub_completion: None
+) -> None:
+    """Otherwise the tab spins forever and never invites the fix."""
+    alice = await _user_with_profile(db_session, ALICE)
+    created = await _create(client, alice)
+
+    await db_session.execute(
+        MatchAnalysis.__table__.delete().where(
+            MatchAnalysis.application_id == uuid.UUID(created["id"])
+        )
+    )
+    db_session.add(
+        MatchAnalysis(
+            application_id=uuid.UUID(created["id"]),
+            status=MatchStatus.PENDING,
+            criteria_version=CRITERIA_VERSION,
+            created_at=datetime.now(UTC) - timedelta(hours=2),
+        )
+    )
+    await db_session.commit()
+
+    body = (await _as(client, alice).get(f"/api/applications/{created['id']}/match")).json()
+
+    assert body["state"] == "failed"
