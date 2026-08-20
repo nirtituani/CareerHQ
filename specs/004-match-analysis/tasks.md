@@ -525,9 +525,15 @@ Both paths tested, both watched failing first.
       step for importance ratings or for an abandoned run, both of which shipped after it was
       written. Steps 1, 3, 4 and 4b re-run clean — 54, dimensions 45/62/55/60 summing correctly,
       **0** grounding violations.
-- [ ] T085 🔧 **MANUAL** Set `LLM_MODEL_MATCH_ANALYSIS` on the deployed backend service, **before**
+- [x] T085 🔧 **MANUAL** Set `LLM_MODEL_MATCH_ANALYSIS` on the deployed backend service, **before**
       deploying — a variable that arrives after the build is too late for anything read at build
       time, and this one is read at runtime but still needs to exist before the first analysis runs.
+      **Verified on the deployed system after the merge — and the variable turned out not to be
+      needed.** `llm_model_match_analysis` is defaulted in `config.py` rather than left to the
+      environment, precisely so a forgotten variable cannot silently cost 2.5×. The deployed backend
+      resolves `anthropic/claude-sonnet-5` against a fallback of `anthropic/claude-opus-5`, with no
+      `LLM_MODEL_*` variable set. The task's premise was that the default lived in the environment;
+      it does not, so setting it would be belt-and-braces rather than the protection.
 - [ ] T086 👁 **OBSERVE** Run quickstart's deployed section: score a real job on the deployed
       system and confirm a real model, a real cost and `is_fixture = false`. `ai_provider: ok` is a
       construction check — a present-but-wrong key still reports healthy, so only this proves it.
