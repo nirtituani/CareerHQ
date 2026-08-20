@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from careerhq.api.deps import get_structured_completion
 from careerhq.application.ports import Completion, Usage
+from careerhq.application.provision_user import provision_user
 from careerhq.domain.models import (
     ExperienceBullet,
     ImportedResume,
@@ -87,12 +88,22 @@ class _Stub:
 
 @pytest.fixture(autouse=True)
 def _no_object_storage(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Uploads go nowhere. MinIO's real credentials are not the test's subject."""
+    """Uploads go to a dict. MinIO's real credentials are not the test's subject.
+
+    Held in memory rather than discarded, so the download route can be tested
+    against what the upload actually stored — a stub that threw the bytes away
+    would let the two halves disagree about the key and still pass.
+    """
+    stored: dict[str, bytes] = {}
 
     async def _put(key: str, data: bytes, *, content_type: str) -> None:
-        return None
+        stored[key] = data
+
+    async def _get(key: str) -> bytes:
+        return stored[key]
 
     monkeypatch.setattr(storage, "put_object", _put)
+    monkeypatch.setattr(storage, "get_object", _get)
 
 
 def _stub_completion(app: Any, client: _Stub) -> None:
@@ -635,3 +646,137 @@ async def test_explicitly_adding_items_narrows_approval_to_those(
 
     names = sorted(s.name for s in (await db_session.scalars(select(Skill))).all())
     assert names == ["Rust"], "only the explicitly added item lands"
+
+
+# ---------------------------------------------------------------------------
+# Reading the retained original back
+# ---------------------------------------------------------------------------
+
+
+async def test_the_original_can_be_read_back_by_its_owner(
+    app: Any, client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    """FR-006's retained upload, made visible to the person who uploaded it.
+
+    Kept write-only until now, deliberately: ADR-013 makes the structured
+    profile the source of truth, and a second copy of "what my CV says" is how
+    that stops being true. Reading it is not deriving from it — nothing in
+    extraction, scoring or tailoring touches this path, and the architecture
+    test still enforces that.
+
+    It earns its place: when a deployed profile scored 58 against the same
+    posting that scored 87 locally, the first question was what the deployed
+    profile actually contained, and only the source document answers it.
+    """
+    _stub_completion(app, _Stub())
+    await _sign_in(db_session, client)
+    created = (await _upload(client)).json()
+
+    response = await client.get(f"/api/imports/{created['id']}/file")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/pdf"
+    assert response.content == PDF
+
+
+async def test_the_original_renders_in_a_frame_on_this_origin(
+    app: Any, client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    """`SecurityHeadersMiddleware` sets `X-Frame-Options: DENY` on everything.
+
+    Correct as a default and wrong for this one response: the browser would
+    refuse to render it in the profile's viewer, showing an empty panel and a
+    console message rather than anything the interface could report. The
+    middleware uses `setdefault`, so a route may narrow it — the escape hatch
+    to use rather than weakening the default for every response.
+    """
+    _stub_completion(app, _Stub())
+    await _sign_in(db_session, client)
+    created = (await _upload(client)).json()
+
+    response = await client.get(f"/api/imports/{created['id']}/file")
+
+    assert response.headers["x-frame-options"] == "SAMEORIGIN"
+
+
+async def test_the_stored_content_type_is_not_echoed_back(
+    app: Any, client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    """It came from the upload, so it is attacker-controlled.
+
+    Serving arbitrary user-supplied content inline from our own origin is an
+    XSS vector: a file declared `text/html` would execute as a same-origin
+    page. Only PDF renders inline; anything else downloads.
+    """
+    _stub_completion(app, _Stub())
+    await _sign_in(db_session, client)
+    created = (await _upload(client)).json()
+
+    stored = await db_session.get(ImportedResume, uuid.UUID(created["id"]))
+    assert stored is not None
+    stored.content_type = "text/html"
+    await db_session.commit()
+
+    response = await client.get(f"/api/imports/{created['id']}/file")
+
+    assert response.headers["content-type"] != "text/html"
+    assert "attachment" in response.headers.get("content-disposition", "")
+
+
+async def test_another_users_original_is_404_not_403(
+    app: Any, client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    """FR-019. A CV carries a home address and a phone number."""
+    _stub_completion(app, _Stub())
+    await _sign_in(db_session, client)
+    created = (await _upload(client)).json()
+
+    intruder = await provision_user(
+        db_session, {"sub": "google-intruder", "email": "intruder@example.com", "name": "I"}
+    )
+    await db_session.commit()
+    client.cookies.set(SESSION_COOKIE, create_session_token(str(intruder.id)))
+
+    response = await client.get(f"/api/imports/{created['id']}/file")
+
+    assert response.status_code == 404
+
+
+async def test_a_person_can_find_the_document_their_profile_came_from(
+    app: Any, client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    """The profile shows facts; this says where they came from.
+
+    Newest first, and only the caller's. Without it the viewer has no way to
+    know which upload to render — a person may have imported more than once,
+    and the profile is a merge of all of them.
+    """
+    _stub_completion(app, _Stub())
+    await _sign_in(db_session, client)
+    created = (await _upload(client)).json()
+
+    response = await client.get("/api/imports")
+
+    assert response.status_code == 200
+    imports = response.json()["imports"]
+    assert [i["id"] for i in imports] == [created["id"]]
+    assert imports[0]["filename"] == "cv.pdf"
+    # No `storage_key`: the key is an internal address, and the file is reached
+    # through the route that checks ownership rather than by naming a bucket.
+    assert "storage_key" not in imports[0]
+
+
+async def test_the_list_holds_only_the_callers_imports(
+    app: Any, client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    _stub_completion(app, _Stub())
+    await _sign_in(db_session, client)
+    await _upload(client)
+
+    intruder = await provision_user(
+        db_session, {"sub": "google-nosy", "email": "nosy@example.com", "name": "N"}
+    )
+    await db_session.commit()
+    client.cookies.set(SESSION_COOKIE, create_session_token(str(intruder.id)))
+
+    assert (await client.get("/api/imports")).json()["imports"] == []
