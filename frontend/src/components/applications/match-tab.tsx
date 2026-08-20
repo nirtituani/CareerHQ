@@ -254,6 +254,35 @@ const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
  * empty circle with the animation drawing it in, reduced motion would have
  * left every score reading zero — visible to nobody who tested with motion on.
  */
+/**
+ * The ring before there is a score — a short arc travelling round it.
+ *
+ * Deliberately the same geometry and position as the finished ring, so the
+ * result settles into place rather than replacing a paragraph. A layout that
+ * rearranges itself on arrival reads as something having gone wrong.
+ */
+function PendingRing() {
+  return (
+    <svg width="84" height="84" viewBox="0 0 84 84" aria-hidden className="shrink-0">
+      <circle cx="42" cy="42" r={RADIUS} fill="none" strokeWidth="4" stroke="var(--border)" />
+      <circle
+        data-testid="pending-arc"
+        className="score-pending"
+        cx="42"
+        cy="42"
+        r={RADIUS}
+        fill="none"
+        strokeWidth="4"
+        strokeLinecap="round"
+        stroke="var(--color-brand-500)"
+        // A quarter turn of arc: enough to read as motion, short enough that a
+        // still frame is plainly a placeholder rather than a low score.
+        strokeDasharray={`${CIRCUMFERENCE / 4} ${CIRCUMFERENCE}`}
+      />
+    </svg>
+  );
+}
+
 function ScoreRing({ score, band }: { score: number; band: string }) {
   return (
     <svg
@@ -327,6 +356,26 @@ export function MatchTab({
     setRunning(false);
   }
 
+  // Checked before the null guard below: a run in flight has a pending row,
+  // but a null analysis with `running` state must still read as running
+  // rather than falling through to "nothing to score against", which would
+  // tell a person the opposite of what is happening.
+  if (state === "running") {
+    return (
+      <div role="status" aria-busy="true" className="flex items-center gap-5 py-6">
+        <PendingRing />
+        <div>
+          <p className="text-3xl leading-none" style={{ fontFamily: "var(--font-display)", color: "var(--muted)" }}>
+            Scoring
+          </p>
+          <p className="mt-1.5 text-sm" style={{ color: "var(--muted)" }}>
+            Scoring this job against your profile — this takes a few seconds.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   if (state === "nothing_to_score" || analysis === null) {
     return (
       <div className="py-8">
@@ -366,13 +415,6 @@ export function MatchTab({
     );
   }
 
-  if (state === "running") {
-    return (
-      <p className="py-8 text-sm" style={{ color: "var(--muted)" }}>
-        Scoring this job against your profile…
-      </p>
-    );
-  }
 
   const supported = analysis.requirements.filter((r) => SUPPORTED.includes(r.verdict));
   //: What the posting asks for and the profile plainly shows. Kept apart from

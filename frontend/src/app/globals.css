@@ -184,3 +184,27 @@ body {
   transform: rotate(-90deg);
   transform-origin: center;
 }
+
+/* The match ring while an analysis is running.
+ *
+ * The arc travels rather than growing, because its length means nothing yet —
+ * a partial ring that stayed still would read as a finished low score.
+ *
+ * Under `prefers-reduced-motion` the rule below collapses this to 0.01ms and
+ * the arc simply rests where it started. That is intentional: paired with the
+ * "Scoring…" line and `aria-busy`, a still arc is a placeholder rather than a
+ * claim, and nothing about the state is carried by the motion alone.
+ */
+@keyframes score-pending {
+  from {
+    transform: rotate(-90deg);
+  }
+  to {
+    transform: rotate(270deg);
+  }
+}
+
+.score-pending {
+  animation: score-pending 1400ms cubic-bezier(0.5, 0, 0.5, 1) infinite;
+  transform-origin: center;
+}

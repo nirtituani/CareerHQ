@@ -64,6 +64,28 @@ describe("match states", () => {
   });
 });
 
+describe("while an analysis is running", () => {
+  it("draws the ring it is about to fill, not a line of text alone", () => {
+    const { container } = render(
+      <MatchTab state="running" analysis={null} stale={false} />,
+    );
+
+    // The same shape and the same place as the result, so the score resolves
+    // into position instead of replacing a paragraph — a layout that changes
+    // under you reads as something going wrong.
+    expect(container.querySelector("[data-testid='pending-arc']")).not.toBeNull();
+    expect(screen.getByText(/Scoring this job/i)).toBeInTheDocument();
+  });
+
+  it("tells assistive technology it is busy, not that it is empty", () => {
+    render(<MatchTab state="running" analysis={null} stale={false} />);
+
+    // A spinner nobody can see is a blank region. `aria-busy` says the same
+    // thing the animation says.
+    expect(screen.getByRole("status")).toHaveAttribute("aria-busy", "true");
+  });
+});
+
 describe("verdict glyphs", () => {
   it("gives each of the five verdicts its own glyph", () => {
     const glyphs = Object.values(VERDICT_GLYPH);
