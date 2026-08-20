@@ -233,7 +233,11 @@ async def unreject(
         (
             row.to_status
             for row in reversed(record.status_history)
-            if normalize_status(row.to_status) is not NormalizedStatus.REJECTED
+            # `!=` rather than `is not`: safe here because `normalize_status`
+            # returns an enum member, but these columns are strings and the
+            # identity comparison is one refactor away from silently never
+            # matching. See the note in `analyze_match.run_analysis`.
+            if normalize_status(row.to_status) != NormalizedStatus.REJECTED
         ),
         None,
     )

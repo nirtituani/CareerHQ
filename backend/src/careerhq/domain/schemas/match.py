@@ -78,9 +78,22 @@ class JudgedRequirement(BaseModel):
         if self.verdict == "unverified" and has_evidence:
             raise ValueError("an 'unverified' verdict must not carry evidence — it asserts nothing")
 
-        if (self.verdict == "confirmed") != (self.shortfall is None):
+        # A shortfall is only meaningful where the model has actually read
+        # something. `confirmed` has nothing to explain; `unverified` has
+        # nothing to explain it *with*.
+        #
+        # Requiring one on `unverified` was the original rule and it was wrong —
+        # a real completion failed on exactly it. The profile says nothing, so
+        # choosing between `wording`, `evidence` and `capability` means guessing
+        # why it is silent: no skill, different words, or simply not written
+        # down. Nothing in the profile answers that, and demanding an answer
+        # reintroduces the invented absence this taxonomy exists to prevent.
+        needs_shortfall = self.verdict in {"partial", "transferable", "gap"}
+        if needs_shortfall and self.shortfall is None:
+            raise ValueError(f"a {self.verdict!r} verdict must say what kind of shortfall it is")
+        if not needs_shortfall and self.shortfall is not None:
             raise ValueError(
-                "shortfall must be set on every verdict except 'confirmed', and only then"
+                f"a {self.verdict!r} verdict carries no shortfall — there is nothing to classify"
             )
         return self
 

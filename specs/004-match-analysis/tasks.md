@@ -134,6 +134,32 @@ the current `job_description` semantics would be wrong in a way no later task co
       `CRITERIA_VERSION = "v1-weighted"`, the weights, the band thresholds and the must-have cap.
       One module, so a v2 is a new module rather than an edit to history.
 
+### Found while running T049 — three defects the suite could not see
+
+All three were invisible to a green test run, and all three now have tests.
+
+1. **`run_analysis` returned immediately on every real call.** The guard read
+   `analysis.status is not MatchStatus.PENDING`. `status` is a `String(16)` column, so a row
+   loaded in the background task's own session is the plain string `'pending'` and the identity
+   comparison never matched. Every analysis sat `pending` forever — nothing raised, nothing
+   logged. Tests missed it because they pass the session that created the row, whose identity map
+   still holds the enum member. The regression test uses a second session.
+2. **Triggering a run 500'd on `MissingGreenlet`.** `_analysis_out` read
+   `analysis.requirements` on a freshly added object, which is a lazy load, and async SQLAlchemy
+   cannot do IO there. The existing test accepted `{202, 409}` and always got 409, so the
+   fresh-create branch was never exercised. The collection is now initialised at construction.
+3. **The shortfall rule was wrong, and the model was right.** A real completion failed validation
+   on four `unverified` requirements with no shortfall. Demanding one asks the model to guess
+   *why* a profile is silent — no skill, different words, or never written down — which is the
+   invented absence the taxonomy exists to prevent, in the field added to make shortfalls
+   actionable. Corrected in the schema, the prompt, and migration 0008.
+
+**And one measurement that misses its target.** $0.034470 for a **12**-requirement posting,
+against SC-004's $0.03. Output was 2,707 tokens — 78% of the cost, inside R8's predicted 57–86%
+band but far above its 1,500-token estimate. R8 assumed three verdicts and no `importance` or
+`shortfall` fields. A 38-requirement posting would be substantially worse. **T075 now has a real
+number and SC-004 is not currently met** — recorded rather than adjusted.
+
 ### Found while doing Phase 2
 
 Neither was in the plan; both are committed with the phase.
@@ -284,10 +310,18 @@ applications table with no further interaction.
       anything**: confirm `model_for_task("match_analysis")` differs from the Opus fallback.
       **Confirmed on the running stack**: `anthropic/claude-sonnet-5` against a fallback of
       `anthropic/claude-opus-5`.
-- [ ] T049 👁 **OBSERVE** [US1] Run quickstart steps 2 and 3 against the running stack. Confirm
+- [x] T049 👁 **OBSERVE** [US1] Run quickstart steps 2 and 3 against the running stack. Confirm
       the row reads `ready`, a band consistent with the score, `criteria_version = v1-weighted`,
       a real model, real token counts, a real cost and **`is_fixture = false`**. `is_fixture =
       true` means the fixture adapter answered and nothing was really scored.
+
+      **Run against a real posting on 2026-08-20. Result: `ready`, score 56, band `stretch`,
+      `v2-importance`, `claude-sonnet-5`, 3,700 in / 2,707 out, $0.034470, `is_fixture = false`.**
+      Grounding check returned **0** violations. Verdict spread was confirmed 4, unverified 4,
+      partial 3, transferable 1, gap 0 — no collapse to a binary (P5 holding).
+
+      It found **three defects**, none of which the suite could see. See *Found while running
+      T049* below.
 
 **Checkpoint**: a band appears against a job without asking. US1 is shippable here.
 

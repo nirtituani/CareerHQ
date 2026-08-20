@@ -224,9 +224,12 @@ class MatchRequirement(Base):
             "(verdict = 'unverified') = (evidence IS NULL)",
             name="ck_match_requirement_grounded",
         ),
-        # A shortfall is meaningless on something the profile confirms.
+        # A shortfall is only meaningful where the model read something.
+        # `confirmed` has nothing to explain; `unverified` has nothing to
+        # explain it *with* — classifying why a profile is silent would be
+        # guessing, which is the invented absence this taxonomy prevents.
         CheckConstraint(
-            "(verdict = 'confirmed') = (shortfall IS NULL)",
+            "(verdict IN ('confirmed', 'unverified')) = (shortfall IS NULL)",
             name="ck_match_requirement_shortfall",
         ),
         CheckConstraint(

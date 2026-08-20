@@ -90,9 +90,11 @@ Rules, in order of importance:
 5. `transferable` is not `confirmed`. Do not present adjacent experience as
    direct experience.
 6. Copy each requirement as the posting worded it. Do not paraphrase or merge.
-7. Every verdict except `confirmed` states a `shortfall`: `wording` (the profile
-   has it but words it differently), `evidence` (plausible but unproven), or
-   `capability` (genuinely not there).
+7. `partial`, `transferable` and `gap` state a `shortfall`: `wording` (the
+   profile has it but words it differently), `evidence` (plausible but
+   unproven), or `capability` (genuinely not there). `confirmed` and
+   `unverified` carry NO shortfall — the first has nothing to explain, and the
+   second has nothing to explain it with. Do not guess why a profile is silent.
 8. Rate each requirement's `importance` from 0 to 100 — how much it really
    matters to this recruiter for this role. **Do not read it off the heading.**
    A "must have" list is often a wishlist and a "nice to have" is sometimes the
@@ -245,6 +247,13 @@ async def create_pending_analysis(
         application_id=application.id,
         status=MatchStatus.PENDING,
         criteria_version=CRITERIA_VERSION,
+        # Initialised, not left to be fetched. A pending analysis has no
+        # requirements by definition, and on a freshly added object the
+        # relationship is unloaded — so reading it would attempt a lazy load,
+        # which async SQLAlchemy cannot do outside an awaited context. Assigning
+        # here marks the collection loaded, so serialising the row for the 202
+        # response does no IO.
+        requirements=[],
     )
     session.add(analysis)
     await session.flush()
@@ -261,7 +270,16 @@ async def run_analysis(
     exists to prevent.
     """
     analysis = await session.get(MatchAnalysis, analysis_id)
-    if analysis is None or analysis.status is not MatchStatus.PENDING:
+    # `==`, never `is`. `status` is a `String(16)` column, so a row loaded in a
+    # fresh session — which is exactly what the background task does — returns
+    # the plain string `'pending'`, and `is` matches the enum member only.
+    #
+    # This was a real total failure, not a hypothetical: the guard read `is not
+    # MatchStatus.PENDING`, which is always true for a string, so every real
+    # analysis returned here and sat `pending` forever. Nothing raised, nothing
+    # logged, and the suite stayed green because every test passed the session
+    # that created the row, whose identity map still held the enum member.
+    if analysis is None or analysis.status != MatchStatus.PENDING:
         # Completed after its application was deleted, or already finished.
         return
 

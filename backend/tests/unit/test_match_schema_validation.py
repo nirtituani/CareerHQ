@@ -61,7 +61,7 @@ def test_unverified_must_not_carry_evidence() -> None:
     """
     with pytest.raises(ValidationError, match="evidence"):
         JudgedRequirement.model_validate(
-            _requirement(verdict="unverified", shortfall="evidence", evidence="Something.")
+            _requirement(verdict="unverified", shortfall=None, evidence="Something.")
         )
 
 
@@ -73,7 +73,7 @@ def test_unverified_is_valid_with_no_evidence() -> None:
     negative claim the taxonomy exists to prevent.
     """
     requirement = JudgedRequirement.model_validate(
-        _requirement(verdict="unverified", shortfall="evidence", evidence=None)
+        _requirement(verdict="unverified", shortfall=None, evidence=None)
     )
 
     assert requirement.evidence is None
@@ -96,20 +96,46 @@ def test_a_confirmed_requirement_has_no_shortfall() -> None:
         JudgedRequirement.model_validate(_requirement(verdict="confirmed", shortfall="wording"))
 
 
-@pytest.mark.parametrize("verdict", ["partial", "transferable", "gap", "unverified"])
-def test_an_unmet_requirement_states_which_kind_of_shortfall(verdict: str) -> None:
+@pytest.mark.parametrize("verdict", ["partial", "transferable", "gap"])
+def test_an_evidenced_shortfall_states_which_kind_it_is(verdict: str) -> None:
     """FR-011c. Rephrase, prove, or acknowledge — the action differs.
 
     A list of unmet requirements that does not say which is a list of problems
-    with no next step.
+    with no next step. These three are all *evidenced*, so the model has read
+    something and can say what kind of shortfall it saw.
     """
     with pytest.raises(ValidationError, match="shortfall"):
         JudgedRequirement.model_validate(
-            _requirement(
-                verdict=verdict,
-                shortfall=None,
-                evidence=None if verdict == "unverified" else "Six years, not ten.",
-            )
+            _requirement(verdict=verdict, shortfall=None, evidence="Six years, not ten.")
+        )
+
+
+def test_unverified_carries_no_shortfall_because_it_cannot_know() -> None:
+    """The rule this originally got wrong, corrected against a real completion.
+
+    The first version demanded a shortfall on every verdict except `confirmed`.
+    A real Sonnet response failed validation on exactly this: four `unverified`
+    requirements with no shortfall.
+
+    **The model was right.** `unverified` means the profile says nothing, so
+    choosing between `wording`, `evidence` and `capability` is guessing *why* it
+    is silent — do you lack the skill, word it differently, or simply not have
+    written it down? Nothing in the profile answers that. Demanding an answer
+    reintroduces the invented absence the taxonomy exists to prevent, in the one
+    field added to make shortfalls actionable.
+
+    The action for `unverified` is the same in every case and needs no
+    classification: put it on your CV if you have it.
+    """
+    requirement = JudgedRequirement.model_validate(
+        _requirement(verdict="unverified", shortfall=None, evidence=None)
+    )
+
+    assert requirement.shortfall is None
+
+    with pytest.raises(ValidationError, match="shortfall"):
+        JudgedRequirement.model_validate(
+            _requirement(verdict="unverified", shortfall="capability", evidence=None)
         )
 
 
