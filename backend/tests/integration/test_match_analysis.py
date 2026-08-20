@@ -11,11 +11,12 @@ and the last produces a number that reads as entirely normal.
 
 from __future__ import annotations
 
+import pathlib
 import uuid
 from decimal import Decimal
 
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from careerhq.application.analyze_match import create_pending_analysis, run_analysis
@@ -33,6 +34,7 @@ from careerhq.domain.models import (
     MatchStatus,
     ProfessionalProfile,
     RequirementVerdict,
+    Skill,
     User,
     WorkExperience,
     normalize_status,
@@ -464,3 +466,141 @@ async def test_the_prompt_carries_the_whole_posting_and_the_whole_profile(
     assert "The whole posting, including scale and domain signals." in stub.prompt
     assert "Led the payments platform team for six years." in stub.prompt
     assert "Payments Co" in stub.prompt
+
+
+# ---------------------------------------------------------------------------
+# User Story 3 — a score that has gone stale
+# ---------------------------------------------------------------------------
+
+
+async def test_editing_a_profile_rescores_nothing(db_session: AsyncSession) -> None:
+    """FR-025. Staleness is surfaced, never acted on.
+
+    A typo fixed on a profile must not silently re-score a hundred jobs. That is
+    expensive, surprising, and takes the decision away from the person whose
+    money it is. The interface offers; it does not decide.
+    """
+    _, application = await _setup(db_session)
+    analysis = await create_pending_analysis(db_session, application)
+    assert analysis is not None
+    await run_analysis(db_session, analysis_id=analysis.id, completion=_Stub())
+
+    profile = await db_session.scalar(
+        select(ProfessionalProfile).where(ProfessionalProfile.user_id == application.user_id)
+    )
+    assert profile is not None
+    db_session.add(Skill(profile_id=profile.id, name="Kubernetes", source="USER_ADDED"))
+    await db_session.commit()
+
+    count = await db_session.scalar(
+        select(func.count())
+        .select_from(MatchAnalysis)
+        .where(MatchAnalysis.application_id == application.id)
+    )
+    assert count == 1
+
+
+async def test_a_failed_rerun_leaves_the_previous_score_standing(
+    db_session: AsyncSession,
+) -> None:
+    """FR-015, invariant I3. The difference between a re-run and a gamble.
+
+    The pointer only ever names a `ready` row, so a re-run that fails cannot
+    take the last good score down with it.
+    """
+    _, application = await _setup(db_session)
+    first = await create_pending_analysis(db_session, application)
+    assert first is not None
+    await run_analysis(db_session, analysis_id=first.id, completion=_Stub())
+    await db_session.refresh(application)
+    assert application.current_match_analysis_id == first.id
+
+    second = await create_pending_analysis(db_session, application)
+    assert second is not None
+    ungrounded = {
+        **_JUDGEMENT,
+        "requirements": [{**_JUDGEMENT["requirements"][0], "evidence": None}],
+    }
+    await run_analysis(db_session, analysis_id=second.id, completion=_Stub(ungrounded))
+    await db_session.refresh(application)
+    await db_session.refresh(second)
+
+    assert second.status == MatchStatus.FAILED
+    # Still the first, still readable, still the score the person was shown.
+    assert application.current_match_analysis_id == first.id
+
+
+async def test_a_successful_rerun_keeps_the_analysis_it_replaces(
+    db_session: AsyncSession,
+) -> None:
+    """FR-014, invariant I2. Calibration is measured over history.
+
+    Append-only is not tidiness: docs/07 §3.2 evaluates this capability on Match
+    Score calibration, and a history that overwrites itself has nothing to
+    calibrate against.
+    """
+    _, application = await _setup(db_session)
+    first = await create_pending_analysis(db_session, application)
+    assert first is not None
+    await run_analysis(db_session, analysis_id=first.id, completion=_Stub())
+
+    second = await create_pending_analysis(db_session, application)
+    assert second is not None
+    await run_analysis(db_session, analysis_id=second.id, completion=_Stub())
+    await db_session.refresh(application)
+
+    rows = list(
+        await db_session.scalars(
+            select(MatchAnalysis).where(MatchAnalysis.application_id == application.id)
+        )
+    )
+    assert len(rows) == 2
+    assert application.current_match_analysis_id == second.id
+    # The replaced one is still there, still `ready`, still explicable.
+    assert first.status == MatchStatus.READY
+    assert first.overall_score is not None
+
+
+def test_nothing_updates_a_finished_analysis_or_deletes_one() -> None:
+    """Invariant I2, asserted against the source tree rather than against memory.
+
+    An append-only table stays append-only only while nothing *can* write to it
+    another way. Slice 003 asserts the same property for status history, for the
+    same reason: nothing fails at runtime when this is broken. The system keeps
+    working and simply stops being the system that was designed.
+    """
+    src = pathlib.Path(__file__).resolve().parents[2] / "src" / "careerhq"
+
+    offenders: list[str] = []
+    for path in src.rglob("*.py"):
+        text = path.read_text()
+        for statement in ("delete(MatchAnalysis)", "delete(MatchRequirement)"):
+            if statement in text:
+                offenders.append(f"{path.name}: {statement}")
+
+    assert offenders == [], f"analyses are append-only; found {offenders}"
+
+
+async def test_a_stored_band_is_not_recomputed_when_thresholds_move(
+    db_session: AsyncSession,
+) -> None:
+    """Invariant I5a. Re-banding history rewrites what a person was told.
+
+    The band is a fact about that run under those criteria, which is why it is
+    stored beside the score rather than derived at render time. A v3 that moves
+    a threshold must not retroactively change what an older analysis said.
+    """
+    _, application = await _setup(db_session)
+    analysis = await create_pending_analysis(db_session, application)
+    assert analysis is not None
+    await run_analysis(db_session, analysis_id=analysis.id, completion=_Stub())
+    await db_session.refresh(analysis)
+
+    stored = analysis.band
+    assert stored is not None
+
+    # Reading it back through a fresh session performs no derivation.
+    async with db_session.begin_nested():
+        reloaded = await db_session.get(MatchAnalysis, analysis.id)
+        assert reloaded is not None
+        assert reloaded.band == stored

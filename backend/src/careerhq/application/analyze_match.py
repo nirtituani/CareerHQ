@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -58,6 +58,29 @@ from careerhq.domain.schemas.match import MatchJudgement
 logger = logging.getLogger(__name__)
 
 TASK = "match_analysis"
+
+#: After this, a `pending` analysis is treated as abandoned rather than slow.
+#:
+#: The background task is fire-and-forget, so a process restart mid-run
+#: leaves a row nothing will ever complete. R7 accepted that because "a
+#: re-run fixes it" -- and it did not: the in-flight guard answered 409, so
+#: the one action that recovers the job was the one action refused.
+#:
+#: A real completion takes about twelve seconds, so an hour is not a
+#: judgement about slowness. It is well past any possible success, which is
+#: what makes reaping safe rather than a race against a live run.
+STALE_PENDING_AFTER = timedelta(hours=1)
+
+
+def is_abandoned(analysis: MatchAnalysis, *, now: datetime | None = None) -> bool:
+    """Whether a `pending` row has outlived any completion that could finish it."""
+    if analysis.status != MatchStatus.PENDING:
+        return False
+    started = analysis.created_at
+    if started.tzinfo is None:
+        started = started.replace(tzinfo=UTC)
+    return (now or datetime.now(UTC)) - started > STALE_PENDING_AFTER
+
 
 #: Postings run 2,400-4,500 tokens and profiles about 760, so this is generous
 #: rather than tight. Truncation is at the **end** and is recorded: requirements
@@ -385,4 +408,11 @@ async def _fail(session: AsyncSession, analysis: MatchAnalysis, reason: str) -> 
     await session.flush()
 
 
-__all__ = ["MAX_POSTING_CHARS", "TASK", "create_pending_analysis", "run_analysis"]
+__all__ = [
+    "MAX_POSTING_CHARS",
+    "STALE_PENDING_AFTER",
+    "TASK",
+    "create_pending_analysis",
+    "is_abandoned",
+    "run_analysis",
+]
