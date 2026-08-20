@@ -6,7 +6,7 @@ import { AddApplication } from "@/components/applications/add-application";
 import { ApplicationsView } from "@/components/applications/applications-view";
 import { DetailTabs } from "@/components/applications/detail-tabs";
 import { StatusPill } from "@/components/applications/status-pill";
-import type { Application, NormalizedStatus } from "@/lib/api";
+import type { Application, MatchResult, NormalizedStatus } from "@/lib/api";
 
 /**
  * The three claims in docs/09 that the renderer can quietly break.
@@ -18,6 +18,9 @@ import type { Application, NormalizedStatus } from "@/lib/api";
  * user's own label survives, that the tiles actually filter, and that an
  * unbuilt tab reads as unbuilt rather than as broken.
  */
+
+/** No analysis, which is every record's state until one is run. */
+const NO_MATCH: MatchResult = { state: "nothing_to_score", analysis: null, stale: false };
 
 function application(overrides: Partial<Application> = {}): Application {
   return {
@@ -129,7 +132,7 @@ describe("application detail tabs", () => {
   it("marks unbuilt capabilities in the tab itself", async () => {
     // docs/09 §6.3, T072. Without the marker the user clicks Company to
     // discover it is not built, then clicks Interview to discover the same.
-    render(<DetailTabs application={application()} />);
+    render(<DetailTabs application={application()} match={NO_MATCH} />);
 
     for (const label of ["Company", "Interview", "Versions"]) {
       const tab = screen.getByRole("tab", { name: new RegExp(label) });
@@ -146,7 +149,9 @@ describe("application detail tabs", () => {
     // linking out instead of showing stored text — a posting may have expired,
     // and slice 004 cannot tailor against a URL.
     const description = "Responsibilities:\n- Design and operate services\n- Mentor engineers";
-    render(<DetailTabs application={application({ job_description: description })} />);
+    render(
+      <DetailTabs application={application({ job_description: description })} match={NO_MATCH} />,
+    );
 
     expect(screen.getByText(/Mentor engineers/)).toBeInTheDocument();
   });
@@ -154,7 +159,7 @@ describe("application detail tabs", () => {
   it("reads an unbuilt panel as unfinished, never as failed", async () => {
     // §5's three empty states. The first must never look like the third: a
     // panel that is simply not built should not alarm anyone.
-    const { container } = render(<DetailTabs application={application()} />);
+    const { container } = render(<DetailTabs application={application()} match={NO_MATCH} />);
 
     await userEvent.click(screen.getByRole("tab", { name: /Company/ }));
 
@@ -511,6 +516,7 @@ describe("requirements rendering", () => {
         application={application({
           job_description: "6+ years of experience\nProven Python developer\nExperience with RAG",
         })}
+        match={NO_MATCH}
       />,
     );
 
@@ -526,6 +532,7 @@ describe("requirements rendering", () => {
     render(
       <DetailTabs
         application={application({ job_description: "- 6+ years\n• Python\n* PostgreSQL" })}
+        match={NO_MATCH}
       />,
     );
 
@@ -541,6 +548,7 @@ describe("requirements rendering", () => {
         application={application({
           job_description: "Company Overview:\n\nWe are a company that does things.",
         })}
+        match={NO_MATCH}
       />,
     );
 

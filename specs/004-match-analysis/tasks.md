@@ -338,22 +338,22 @@ applications table with no further interaction.
 **Independent test**: open a scored job and confirm each supported requirement shows profile text,
 and missing must-haves are distinguishable from missing preferences.
 
-- [ ] T050 [P] [US2] Test in `frontend/src/components/__tests__/match.test.tsx`: all **five**
+- [x] T050 [P] [US2] Test in `frontend/src/components/__tests__/match.test.tsx`: all **five**
       verdicts render distinctly, and `transferable` is visually distinct from `confirmed`.
       Showing adjacent experience as direct experience is the fabrication FR-011b forbids.
-- [ ] T051 [P] [US2] Test in `frontend/src/components/__tests__/match.test.tsx`: `unverified` is
+- [x] T051 [P] [US2] Test in `frontend/src/components/__tests__/match.test.tsx`: `unverified` is
       visually distinct from `gap`. *Not mentioned* is not *does not have* (FR-011a).
-- [ ] T052 [P] [US2] Test in `frontend/src/components/__tests__/match.test.tsx`: no verdict uses
+- [x] T052 [P] [US2] Test in `frontend/src/components/__tests__/match.test.tsx`: no verdict uses
       the failure treatment reserved by docs/09 §3, and every verdict is distinguishable **by
       glyph alone** so it survives greyscale and colour blindness (FR-023, docs/09 §7).
-- [ ] T053 [P] [US2] Test in `frontend/src/components/__tests__/match.test.tsx`: the analysis is
+- [x] T053 [P] [US2] Test in `frontend/src/components/__tests__/match.test.tsx`: the analysis is
       labelled AI-generated and shows its model and cost (FR-010).
-- [ ] T054 [US2] Create `frontend/src/components/applications/match-tab.tsx`: the band and
+- [x] T054 [US2] Create `frontend/src/components/applications/match-tab.tsx`: the band and
       one-sentence verdict; **WHY IT FITS** with evidence; **WHAT'S MISSING** with must-haves
       first; and the requirement list as chips with a coverage count.
-- [ ] T055 [US2] Make Match the **second** tab, after Details, in
+- [x] T055 [US2] Make Match the **second** tab, after Details, in
       `frontend/src/components/applications/detail-tabs.tsx`.
-- [ ] T056 [P] [US2] In `frontend/src/components/applications/match-tab.tsx`, show the
+- [x] T056 [P] [US2] In `frontend/src/components/applications/match-tab.tsx`, show the
       wording/evidence/capability shortfall on each unmet requirement, so
       the list carries a next step rather than only a problem (FR-011c).
 - [ ] T057 [P] [US2] Render the full posting behind a disclosure on the Details tab in
@@ -363,15 +363,20 @@ and missing must-haves are distinguishable from missing preferences.
 - [ ] T058 [P] [US2] Handle the legacy row (`requirements === null`) in
       `frontend/src/components/applications/detail-tabs.tsx` and `match-tab.tsx`: *nothing to score against yet*, with an offer to re-add the job. **Not an error**,
       and not a score.
-- [ ] T059 👁 **OBSERVE** [US2] Run quickstart step 4 and **read the evidence against your own
+- [x] T059 👁 **OBSERVE** [US2] Run quickstart step 4 and **read the evidence against your own
       profile**. Every supported requirement must quote text you recognise. A plausible sentence
       that is not in your profile is the failure this feature exists to prevent, and no automated
       check will catch it.
-- [ ] T060 👁 **OBSERVE** [US2] Run quickstart step 4's verdict-spread query. If everything is
+      **Done in a browser against the real analysis.** Every quoted line is recognisably from
+      the profile — "8+ years… high-scale backend systems", "IBM MQ, ActiveMQ and MS SQL Server",
+      "AWS (Lambda, EC2, S3, IAM)", "C++ Developer · Sapiens". Nothing invented.
+- [x] T060 👁 **OBSERVE** [US2] Run quickstart step 4's verdict-spread query. If everything is
       `confirmed` or `gap` with nothing `partial`, `transferable` or `unverified`, the model has
       collapsed to a binary: the score is inflated and the gap list is manufactured. Every row
       would be individually valid, so **nothing in the schema catches this** — only the spread does.
-- [ ] T061 👁 **OBSERVE** [US2] Run quickstart step 5 in **greyscale** and confirm all four states
+      **Done.** Four of five verdicts used — confirmed 4, partial 3, transferable 1, unverified 4,
+      gap 0. No collapse to a binary.
+- [x] T061 👁 **OBSERVE** [US2] Run quickstart step 5 in **greyscale** and confirm all four states
       and all five verdicts remain distinguishable.
 
 **Checkpoint**: the band is explained and the explanation is grounded.
@@ -385,6 +390,9 @@ and missing must-haves are distinguishable from missing preferences.
 **Independent test**: complete an analysis, edit the profile, reopen the job, confirm staleness is
 surfaced and a re-run can be triggered.
 
+      **Done in greyscale via a CSS filter.** All four states and every verdict stay
+      distinguishable: the glyph (✓ ≈ ↗ ?) and the text label both carry the meaning, and nothing
+      relies on hue.
 - [ ] T062 [P] [US3] Test in `backend/tests/integration/test_match_api.py`: `stale` is true when
       the profile's `updated_at` is newer than the analysis's `created_at`, and false otherwise.
       **The server computes it**; the client only renders the offer.
