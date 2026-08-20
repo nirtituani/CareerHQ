@@ -534,10 +534,14 @@ Both paths tested, both watched failing first.
       resolves `anthropic/claude-sonnet-5` against a fallback of `anthropic/claude-opus-5`, with no
       `LLM_MODEL_*` variable set. The task's premise was that the default lived in the environment;
       it does not, so setting it would be belt-and-braces rather than the protection.
-- [ ] T086 👁 **OBSERVE** Run quickstart's deployed section: score a real job on the deployed
+- [x] T086 👁 **OBSERVE** Run quickstart's deployed section: score a real job on the deployed
       system and confirm a real model, a real cost and `is_fixture = false`. `ai_provider: ok` is a
       construction check — a present-but-wrong key still reports healthy, so only this proves it.
-- [ ] T087 👁 **OBSERVE** Confirm the deployed database holds at least one `ready` analysis with
+      **Done on the deployed system, 2026-08-20.** A real job scored: `58`, band `stretch`,
+      `criteria_version = v3-earned`, `claude-sonnet-5`, **`is_fixture = false`**, cost `$0.039222`.
+      The construction check was not evidence and this is: a present-but-wrong key would have
+      passed readiness and failed here.
+- [x] T087 👁 **OBSERVE** Confirm the deployed database holds at least one `ready` analysis with
       grounded requirement rows: `SELECT count(*) FROM match_requirements WHERE (verdict =
       'unverified') <> (evidence IS NULL);` must return **0**.
 
@@ -581,3 +585,7 @@ time, but neither is required for the capability to be real.
 **Do not start Phase 3 before Phase 2 is complete.** The R1 correction changes what
 `job_description` means; scoring built on the old meaning would be wrong in a way that produces
 entirely normal-looking output.
+
+      **Returns 0.** Deployed database holds 1 application, 11 requirement rows, and **zero**
+      rows where `(verdict = 'unverified') <> (evidence IS NULL)` — AI-008 holding in production,
+      not just in the suite.

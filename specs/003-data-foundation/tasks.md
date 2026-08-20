@@ -509,9 +509,14 @@ derived, and re-running creates nothing.
       bucket and that `imported_resumes` recorded model, tokens and cost with `is_fixture = false`.
       **Failure looks like**: `is_fixture = true`, meaning the deployment is serving canned content
       and every extraction so far has been fictional
-- [ ] T089 👁 **OBSERVE** Confirm the deployed system holds **both** of slice 004's inputs — a
+- [x] T089 👁 **OBSERVE** Confirm the deployed system holds **both** of slice 004's inputs — a
       populated profile **and** an application carrying real job description text (SC-010). This is
       the slice's own definition of done, and the profile half alone does not meet it
+      **Done 2026-08-20.** The deployed system now holds both of slice 004's inputs: the profile
+      (imported in slice 003) and an application with a captured posting. Open since the slice
+      began, because the profile half alone never counted — and it was the same single action that
+      closed slice 004's T086 and T087.
+
 - [x] T090 👁 **OBSERVE** Run T063's `information_schema` query against the **deployed** database.
       A constraint that holds locally and not in production is not a constraint
 
