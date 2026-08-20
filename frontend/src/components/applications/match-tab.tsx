@@ -163,77 +163,73 @@ function Section({
   );
 }
 
-/**
- * What each dimension is called on screen, and what it means.
- *
- * Deliberately not the names from the reference this borrows its shape
- * from: those measure a *document* (impact, brevity, style), while these
- * measure a *fit*. The sub-labels matter more than the names — nobody knows
- * what "adjacent" means until they are told.
- */
-const DIMENSION: { key: keyof MatchAnalysis["dimensions"]; name: string; means: string }[] = [
-  { key: "direct", name: "Direct experience", means: "Same work, same domain" },
-  { key: "transferable", name: "Transferable", means: "Same skill, different context" },
-  { key: "adjacent", name: "Adjacent", means: "Secondary or related work" },
-  { key: "impact", name: "Impact fit", means: "Outcomes this role values" },
+/** The order a person reads them in: strongest evidence first. */
+const GROUPS: { verdict: Verdict; label: string }[] = [
+  { verdict: "confirmed", label: "Directly on your CV" },
+  { verdict: "transferable", label: "Related experience" },
+  { verdict: "partial", label: "Partly shown" },
+  { verdict: "gap", label: "Below what they ask" },
+  { verdict: "unverified", label: "Not on your CV" },
 ];
 
 /**
- * The score, shown as the four judgements it is made of.
+ * Where the score came from — and it adds up.
  *
- * This is what earns the number. A bare "56%" implies a measurement nobody
- * took — the pseudo-scientific fit percentage one of the rubric sources warns
- * against. The same 56 beside its parts and their weights is arithmetic a
- * person can check against stated judgements, and disagree with.
- *
- * No red-to-green gradient: docs/09 §3 reserves red for things that broke,
- * and warns specifically against someone later reaching for semantic red. A
- * low dimension is not an error.
+ * v2 showed four dimensions the model rated separately from the requirements,
+ * so the summary could disagree with the list beneath it, and on a real job it
+ * did: every requirement addressed, score 48. This is the same requirements,
+ * grouped, showing what each group earned of what it was worth. The total is
+ * the score, so the number is checkable rather than asserted (research.md R11).
  */
 function Breakdown({ analysis }: { analysis: MatchAnalysis }) {
-  const rated = DIMENSION.filter((d) => analysis.dimensions[d.key] !== null);
-  // An analysis scored before the parts were kept has a correct total that
-  // cannot be explained. Inventing parts that sum to it would fabricate the
-  // explanation, so it simply shows no breakdown.
-  if (rated.length === 0) return null;
+  const total = analysis.requirements.reduce((sum, r) => sum + r.importance, 0);
+  if (total === 0) return null;
+
+  const rows = GROUPS.map(({ verdict, label }) => {
+    const group = analysis.requirements.filter((r) => r.verdict === verdict);
+    const worth = group.reduce((sum, r) => sum + r.importance, 0);
+    return { label, count: group.length, worth, earned: worth * (analysis.credit[verdict] ?? 0) };
+  }).filter((row) => row.count > 0);
 
   return (
     <dl className="mt-5 space-y-2" data-testid="breakdown">
-      {rated.map(({ key, name, means }) => {
-        const value = analysis.dimensions[key] ?? 0;
-        const weight = Math.round((analysis.weights[key] ?? 0) * 100);
-        return (
-          <div key={key} className="flex items-baseline gap-3 text-sm">
-            <dt className="w-40 shrink-0">
-              {name}
-              <span className="ml-1.5 text-xs" style={{ color: "var(--faint)" }}>
-                {weight}%
-              </span>
-            </dt>
-            <dd className="flex min-w-0 flex-1 items-center gap-3">
+      {rows.map(({ label, count, worth, earned }) => (
+        <div key={label} className="flex items-baseline gap-3 text-sm">
+          <dt className="w-44 shrink-0">
+            {label}
+            <span className="ml-1.5 text-xs" style={{ color: "var(--faint)" }}>
+              {count}
+            </span>
+          </dt>
+          <dd className="flex min-w-0 flex-1 items-center gap-3">
+            <span
+              aria-hidden
+              className="h-1 w-28 shrink-0 overflow-hidden rounded-full"
+              style={{ background: "var(--border)" }}
+            >
               <span
-                aria-hidden
-                className="h-1 w-28 shrink-0 overflow-hidden rounded-full"
-                style={{ background: "var(--border)" }}
-              >
-                <span
-                  className="block h-full rounded-full"
-                  style={{ width: `${value}%`, background: "var(--color-brand-500)" }}
-                />
-              </span>
-              <span
-                className="tabular w-8 shrink-0 text-xs"
-                style={{ fontFamily: "var(--font-mono)", color: "var(--muted)" }}
-              >
-                {value}
-              </span>
-              <span className="truncate text-xs" style={{ color: "var(--faint)" }}>
-                {means}
-              </span>
-            </dd>
-          </div>
-        );
-      })}
+                className="block h-full rounded-full"
+                style={{
+                  width: `${(worth / total) * 100}%`,
+                  background: "var(--color-brand-500)",
+                }}
+              />
+            </span>
+            <span
+              data-testid="earned"
+              data-earned={Math.round(earned)}
+              data-worth={worth}
+              className="tabular shrink-0 text-xs"
+              style={{ fontFamily: "var(--font-mono)", color: "var(--muted)" }}
+            >
+              {Math.round(earned)} of {worth}
+            </span>
+          </dd>
+        </div>
+      ))}
+      <p className="pt-1 text-xs" style={{ color: "var(--faint)" }}>
+        Weighted by how much each requirement matters to this role.
+      </p>
     </dl>
   );
 }

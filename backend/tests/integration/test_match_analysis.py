@@ -43,10 +43,6 @@ from careerhq.domain.models import (
 CLAIMS = {"sub": "google-analysis", "email": "analysis@example.com", "name": "Analysis Tester"}
 
 _JUDGEMENT = {
-    "direct": 88,
-    "transferable": 82,
-    "adjacent": 75,
-    "impact": 80,
     "verdict": "Strong backend fit; Kubernetes is unproven rather than absent.",
     "requirements": [
         {
@@ -169,8 +165,9 @@ async def test_a_successful_run_records_the_result_and_what_it_cost(
 
     assert stub.task == "match_analysis"
     assert analysis.status == MatchStatus.READY
-    # 88*.4 + 82*.3 + 75*.2 + 80*.1 = 82.8 -> 83
-    assert analysis.overall_score == 83
+    # (90*1.0 confirmed + 40*0.2 unverified) / 130 = 75 — earned from the
+    # requirements, so it is checkable against the two rows in the fixture.
+    assert analysis.overall_score == 75
     assert analysis.band == MatchBand.STRONG
     assert analysis.verdict is not None
     assert analysis.criteria_version == CRITERIA_VERSION
@@ -183,16 +180,19 @@ async def test_a_successful_run_records_the_result_and_what_it_cost(
     assert analysis.is_fixture is False
 
 
-async def test_the_four_dimensions_are_kept_not_just_their_total(
+async def test_the_score_is_earned_from_the_requirements_not_rated_separately(
     db_session: AsyncSession,
 ) -> None:
-    """The score is a weighted sum, and the parts are what explain it.
+    """v3. The dimension columns stay empty, and the total explains the rows.
 
-    They were computed, used, and thrown away — so the interface could show a
-    number with no way to say where it came from. That is precisely the
-    "pseudo-scientific fit percentage" one of the rubric sources warns against:
-    a bare total implies a measurement nobody can audit. Kept, the total becomes
-    arithmetic a person can check against stated judgements.
+    v2 stored four ratings and computed the score from them while the
+    per-requirement verdicts fed nothing but the band cap. They were two
+    independent judgements about the same thing, so a real job came back with
+    every requirement addressed and a score of 48 -- the summary arguing with
+    the detail rather than explaining it (research.md R11).
+
+    The columns remain on the table because v2 analyses still need to be
+    explicable; nothing new writes them.
     """
     _, application = await _setup(db_session)
     analysis = await create_pending_analysis(db_session, application)
@@ -201,13 +201,11 @@ async def test_the_four_dimensions_are_kept_not_just_their_total(
     await run_analysis(db_session, analysis_id=analysis.id, completion=_Stub())
     await db_session.refresh(analysis)
 
-    assert analysis.direct == 88
-    assert analysis.transferable == 82
-    assert analysis.adjacent == 75
-    assert analysis.impact == 80
+    assert analysis.direct is None
+    assert analysis.transferable is None
 
-    # And they still add up to what was stored.
-    assert analysis.overall_score == round(88 * 0.4 + 82 * 0.3 + 75 * 0.2 + 80 * 0.1)
+    # (90*1.0 + 40*0.2) / 130 = 75, from the two requirements in the fixture.
+    assert analysis.overall_score == 75
 
 
 async def test_the_pointer_advances_only_on_success(db_session: AsyncSession) -> None:
@@ -443,7 +441,7 @@ async def test_a_fresh_session_still_recognises_a_pending_analysis(
 
     await db_session.refresh(analysis)
     assert analysis.status == MatchStatus.READY
-    assert analysis.overall_score == 83
+    assert analysis.overall_score == 75
 
 
 async def test_the_prompt_carries_the_whole_posting_and_the_whole_profile(

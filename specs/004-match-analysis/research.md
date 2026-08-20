@@ -359,6 +359,73 @@ stopped firing, with every band still looking plausible. There is now a test tha
 
 ---
 
+## R11 — The score is earned from the requirements (`v3-earned`)
+
+Found by the author looking at a real analysis: **eight requirements, none missing, score 48.**
+A separate assessment of the same CV against the same posting put it at **84**.
+
+### The fault was the aggregation, not the judgement
+
+v2 asked the model for four abstract dimensions and computed the score from those. The
+per-requirement verdicts fed nothing but the band cap. They were **two independent judgements
+about the same thing, reconciled by nothing** — so the summary could disagree with the list
+beneath it, and did.
+
+Re-aggregating **v2's own verdicts, unchanged**, under `Σ(importance × credit) / Σ(importance)`:
+
+| | |
+|---|---:|
+| v2, four dimensions | **48** |
+| v3, same verdicts, earned from requirements | **84** |
+
+Nearly the entire gap was arithmetic. That is the measurement, and it is also why the number is
+now derived rather than asked for: a total that explains the rows cannot contradict them.
+
+### The credit table
+
+| verdict | credit | why |
+|---|---:|---|
+| `confirmed` | 1.00 | |
+| `transferable` | **0.80** | The calibration knob. 0.8 reproduces the independent assessment almost exactly on the job that exposed this |
+| `partial` | 0.60 | |
+| `gap` | 0.25 | A demonstrated near-miss — six years against ten — beats nothing |
+| `unverified` | 0.20 | Keeps v2's decision: a recruiter reads the same profile and draws the same conclusion from silence |
+
+### A second fault, in a line of prompt I wrote
+
+Rule 4 said *"Most real profiles are mostly `partial`, `transferable` and `unverified`."* Added to
+stop the model collapsing to a met/missing binary — a real failure — it does not tell the model to
+**judge**, it tells it to **distribute**. So it pushed verdicts down to comply and systematically
+under-scored anyone whose skills are real but whose domain differs. One bias over-corrected into
+its opposite.
+
+Replaced with three rules that judge instead of allocate, the important one being: **a domain
+qualifier does not downgrade a capability the profile plainly shows.** "Build AI workflows *for
+system architecture*" asks for building AI workflows; a profile showing exactly that is
+`confirmed`, whatever the domain.
+
+Re-run on the same job with the same posting: **5 confirmed where v2 found 2, and a score of 87.**
+
+### What was removed, and what was kept
+
+The four dimension columns stay on the table — v2 analyses have stored scores that must remain
+explicable — but nothing new writes them, and `overall_score(...)` survives only to read them
+back. The interface's breakdown is now the requirement list grouped by verdict, showing what each
+group earned of what it was worth, and it **sums to the score**.
+
+**A side effect worth noting: cost fell.** Dropping four ratings from the output took the same job
+from $0.0715 to **$0.039576**. Still over SC-004's $0.03, but the gap is now 32% rather than 138%.
+
+### Still open
+
+The reference assessment separates **fit** (89) from **fit as the CV shows it** (84). That
+distinction is derivable from data already collected — a `wording` shortfall is a presentation
+gap, a `capability` one is real — and the difference between the two is precisely what tailoring
+can recover. Deliberately **not** built yet: a second score derived from an unvalidated first one
+is two wrong numbers, and `wording` has never been checked against anything.
+
+---
+
 ## Deferred by design, with the mechanism that makes deferral safe
 
 | Question | State | Why it is safe to start without it |

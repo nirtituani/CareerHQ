@@ -37,10 +37,6 @@ ALICE = {"sub": "google-api-alice", "email": "api-alice@example.com", "name": "A
 BOB = {"sub": "google-api-bob", "email": "api-bob@example.com", "name": "Bob"}
 
 _JUDGEMENT: dict[str, Any] = {
-    "direct": 88,
-    "transferable": 82,
-    "adjacent": 75,
-    "impact": 80,
     "verdict": "Strong backend fit.",
     "requirements": [
         {
@@ -188,7 +184,7 @@ async def test_the_four_states_are_named_by_the_server(
     body = (await _as(client, alice).get(f"/api/applications/{created['id']}/match")).json()
     if body["state"] == "ready":
         assert body["analysis"]["band"] == "strong"
-        assert body["analysis"]["overall_score"] == 83
+        assert body["analysis"]["overall_score"] == 75
 
 
 async def test_triggering_a_run_returns_202_and_the_pending_analysis(
@@ -243,18 +239,13 @@ async def test_the_response_explains_the_score_and_the_cap(
         pytest.skip("analysis had not completed")
 
     analysis = body["analysis"]
-    assert analysis["dimensions"] == {
-        "direct": 88,
-        "transferable": 82,
-        "adjacent": 75,
-        "impact": 80,
-    }
-    assert analysis["weights"] == {
-        "direct": 0.4,
-        "transferable": 0.3,
-        "adjacent": 0.2,
-        "impact": 0.1,
-    }
+    # v3 earns the score from the requirements, so the breakdown *is* the
+    # requirement list. The response no longer carries dimension ratings, and
+    # `credit` states what each verdict is worth so the total can be checked.
+    assert analysis["credit"]["confirmed"] == 1.0
+    assert analysis["credit"]["transferable"] == 0.8
+    assert "dimensions" not in analysis
+
     # This fixture's only unmet requirement is below the cap threshold, so the
     # band follows the arithmetic and nothing is reported as capping it.
     assert analysis["capped_by"] is None
@@ -294,8 +285,11 @@ async def test_an_important_unmet_requirement_is_named_as_the_cap(
     if body["state"] != "ready":
         pytest.skip("analysis had not completed")
 
-    assert body["analysis"]["band"] == "stretch"
-    assert body["analysis"]["capped_by"]["text"] == "Kubernetes in production"
+    # One unverified requirement at importance 90 earns 0.2 of it, so the
+    # score is 20 -- already `low_probability`, which means the cap changes
+    # nothing and must therefore not be reported as having capped anything.
+    assert body["analysis"]["band"] == "low_probability"
+    assert body["analysis"]["capped_by"] is None
 
 
 async def test_another_users_analysis_is_404_not_403(
