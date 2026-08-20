@@ -238,6 +238,69 @@ function Breakdown({ analysis }: { analysis: MatchAnalysis }) {
   );
 }
 
+/** r=32, matching the `score-sweep` keyframe in globals.css. */
+const RADIUS = 32;
+const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
+
+/**
+ * The score as a ring, with the figure inside it.
+ *
+ * The one place a large figure belongs on this screen, so it is set in the
+ * serif (docs/09 §2). Brand teal at a single weight rather than a red-to-green
+ * sweep: §3 reserves red for things that broke, and a 54 is not a fault.
+ *
+ * **The finished offset is the element's own style; the keyframe supplies only
+ * the start.** The global `prefers-reduced-motion` rule collapses animations to
+ * 0.01ms, so the ring snaps to its true value. Had the base style been the
+ * empty circle with the animation drawing it in, reduced motion would have
+ * left every score reading zero — visible to nobody who tested with motion on.
+ */
+function ScoreRing({ score, band }: { score: number; band: string }) {
+  return (
+    <svg
+      width="84"
+      height="84"
+      viewBox="0 0 84 84"
+      role="img"
+      aria-label={`Match score ${score} out of 100 — ${band}`}
+      className="shrink-0"
+    >
+      <circle
+        cx="42"
+        cy="42"
+        r={RADIUS}
+        fill="none"
+        strokeWidth="4"
+        stroke="var(--border)"
+      />
+      <circle
+        data-testid="score-arc"
+        className="score-arc"
+        cx="42"
+        cy="42"
+        r={RADIUS}
+        fill="none"
+        strokeWidth="4"
+        strokeLinecap="round"
+        stroke="var(--color-brand-500)"
+        style={{
+          strokeDasharray: CIRCUMFERENCE,
+          strokeDashoffset: CIRCUMFERENCE * (1 - score / 100),
+        }}
+      />
+      <text
+        x="42"
+        y="42"
+        textAnchor="middle"
+        dominantBaseline="central"
+        style={{ fontFamily: "var(--font-display)", fontSize: "22px", fill: "var(--fg)" }}
+      >
+        {score}
+      </text>
+    </svg>
+  );
+}
+
 const SUPPORTED: Verdict[] = ["confirmed", "partial", "transferable"];
 
 export function MatchTab({
@@ -295,29 +358,41 @@ export function MatchTab({
 
   return (
     <div className="py-6">
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        {/* A large figure, so the serif — docs/09 §2. */}
-        <span
-          className="text-3xl"
-          style={{ fontFamily: "var(--font-display)", color: "var(--fg)" }}
-        >
-          {analysis.band ? bandLabel(analysis.band as Band) : "—"}
-        </span>
+      <div className="flex items-center gap-5">
         {analysis.overall_score !== null && (
-          <span
-            data-testid="score"
-            className="tabular text-sm"
-            style={{ fontFamily: "var(--font-mono)", color: "var(--muted)" }}
-          >
-            {analysis.overall_score}/100
-          </span>
+          <ScoreRing
+            score={analysis.overall_score}
+            band={analysis.band ? bandLabel(analysis.band as Band) : "unscored"}
+          />
         )}
-        <span data-testid="coverage" className="text-sm" style={{ color: "var(--muted)" }}>
-          <span className="tabular" style={{ fontFamily: "var(--font-mono)" }}>
-            {supported.length}/{analysis.requirements.length}
-          </span>{" "}
-          requirements shown on your profile
-        </span>
+
+        <div className="min-w-0">
+          {/* A large figure, so the serif — docs/09 §2. */}
+          <p
+            className="text-3xl leading-none"
+            style={{ fontFamily: "var(--font-display)", color: "var(--fg)" }}
+          >
+            {analysis.band ? bandLabel(analysis.band as Band) : "—"}
+          </p>
+          <p className="mt-1.5 text-sm" style={{ color: "var(--muted)" }}>
+            {analysis.overall_score !== null && (
+              <span
+                data-testid="score"
+                className="tabular"
+                style={{ fontFamily: "var(--font-mono)" }}
+              >
+                {analysis.overall_score}/100
+              </span>
+            )}
+            <span data-testid="coverage">
+              {analysis.overall_score !== null && " · "}
+              <span className="tabular" style={{ fontFamily: "var(--font-mono)" }}>
+                {supported.length}/{analysis.requirements.length}
+              </span>{" "}
+              requirements shown on your profile
+            </span>
+          </p>
+        </div>
       </div>
 
       {/* Without this the label and the number contradict each other: 56 sits
