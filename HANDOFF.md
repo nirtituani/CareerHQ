@@ -1,9 +1,12 @@
 # HANDOFF
 
-**Last updated:** 2026-08-20 · **Commit:** `a7c50ff` · **Branch:** `004-match-analysis`
+**Last updated:** 2026-08-20 · **Commit:** `5c8aeb2` · **Branch:** `main`, clean, pushed
 
-> **Nothing in slice 004 is pushed.** Remote `main` is still at `9e88039`, and the deployed
-> database has **no `match_analyses` table**. Everything below is local.
+> **Slice 004 is complete — 89 of 89 — and verified on the deployed system.**
+>
+> Four commits are **not yet live**: three Railway deploys have been stuck since 15:00 and a fourth
+> is queued behind them. All four are presentation-only, so the deployed site scores identically to
+> local (see §2).
 
 This file is the volatile half of the project's memory: what is true *right now* and what to do
 next. `CLAUDE.md` is the durable half — conventions, gotchas, and how the project works. When those
@@ -17,10 +20,9 @@ CareerHQ is an AI-powered career intelligence platform. A user imports a CV, tra
 and an agent tailors the resume to a specific job description — **with the user's approval on
 every change**.
 
-Built solo as a course project on a four-to-six-week budget. That constraint drives the slice
-ordering (`docs/05_Implementation_Plan.md` §2). Two things are graded requirements and are not
-optional: **deployment** (slice 002, done) and the **Reviewer / evaluation layer** (slice 005, not
-started).
+Built solo as a course project on a four-to-six-week budget. Two things are graded requirements and
+are not optional: **deployment** (slice 002, done) and the **Reviewer / evaluation layer**
+(slice 005, **not started — the largest thing outstanding**).
 
 The seven non-negotiable principles are in `.specify/memory/constitution.md`. Violations of II–IV
 are release blockers.
@@ -31,47 +33,65 @@ are release blockers.
 
 | Slice | Tasks | State |
 |---|---|---|
-| 001 — Platform Foundation | 69 / 69 | **Complete** |
-| 002 — Deployment | 52 / 52 | **Complete.** Live on Railway |
-| 003 — Data Foundation | 97 / 109 | US1 and US2 done. **US3 blocked on a JobTracker CSV** |
-| **004 — Match Analysis** | **84 / 89** | **All three user stories complete. 5 open, all deployment** |
-| 005 — Reviewer / evaluation | — | Not started. Graded requirement |
-| next — Resume Tailoring Agent | — | Not started. Was slice 004; see docs/05 §5.4 |
+| 001 — Platform Foundation | 69 / 69 | Complete |
+| 002 — Deployment | 52 / 52 | Complete |
+| 003 — Data Foundation | 98 / 109 | US1, US2 done. **US3 blocked on a JobTracker CSV** |
+| **004 — Match Analysis** | **89 / 89** | **Complete and verified in production** |
+| **005 — Reviewer / evaluation** | — | **Not started. Graded requirement** |
+| next — Resume Tailoring Agent | — | Not started. The flagship |
 
-**Measured 2026-08-20, not copied:** `285 backend tests passed, 81.02% coverage` (gate 80%),
-`99 frontend tests passed (8 files)`, ruff format 86 files, ruff check clean, mypy clean across 49
-source files, `next build` succeeds.
+**Measured 2026-08-20, not copied:** `287 backend tests passed, 81.06% coverage` (gate 80%),
+`109 frontend tests passed (8 files)`, ruff format + check clean, mypy clean across 49 source
+files, `next build` succeeds.
 
 ### Live system
 
-**https://frontend-production-02ac.up.railway.app** — Google sign-in works end to end.
+**https://frontend-production-02ac.up.railway.app**
 
-Deployed database, checked this session: **`users 1 | professional_profiles 1 | applications 0`**,
-and `match_analyses` **does not exist** — slice 004 has never been deployed.
+Deployed database, checked this session — **`users 1 | profiles 1 | applications 1 | analyses 1`,
+grounding violations `0`**.
+
+The deployed analysis reads `58 · stretch · v3-earned · claude-sonnet-5 · is_fixture=false ·
+$0.039222`. That closed T086, T087 and slice 003's long-open T089 in one action.
+
+**What is live is `cf27083`.** Four commits behind, all presentation:
+
+| Commit | Change |
+|---|---|
+| `401e339` | Counts (`5/7`) instead of points in the breakdown |
+| `e49a800` | The loading ring while an analysis runs |
+| `648535d` | Tab order — Versions before Company |
+| `5c8aeb2` | Documentation only |
+
+**Nothing functional is missing** — v3 scoring, the cap, and the grounding rule all shipped in
+`c942a38`, which is live. A deployed job scores exactly as it would locally.
+
+The stall looks like Railway rather than this repository: CI is green on every commit, the stuck
+frontend container **starts** (`Next.js ✓ Ready`), both services jammed at the same minute, and
+Railway's SSH key-verification service was returning *"temporary service issue"* at the same time.
+If it has not cleared, `railway redeploy --service frontend --from-source` pulls the newest commit
+and makes the stale queue irrelevant.
 
 ### What slice 004 built
 
 Score a recorded job against the approved profile. **One structured call — the third `complete()`
 call site.** No loop, no tools, no retrieval, no embeddings.
 
-- **Five verdicts**: `confirmed`, `partial`, `transferable`, `gap`, `unverified`. Every one except
+- **Five verdicts** — `confirmed`, `partial`, `transferable`, `gap`, `unverified`. All but
   `unverified` must quote the profile, **including `gap`**, which quotes the shortfall.
-  `unverified` is the only evidence-free verdict because it is the only one asserting nothing.
-- **`unverified` is weighed like a gap** — a recruiter reads the same profile the model does — but
-  never *claimed* like one, and only it is recoverable by editing the profile.
-- **Importance is judged per requirement**, 0–100, not read off the posting's heading. The band
-  caps at 70. On the reference posting the model rated "excellent communication in English" **30**
-  and "fast-paced startup environment" **15**, both listed under *Requirements*.
-- **`criteria_version = v2-importance`**, stored on every analysis, as is the band — re-banding
-  history would rewrite what a person was told.
-- **The interface** shows a score ring, the four weighted dimensions it is the sum of, and the
-  requirements split into what is missing (importance-ordered) and what fits (with evidence).
+- **`unverified` is weighed like a gap but never claimed like one.** A recruiter reads the same
+  profile the model does; only `unverified` is recoverable by editing the profile.
+- **Importance is judged per requirement**, 0–100; the band caps at 70.
+- **The score is earned from the requirements** — `Σ(importance × credit) / Σ(importance)` — so
+  the total explains the list rather than arguing with it. `criteria_version = v3-earned`.
+- **The interface** shows a score ring, the requirement counts by verdict, and the requirements
+  split into what is missing (importance-ordered) and what fits (with quoted evidence).
 
 ---
 
 ## 3. Files modified
 
-Slice 004 spans `84de85e..a7c50ff`. Regenerate the list with:
+Slice 004 spans `84de85e..5c8aeb2`. Regenerate with:
 
 ```bash
 git diff --name-status 84de85e~1..HEAD -- backend/src frontend/src
@@ -81,10 +101,10 @@ git diff --name-status 84de85e~1..HEAD -- backend/src frontend/src
 
 | File | Why |
 |---|---|
-| `backend/src/careerhq/application/analyze_match.py` | The use case, the prompt, and the abandoned-run rule |
-| `backend/src/careerhq/application/match_criteria.py` | `v2-importance` — weights, bands, the cap, and `cap_bit` |
-| `backend/src/careerhq/domain/schemas/match.py` | The grounding validator: which verdicts must quote the profile |
-| `frontend/src/components/applications/match-tab.tsx` | Everything the person actually reads |
+| `backend/src/careerhq/application/match_criteria.py` | `v3-earned` — the credit table, the cap, `score_from` |
+| `backend/src/careerhq/application/analyze_match.py` | The use case, the prompt, the abandoned-run rule |
+| `backend/src/careerhq/domain/schemas/match.py` | The grounding validator |
+| `frontend/src/components/applications/match-tab.tsx` | Everything a person actually reads |
 
 ### Backend
 
@@ -101,11 +121,11 @@ MIG  0006_match_analysis · 0007_requirement_importance
 ### Frontend
 
 ```
-NEW  components/applications/match-tab.tsx   components/applications/match-score.tsx
-MOD  components/applications/detail-tabs.tsx components/applications/add-application.tsx
-MOD  components/applications/applications-view.tsx  lib/api.ts
+NEW  applications/match-tab.tsx  applications/match-score.tsx
+MOD  applications/detail-tabs.tsx  applications/add-application.tsx
+MOD  applications/applications-view.tsx  lib/api.ts
 MOD  app/applications/[id]/page.tsx  app/globals.css
-NEW  components/__tests__/match.test.tsx  components/__tests__/tokens.test.ts
+NEW  __tests__/match.test.tsx  __tests__/tokens.test.ts
 ```
 
 ---
@@ -253,55 +273,84 @@ Docker or Railway. The two that cost the most time:
 
 ---
 
+### The score itself was wrong, and the arithmetic was why (v2 → v3)
+
+The single most expensive mistake in this slice, and it survived a green suite, a code review of
+my own design, and two rounds of interface polish.
+
+- **A score computed independently of the thing it summarises will disagree with it.** v2 asked the
+  model for four abstract dimensions and computed the score from those; the per-requirement
+  verdicts fed nothing but the band cap. A real job returned **eight requirements addressed and a
+  score of 48** while an independent assessment of the same CV and posting said 84. Re-aggregating
+  **v2's own verdicts, unchanged**, gave 84 — nearly the entire gap was arithmetic.
+- **Telling a model how to distribute its answers is not telling it to judge.** Prompt rule 4 said
+  *"Most real profiles are mostly `partial`, `transferable` and `unverified`."* Added to stop a
+  met/missing collapse — a real failure — it made the model push verdicts down to comply, and
+  systematically under-scored anyone whose skills are real but whose domain differs. One bias
+  over-corrected into its opposite.
+- **A domain qualifier is not a capability gap.** "Build AI workflows *for system architecture*"
+  asks for building AI workflows. Rewriting that rule took the same job from 2 `confirmed` to 5.
+
+### Interface mistakes worth not repeating
+
+- **A summary that flattens a distinction undoes every row that preserves it.** The coverage line
+  counted `confirmed`, `partial` and `transferable` together — "8/8 requirements shown on your
+  profile" for a profile with two direct matches. It read as a perfect match, contradicted the
+  score, and was the exact error FR-011b forbids, in the line most likely to be read.
+- **Showing your working is not the same as being useful.** The breakdown was built twice around
+  the scoring arithmetic — raw importance sums, then points rescaled to 100 that summed exactly to
+  the score. Both were correct. Both answered *how was this calculated*, which almost nobody asks.
+  Counts — `5/7` — answer *how many of these do I meet*, which is the question people arrive with.
+- **Two independent roundings will contradict each other.** Allocating "worth" and "earned" points
+  separately printed "78 of 77". Harmless arithmetic that reads as a typo, and a person invited to
+  check a total stops checking after the first thing that looks wrong. (Moot now — the arithmetic
+  display is gone, and the class of bug went with it.)
+
+
+---
+
 ## 5. Exact next steps
 
-**Five tasks remain in slice 004, and all five are deployment.** They are blocked on one decision
-that is the author's.
+### A — Slice 005, the Reviewer / evaluation layer · **unblocked, and graded**
 
-### A — Deploy slice 004 · **blocked on the author's go-ahead**
+The largest thing outstanding and the last non-optional requirement. Nothing depends on anything
+below. Start with `speckit-specify`; `docs/05_Implementation_Plan.md` §5.5 has the scope, and
+slice 004's grounding work is the natural input — every verdict already carries evidence to check.
 
-Nothing is pushed. Remote `main` is at `9e88039`; the branch is `004-match-analysis` at `a7c50ff`.
-
-```bash
-git push -u origin 004-match-analysis     # then merge to main, which Railway deploys
-```
-
-Railway runs `alembic upgrade head` pre-deploy, so migrations 0006–0009 apply on the way in. **Set
-`LLM_MODEL_MATCH_ANALYSIS=anthropic/claude-sonnet-5` on the backend service first** (T085) — the
-fallback is Opus at 2.5× the cost, silently.
-
-Then T086 and T087, which need **a real job on the deployed system** — the same thing slice 003's
-T089 has been waiting for. One job, added at the deployed URL, closes both:
+### B — Watch the deploy queue · **no action unless it is still stuck**
 
 ```bash
-railway ssh --service pgvector "PGHOST=localhost PGPORT=5432 psql -U postgres -d railway \
-  -c \"SELECT status, overall_score, band, model, is_fixture FROM match_analyses;\""
-# and the grounding check, which must return 0:
-#   SELECT count(*) FROM match_requirements WHERE (verdict='unverified') <> (evidence IS NULL);
+railway deployment list --service frontend
 ```
 
-### B — Slice 003 User Story 3 · **blocked on the author** · 11 tasks
+If the top entries still read `DEPLOYING`/`QUEUED`:
+`railway redeploy --service frontend --from-source`. Nothing is degraded meanwhile.
+
+### C — Slice 003 User Story 3 · **blocked on the author** · 11 tasks
 
 A JobTracker export (`GET /api/export`) saved to `backend/tests/fixtures/jobtracker_export.csv`.
 The mapping is written; this proves it against real data, and the messy cases are the point.
 
-### C — Decide what to do about SC-004 · **the author's call**
+### D — Decide what to do about SC-004 · **the author's call**
 
-Measured cost is **$0.0355 per job** against a $0.03 target — the criterion is marked *not met* in
-`spec.md` rather than quietly adjusted. `research.md` R8 lists three ways out and explains what
-each trades away. Doing nothing is a legitimate choice; leaving it unrecorded was not.
+Measured **$0.0355 and $0.0715** on two real jobs against a $0.03 target; `v3` brought a third to
+$0.0396 by dropping the dimension ratings. Marked *not met* in `spec.md` rather than adjusted.
+`research.md` R8 lists three ways out and what each trades away.
 
-### D — The Reviewer / evaluation layer (slice 005) · unblocked, not started
+### E — The fit-versus-CV split · designed, deliberately not built
 
-A graded requirement. Nothing about it depends on A, B or C.
+An independent assessment separated *fit* (89) from *fit as the CV shows it* (84). That is
+derivable from data already collected — a `wording` shortfall is a presentation gap, a `capability`
+one is real — and the difference is exactly what tailoring recovers. Held back because `wording`
+has never been validated, and it is the natural opening for the tailoring slice.
 
 ### Also worth doing when convenient
 
+- **Run `/security-review` on slice 004.** T068 covered cookies, headers and secrets only, and this
+  slice added a new user-facing surface, a new endpoint group and four migrations.
 - **Rotate the database password** and restart `pgvector` — see CLAUDE.md.
 - **Rotate the logo.dev token** hardcoded in public source at `ApplicationTable.jsx:4` in
   `nirtituani/job-tracker-web`.
-- **Run `/security-review` on the branch diff.** T068 covered cookies, headers and secrets only,
-  and slice 004 added a new user-facing surface.
 
 ---
 
@@ -309,10 +358,9 @@ A graded requirement. Nothing about it depends on A, B or C.
 
 - **Spec-Driven Development** via Spec-Kit: `specify → plan → tasks → analyze → implement →
   verify`. **Do not skip `analyze`.**
-- **Tests first**, and the failure message matters. A test that passes before implementation is a
-  broken test — and slice 004 is the case study: five defects shipped under a green suite, each
-  found by running the thing rather than testing it.
-- **Verify in Docker, and then in a browser.** Every display bug in this project was found by a
-  person looking at real data.
+- **Tests first**, and the failure message matters. Slice 004 is the case study: nine defects
+  shipped under a green suite, and every one was found by running the thing rather than testing it.
+- **Verify in Docker, then in a browser.** Every display bug in this project was found by a person
+  looking at real data — including a score that was simply wrong for a month of arithmetic.
 - **Update `tasks.md` as you go**, and amend a task's text when the implementation deviates.
 - **`/handoff` before `/clear`.** It does not run automatically.
