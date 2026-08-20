@@ -65,17 +65,22 @@ from careerhq.infrastructure.database import session_factory
 async def main():
     async with session_factory()() as s:
         for r in (await s.execute(text('''
-            SELECT status, overall_score, band, criteria_version, model,
-                   input_tokens, output_tokens, cost, is_fixture
+            SELECT status, overall_score, band, direct, transferable, adjacent, impact,
+                   criteria_version, model, input_tokens, output_tokens, cost, is_fixture
             FROM match_analyses ORDER BY created_at DESC LIMIT 1'''))).all():
             print(r)
 asyncio.run(main())
 "
 ```
 
-**Expected**: `ready`, a score in 0–100, a band consistent with it (75+ is `strong`),
-`criteria_version = v1-weighted`, `anthropic/claude-sonnet-5`, real token counts, a real cost, and
-**`is_fixture = false`**.
+**Expected**: `ready`, a score in 0–100, **the four dimensions it is the weighted sum of**
+(`direct*0.4 + transferable*0.3 + adjacent*0.2 + impact*0.1`, rounded — check it),
+`criteria_version = v2-importance`, `anthropic/claude-sonnet-5`, real token counts, a real cost,
+and **`is_fixture = false`**.
+
+The band is **not** simply the score bucketed: an unmet requirement the model rates 70 or above
+caps it. So a score inside `moderate`'s range showing `stretch` is correct, not a bug — and the
+Match tab names the requirement responsible.
 
 `is_fixture = true` here means the fixture adapter answered and nothing was really scored.
 
@@ -125,6 +130,36 @@ asyncio.run(main())
 **Expected**: a spread across several verdicts. If everything is `confirmed` or `gap` with nothing
 `partial`, `transferable` or `unverified`, the model has collapsed to a binary and P5 is not
 holding — the score is inflated and the gap list is manufactured.
+
+## 4b. Check the importance ratings against the posting
+
+```bash
+docker compose exec -T postgres psql -U careerhq -d careerhq -c "
+  SELECT importance, kind, verdict, left(text, 46) FROM match_requirements ORDER BY importance DESC;"
+```
+
+**Expected**: the requirements the role is actually about sit at 75–90, and boilerplate sits low.
+On the reference posting, *"excellent written and verbal communication in English"* rated **30** and
+*"prior work in a fast-paced startup environment"* rated **15** — both of which the posting itself
+listed under **Requirements**.
+
+If ten requirements come back above 80, the model has taken the heading at face value instead of
+judging, and the cap will fire on nearly every job — which makes the band useless in the opposite
+direction from too generous.
+
+## 4c. Confirm an abandoned run does not wedge the job
+
+```bash
+docker compose exec -T postgres psql -U careerhq -d careerhq -c "
+  UPDATE match_analyses SET status='pending', created_at = now() - interval '2 hours'
+  WHERE id = (SELECT id FROM match_analyses ORDER BY created_at DESC LIMIT 1);"
+```
+
+Reload the Match tab, then trigger a re-run.
+
+**Expected**: the tab reads **failed**, not a spinner, and the re-run is **accepted**. A `pending`
+row older than an hour is reaped rather than honoured — before that, the in-flight guard answered
+409 and the only action that recovers the job was the one action refused.
 
 ## 5. Confirm the four states are distinguishable
 
