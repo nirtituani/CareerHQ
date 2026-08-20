@@ -163,6 +163,7 @@ export function DetailTabs({
           analysis={match.analysis}
           stale={match.stale}
           applicationId={application.id}
+          canScore={Boolean(application.requirements?.length)}
         />
       </Tabs.Content>
 

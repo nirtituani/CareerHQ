@@ -300,6 +300,26 @@ describe("the match tab", () => {
     expect(footer).toMatch(/0\.0344/);
   });
 
+  it("offers to score a job that has requirements but has never been scored", async () => {
+    // A record repaired by fetching its posting has requirements and no
+    // analysis. Scoring only fires on create, so without this the job is stuck
+    // reading "nothing to score against" forever with no way out — the same
+    // shape of dead end as the abandoned `pending` row.
+    render(
+      <MatchTab state="nothing_to_score" analysis={null} stale={false} applicationId="a1" canScore />,
+    );
+
+    expect(screen.getByRole("button", { name: /Score this job/i })).toBeInTheDocument();
+  });
+
+  it("offers nothing when there is genuinely nothing to score against", () => {
+    // No posting, no requirements. Offering a button here would promise a
+    // result nothing can produce.
+    render(<MatchTab state="nothing_to_score" analysis={null} stale={false} applicationId="a1" />);
+
+    expect(screen.queryByRole("button", { name: /Score this job/i })).toBeNull();
+  });
+
   it("reads nothing-to-score as ordinary, not as a failure", () => {
     render(<MatchTab state="nothing_to_score" analysis={null} stale={false} />);
 

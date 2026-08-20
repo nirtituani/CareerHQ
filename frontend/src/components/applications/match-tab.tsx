@@ -308,20 +308,45 @@ export function MatchTab({
   analysis,
   stale,
   applicationId,
+  canScore = false,
 }: {
   state: MatchState;
   analysis: MatchAnalysis | null;
   stale: boolean;
   applicationId?: string;
+  /** The job has requirements, so an analysis would have something to work
+   *  from — true of a record repaired by fetching its posting, which otherwise
+   *  reads "nothing to score against" forever because scoring fires on create. */
+  canScore?: boolean;
 }) {
   const [running, setRunning] = useState(false);
 
+  async function score() {
+    if (!applicationId) return;
+    setRunning(true);
+    await runMatch(applicationId).catch(() => undefined);
+    setRunning(false);
+  }
+
   if (state === "nothing_to_score" || analysis === null) {
     return (
-      <p className="py-8 text-sm" style={{ color: "var(--muted)" }}>
-        There is nothing to score against yet. Add the job posting and its requirements, and this
-        job will be scored against your profile.
-      </p>
+      <div className="py-8">
+        <p className="text-sm" style={{ color: "var(--muted)" }}>
+          {canScore
+            ? "This job has requirements but has not been scored yet."
+            : "There is nothing to score against yet. Add the job posting and its requirements, and this job will be scored against your profile."}
+        </p>
+        {canScore && applicationId && (
+          <button
+            type="button"
+            disabled={running}
+            onClick={score}
+            className="mt-2 text-sm underline underline-offset-4 disabled:opacity-50"
+          >
+            {running ? "Scoring…" : "Score this job"}
+          </button>
+        )}
+      </div>
     );
   }
 
@@ -422,11 +447,7 @@ export function MatchTab({
             <button
               type="button"
               disabled={running}
-              onClick={async () => {
-                setRunning(true);
-                await runMatch(applicationId).catch(() => undefined);
-                setRunning(false);
-              }}
+              onClick={score}
               className="underline underline-offset-4 disabled:opacity-50"
             >
               {running ? "Scoring…" : "Score it again"}
