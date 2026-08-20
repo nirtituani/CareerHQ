@@ -26,6 +26,15 @@ from careerhq.domain.models.application import (
 )
 from careerhq.domain.models.identity import ProfessionalProfile, User
 from careerhq.domain.models.imports import ExtractionItem, ImportedResume
+from careerhq.domain.models.match import (
+    MatchAnalysis,
+    MatchBand,
+    MatchRequirement,
+    MatchStatus,
+    RequirementKind,
+    RequirementVerdict,
+    Shortfall,
+)
 from careerhq.domain.models.profile import (
     Certification,
     ContactInformation,
@@ -56,12 +65,19 @@ __all__ = [
     "ImportedResume",
     "ItemDecision",
     "Language",
+    "MatchAnalysis",
+    "MatchBand",
+    "MatchRequirement",
+    "MatchStatus",
     "MilitaryService",
     "NormalizedStatus",
     "ProfessionalProfile",
     "ProfessionalTitle",
     "Project",
+    "RequirementKind",
+    "RequirementVerdict",
     "ResumeProfile",
+    "Shortfall",
     "Skill",
     "Source",
     "SummaryBlock",

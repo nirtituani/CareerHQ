@@ -35,6 +35,7 @@ from sqlalchemy import (
     func,
     text,
 )
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -199,6 +200,41 @@ class Application(Base):
     job_description: Mapped[str | None] = mapped_column(Text)
     job_url: Mapped[str | None] = mapped_column(String(2048))
     job_description_url: Mapped[str | None] = mapped_column(String(2048))
+
+    #: What the posting asks of the candidate, beside the posting rather than in
+    #: place of it (slice 004, research.md R1).
+    #:
+    #: **NULL and `{}` are different facts and must stay so.** `{}` means the
+    #: posting was read and stated no requirements. NULL means no posting was
+    #: ever captured — true of every row written before slice 004, whose
+    #: `job_description` holds a joined requirements list rather than an advert.
+    #: Those rows are never scored: the prompt would claim to read a whole
+    #: posting while receiving a requirements list, and the resulting number
+    #: would look entirely normal. This column is the only thing telling them
+    #: apart, which is why it is not backfilled with an empty array.
+    requirements: Mapped[list[str] | None] = mapped_column(ARRAY(Text))
+
+    #: The analysis to display. One join for the table rather than one query per
+    #: row, with history preserved behind it.
+    #:
+    #: **Advances only when an analysis reaches `ready`** (FR-015). On a re-run
+    #: it keeps pointing at the previous good row until the new one succeeds, so
+    #: the score does not blank out mid-run and a failed re-run leaves the last
+    #: good score standing rather than destroying it.
+    #: `use_alter` because this closes a cycle — an application points at its
+    #: current analysis and every analysis points back at its application — so
+    #: the constraint is added after both tables exist. It must be **named**:
+    #: an unnamed altered constraint cannot be dropped, which breaks
+    #: `drop_all` and therefore every test that needs a clean schema.
+    current_match_analysis_id: Mapped[uuid.UUID | None] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey(
+            "match_analyses.id",
+            ondelete="SET NULL",
+            use_alter=True,
+            name="fk_applications_current_match_analysis_id",
+        ),
+    )
 
     #: The user's own words, preserved verbatim.
     status: Mapped[str] = mapped_column(String(64), nullable=False)

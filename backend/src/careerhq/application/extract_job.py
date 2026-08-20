@@ -130,18 +130,28 @@ async def extract_job_from_text(text: str, *, completion: StructuredCompletion) 
     fields = result.value.model_dump()
     requirements = fields.pop("requirements", [])
 
-    # **Requirements only** — the user's decision, recorded here because it has
-    # a consequence worth seeing at the point of impact: slice 004 tailors
-    # against whatever is stored, so responsibilities ("led a team of six") are
-    # no longer available to match a CV bullet against, and the original posting
-    # may have expired by the time anyone wants it back.
+    # **Both halves, and the body is not discarded.** This reverses the earlier
+    # requirements-only decision; the reasoning is in
+    # `specs/004-match-analysis/research.md` R1 and R2, and is kept here because
+    # the consequence is visible at exactly this line.
     #
-    # Falls back to the full text when the model found no requirements, because
-    # an application with an empty description cannot be tailored against at all
-    # — worse than one carrying more than it needs.
+    # The earlier version joined `requirements` with newlines, stored that as
+    # `job_description`, and dropped `body`. It cost the signal that decides
+    # most matches: "operates services handling millions of requests per day"
+    # appears in no requirements section and is precisely what makes a
+    # production backend history relevant. Team size, domain, the stack
+    # mentioned in passing and how senior the work really is all went the same
+    # way — and the posting had usually expired by the time anyone wanted it
+    # back.
+    #
+    # The two fields serve different readers: `job_description` is what match
+    # analysis scores, `requirements` is what the person reads on the Details
+    # tab. Storing both costs about half a cent per job, because input is the
+    # cheap half of a completion.
     posting = JobPostingExtraction(
         **fields,
-        job_description="\n".join(requirements) if requirements else body,
+        job_description=body,
+        requirements=requirements,
     )
 
     logger.info(

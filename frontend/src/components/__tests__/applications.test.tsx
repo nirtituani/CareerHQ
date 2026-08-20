@@ -6,7 +6,7 @@ import { AddApplication } from "@/components/applications/add-application";
 import { ApplicationsView } from "@/components/applications/applications-view";
 import { DetailTabs } from "@/components/applications/detail-tabs";
 import { StatusPill } from "@/components/applications/status-pill";
-import type { Application, NormalizedStatus } from "@/lib/api";
+import type { Application, MatchResult, NormalizedStatus } from "@/lib/api";
 
 /**
  * The three claims in docs/09 that the renderer can quietly break.
@@ -19,6 +19,9 @@ import type { Application, NormalizedStatus } from "@/lib/api";
  * unbuilt tab reads as unbuilt rather than as broken.
  */
 
+/** No analysis, which is every record's state until one is run. */
+const NO_MATCH: MatchResult = { state: "nothing_to_score", analysis: null, stale: false };
+
 function application(overrides: Partial<Application> = {}): Application {
   return {
     id: crypto.randomUUID(),
@@ -26,6 +29,9 @@ function application(overrides: Partial<Application> = {}): Application {
     job_title: "Senior Backend Engineer",
     location: "Tel Aviv",
     job_description: "We are looking for a Senior Backend Engineer.",
+    // `null` is the legacy default deliberately: every application recorded
+    // before slice 004 has no captured posting (research.md R1).
+    requirements: null,
     job_url: "https://example.com/posting",
     job_description_url: null,
     status: "Applied",
@@ -126,7 +132,7 @@ describe("application detail tabs", () => {
   it("marks unbuilt capabilities in the tab itself", async () => {
     // docs/09 §6.3, T072. Without the marker the user clicks Company to
     // discover it is not built, then clicks Interview to discover the same.
-    render(<DetailTabs application={application()} />);
+    render(<DetailTabs application={application()} match={NO_MATCH} />);
 
     for (const label of ["Company", "Interview", "Versions"]) {
       const tab = screen.getByRole("tab", { name: new RegExp(label) });
@@ -143,7 +149,9 @@ describe("application detail tabs", () => {
     // linking out instead of showing stored text — a posting may have expired,
     // and slice 004 cannot tailor against a URL.
     const description = "Responsibilities:\n- Design and operate services\n- Mentor engineers";
-    render(<DetailTabs application={application({ job_description: description })} />);
+    render(
+      <DetailTabs application={application({ job_description: description })} match={NO_MATCH} />,
+    );
 
     expect(screen.getByText(/Mentor engineers/)).toBeInTheDocument();
   });
@@ -151,7 +159,7 @@ describe("application detail tabs", () => {
   it("reads an unbuilt panel as unfinished, never as failed", async () => {
     // §5's three empty states. The first must never look like the third: a
     // panel that is simply not built should not alarm anyone.
-    const { container } = render(<DetailTabs application={application()} />);
+    const { container } = render(<DetailTabs application={application()} match={NO_MATCH} />);
 
     await userEvent.click(screen.getByRole("tab", { name: /Company/ }));
 
@@ -259,7 +267,8 @@ describe("adding a job automatically", () => {
             job_title: "Senior Backend Engineer",
             location: "Tel Aviv, IL",
             salary_text: "USD 90,000-110,000 year",
-            job_description: "Build and operate services.",
+            job_description: "About Acme. We build and operate services at scale.",
+            requirements: ["5+ years of Python", "Experience with PostgreSQL"],
             company_domain: "acme.com",
           },
           provenance: "structured_data",
@@ -277,9 +286,21 @@ describe("adding a job automatically", () => {
     expect(screen.getByLabelText("Job Title *")).toHaveValue("Senior Backend Engineer");
     expect(screen.getByLabelText("Location")).toHaveValue("Tel Aviv, IL");
     expect(screen.getByLabelText("Company Website (for logo)")).toHaveValue("acme.com");
-    // The description is shown rather than hidden behind a disclosure: it is
-    // the field the person is being asked to approve.
-    expect(screen.getByLabelText("Requirements")).toHaveValue("Build and operate services.");
+    // The requirements are shown rather than hidden behind a disclosure: they
+    // are what the person is being asked to approve. **Amended in slice 004**:
+    // this box used to hold `job_description`, which since research.md R1 is
+    // the whole posting — so it filled with the entire advert under a label
+    // saying "Requirements".
+    expect(screen.getByLabelText("Requirements")).toHaveValue(
+      "5+ years of Python\nExperience with PostgreSQL",
+    );
+
+    // And the posting rides along, unedited and unlost — it is what match
+    // analysis scores.
+    expect(
+      screen.getByRole("dialog").querySelector<HTMLInputElement>('input[name="job_description"]')
+        ?.value,
+    ).toBe("About Acme. We build and operate services at scale.");
   });
 
   it("says where the fields came from, so they get the right trust", async () => {
@@ -431,6 +452,156 @@ describe("editing from the row", () => {
   });
 });
 
+describe("the Add form's Requirements field", () => {
+  /**
+   * T088. Slice 004 gave `job_description` back its plain meaning — the whole
+   * posting — and moved the extracted list to `requirements` (research.md R1).
+   *
+   * This form did not follow. Its one textarea is labelled **Requirements**,
+   * placeholder "One requirement per line…", and was bound to
+   * `job_description` — so opening it on an extracted job filled that box with
+   * the entire advert.
+   *
+   * Cosmetic is the least of it. The label invites trimming the box down to a
+   * list, and saving writes it straight back to `job_description` — silently
+   * restoring the requirements-only storage R1 reversed, after which every
+   * analysis scores against a requirements list while the prompt claims to be
+   * reading a whole posting. The number would look entirely normal.
+   */
+  const POSTING =
+    "About Cognita\n\nWe build the AI platform that underwrites commercial insurance.";
+  const REQUIREMENTS = ["5+ years building production backend services", "Strong Python"];
+
+  it("fills Requirements from requirements, not from the posting", () => {
+    render(
+      <AddApplication
+        open
+        onOpenChange={() => {}}
+        editing={application({ job_description: POSTING, requirements: REQUIREMENTS })}
+      />,
+    );
+
+    const field = screen.getByLabelText("Requirements") as HTMLTextAreaElement;
+
+    expect(field.value).toBe(REQUIREMENTS.join("\n"));
+    expect(field.value).not.toContain("underwrites commercial insurance");
+  });
+
+  it("keeps the posting through the form rather than dropping it", () => {
+    // The posting is what match analysis scores. A person who opens this form
+    // on an extracted job and saves must not silently discard it.
+    render(
+      <AddApplication
+        open
+        onOpenChange={() => {}}
+        editing={application({ job_description: POSTING, requirements: REQUIREMENTS })}
+      />,
+    );
+
+    const carried = screen
+      .getByRole("dialog")
+      .querySelector<HTMLInputElement>('input[name="job_description"]');
+
+    expect(carried).not.toBeNull();
+    expect(carried?.value).toBe(POSTING);
+  });
+});
+
+describe("the Details tab after job_description became the posting", () => {
+  /**
+   * T057/T058. R1 gave `job_description` back its plain meaning — the whole
+   * advert — and moved the extracted list to `requirements`. This panel did not
+   * follow: it rendered `job_description` under a heading reading
+   * "Job description - Requirements", so a real posting appeared as several
+   * hundred words of company blurb labelled as the requirements.
+   *
+   * The same mislabelling as the Add form, one screen over, and found the same
+   * way — by looking at it with real data in a browser.
+   */
+  const POSTING =
+    "About Cognita\n\nWe underwrite commercial insurance for carriers across EMEA.";
+  const REQUIREMENTS = ["5+ years building production backend services", "Strong Python"];
+
+  it("shows the requirements as the requirements", () => {
+    render(
+      <DetailTabs
+        application={application({ job_description: POSTING, requirements: REQUIREMENTS })}
+        match={NO_MATCH}
+      />,
+    );
+
+    const items = screen.getAllByRole("listitem").map((li) => li.textContent);
+    expect(items).toEqual(REQUIREMENTS.map((r) => `•${r}`));
+  });
+
+  it("keeps the posting reachable, but not masquerading as the requirements", () => {
+    render(
+      <DetailTabs
+        application={application({ job_description: POSTING, requirements: REQUIREMENTS })}
+        match={NO_MATCH}
+      />,
+    );
+
+    // Present — it is what match analysis scores and the posting may expire —
+    // but behind a disclosure, so it does not drown the list a person reads.
+    const disclosure = screen.getByText(/full posting/i);
+    expect(disclosure).toBeInTheDocument();
+    expect(disclosure.closest("details")).not.toBeNull();
+    expect(screen.getByText(/underwrite commercial insurance/)).toBeInTheDocument();
+  });
+
+  it("does not bullet the posting", () => {
+    render(
+      <DetailTabs
+        application={application({ job_description: POSTING, requirements: REQUIREMENTS })}
+        match={NO_MATCH}
+      />,
+    );
+
+    // Two requirements means exactly two list items. Bulleting the advert as
+    // well is how it looked before, and it read as a broken feature.
+    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+  });
+
+  it("says a posting was never captured rather than inventing one", () => {
+    // A row recorded before slice 004: `requirements` is null and
+    // `job_description` holds a joined requirements list, not an advert. There
+    // is nothing to recover, so it says so and offers the fix.
+    render(
+      <DetailTabs
+        application={application({
+          job_description: "5+ years of Python\nExperience with PostgreSQL",
+          requirements: null,
+        })}
+        match={NO_MATCH}
+      />,
+    );
+
+    expect(screen.getByText(/no job posting was saved/i)).toBeInTheDocument();
+    // Not an error — this is the ordinary state of every older record.
+    expect(screen.queryByRole("alert")).toBeNull();
+    // And what it does hold is still shown, as the list it actually is.
+    expect(screen.getAllByRole("listitem").map((li) => li.textContent)).toEqual([
+      "•5+ years of Python",
+      "•Experience with PostgreSQL",
+    ]);
+  });
+
+  it("distinguishes a posting that stated no requirements from one never captured", () => {
+    render(
+      <DetailTabs
+        application={application({ job_description: POSTING, requirements: [] })}
+        match={NO_MATCH}
+      />,
+    );
+
+    // `[]` means the posting was read and stated none — the advert is there.
+    expect(screen.getByText(/no requirements/i)).toBeInTheDocument();
+    expect(screen.queryByText(/no job posting was saved/i)).toBeNull();
+    expect(screen.getByText(/underwrite commercial insurance/)).toBeInTheDocument();
+  });
+});
+
 describe("requirements rendering", () => {
   it("shows one bullet per requirement", () => {
     // Stored one per line. As a single pre-wrapped block a scannable list read
@@ -440,6 +611,7 @@ describe("requirements rendering", () => {
         application={application({
           job_description: "6+ years of experience\nProven Python developer\nExperience with RAG",
         })}
+        match={NO_MATCH}
       />,
     );
 
@@ -455,6 +627,7 @@ describe("requirements rendering", () => {
     render(
       <DetailTabs
         application={application({ job_description: "- 6+ years\n• Python\n* PostgreSQL" })}
+        match={NO_MATCH}
       />,
     );
 
@@ -470,6 +643,7 @@ describe("requirements rendering", () => {
         application={application({
           job_description: "Company Overview:\n\nWe are a company that does things.",
         })}
+        match={NO_MATCH}
       />,
     );
 

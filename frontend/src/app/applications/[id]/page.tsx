@@ -7,7 +7,7 @@ import { StatusPill } from "@/components/applications/status-pill";
 import { ApiUnavailable } from "@/components/api-unavailable";
 import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
-import { ApiUnreachableError, type Application, type User } from "@/lib/api";
+import { ApiUnreachableError, type Application, type MatchResult, type User } from "@/lib/api";
 import { fetchCurrentUser, fetchFromApi } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
@@ -33,10 +33,19 @@ export default async function ApplicationDetail({
 
   let user: User | null;
   let application: Application | null;
+  // Defaulted rather than left null: the four states already describe every
+  // way an analysis can be absent, so a fetch that fails degrades to "nothing
+  // to score" instead of taking the whole page down with it.
+  let match: MatchResult = { state: "nothing_to_score", analysis: null, stale: false };
 
   try {
     user = await fetchCurrentUser();
     application = user ? await fetchFromApi<Application>(`/api/applications/${id}`) : null;
+    if (application) {
+      // `?? match` keeps the default: a 404 here means no analysis, which is
+      // the `nothing_to_score` state rather than a broken page.
+      match = (await fetchFromApi<MatchResult>(`/api/applications/${id}/match`)) ?? match;
+    }
   } catch (error) {
     if (error instanceof ApiUnreachableError) return <ApiUnavailable />;
     throw error;
@@ -84,7 +93,7 @@ export default async function ApplicationDetail({
         </Button>
       </div>
 
-      <DetailTabs application={application} />
+      <DetailTabs application={application} match={match} />
     </AppShell>
   );
 }

@@ -7,6 +7,7 @@ import { useMemo, useState } from "react";
 
 import { AddApplication } from "@/components/applications/add-application";
 import { CompanyLogo } from "@/components/applications/company-logo";
+import { MatchCell } from "@/components/applications/match-score";
 import { StatusPill } from "@/components/applications/status-pill";
 import { type Application, deleteApplication, unrejectApplication, updateApplication } from "@/lib/api";
 
@@ -349,11 +350,30 @@ export function ApplicationsView({
                     className="px-4 font-mono text-xs tabular-nums"
                     style={{ color: "var(--muted)" }}
                   >
-                    {/* Rating out of five, shown as a percentage — the source
-                        app's `match_rating * 20`. 0 means unset, not zero. */}
-                    {application.imported_match_rating > 0
-                      ? `${application.imported_match_rating * 20}%`
-                      : "—"}
+                    {/* Two facts, never merged. The computed band is what the
+                        system thinks; `imported_match_rating` is what the
+                        person thought, carried from JobTracker and never
+                        overwritten (FR-013). One field for both would drift,
+                        exactly as the source app's `rejected` flag drifted
+                        from its status. */}
+                    <MatchCell
+                      match={
+                        application.match ?? {
+                          state: "nothing_to_score",
+                          band: null,
+                          overall_score: null,
+                        }
+                      }
+                    />
+                    {application.imported_match_rating > 0 && (
+                      <span
+                        className="ml-2"
+                        style={{ color: "var(--muted)" }}
+                        title="Your own rating, imported from JobTracker"
+                      >
+                        {application.imported_match_rating * 20}%
+                      </span>
+                    )}
                   </td>
 
                   <td className="px-4 text-xs" style={{ color: "var(--muted)" }}>
