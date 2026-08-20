@@ -286,10 +286,38 @@ describe("the match tab", () => {
     expect(minor).toBeInTheDocument();
   });
 
-  it("shows the coverage count", () => {
+  it("counts only what is directly on the CV, not everything addressed", () => {
     render(<MatchTab state="ready" analysis={ANALYSIS} stale={false} />);
 
-    expect(screen.getByTestId("coverage").textContent).toMatch(/3\s*\/\s*7/);
+    // The fixture has 1 confirmed of 7. Counting `partial` and `transferable`
+    // alongside them reported "4/7 shown on your profile", which reads as a
+    // near-perfect match and then contradicts itself with a low score.
+    //
+    // Worse, it is the error the taxonomy exists to prevent: FR-011b forbids
+    // presenting transferable experience as direct experience, and a headline
+    // that adds them together does exactly that.
+    expect(screen.getByTestId("coverage").textContent).toMatch(/1\s*of\s*7/);
+    expect(screen.getByTestId("coverage").textContent).toMatch(/direct/i);
+  });
+
+  it("does not report full coverage for a profile that only transfers", () => {
+    // The case that exposed this: 8 requirements, none missing, but only 2
+    // actually on the CV — shown as "8/8", which invites exactly the wrong
+    // conclusion about whether to apply.
+    const transfers = {
+      ...ANALYSIS,
+      requirements: ANALYSIS.requirements.map((r, i) =>
+        i === 0
+          ? { ...r, verdict: "confirmed" as const, shortfall: null }
+          : { ...r, verdict: "transferable" as const, shortfall: "wording" as const,
+              evidence: "Something adjacent." },
+      ),
+    };
+    render(<MatchTab state="ready" analysis={transfers} stale={false} />);
+
+    const coverage = screen.getByTestId("coverage").textContent ?? "";
+    expect(coverage).toMatch(/1\s*of\s*7/);
+    expect(coverage).not.toMatch(/7\s*of\s*7/);
   });
 
   it("says it is AI-generated and what it cost", () => {
