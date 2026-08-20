@@ -16,7 +16,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from careerhq.application.analyze_match import create_pending_analysis, run_analysis
 from careerhq.application.match_criteria import CRITERIA_VERSION
@@ -62,7 +62,8 @@ _JUDGEMENT = {
             # the banding assertions test banding rather than the cap.
             "importance": 40,
             "verdict": "unverified",
-            "shortfall": "evidence",
+            # No shortfall: a silent profile cannot say *why* it is silent.
+            "shortfall": None,
             "evidence": None,
         },
     ],
@@ -378,6 +379,42 @@ async def test_an_analysis_whose_application_vanished_is_discarded(
 
     missing = uuid.uuid4()
     await run_analysis(db_session, analysis_id=missing, completion=_Stub())  # must not raise
+
+
+async def test_a_fresh_session_still_recognises_a_pending_analysis(
+    db_session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """The background task loads the row in its **own** session. So must this.
+
+    Every other test here calls `run_analysis` with the session that created the
+    row, so SQLAlchemy's identity map hands back the in-memory object whose
+    `status` is still a Python enum member. Production never does that: the
+    request's session is closed by the time the background task runs, so it
+    loads from the database and gets a plain `str` — these are `String(16)`
+    columns.
+
+    That divergence hid a total failure. The guard read `status is not
+    MatchStatus.PENDING`, which is always true for a string, so `run_analysis`
+    returned immediately and every real analysis sat `pending` forever. Nothing
+    raised, nothing logged, the suite was green, and the deployed feature did
+    nothing at all.
+
+    Reproduced here with a second session, which is the only way to see it.
+    """
+    _, application = await _setup(db_session)
+    analysis = await create_pending_analysis(db_session, application)
+    assert analysis is not None
+    analysis_id = analysis.id
+    await db_session.commit()
+
+    async with session_factory() as fresh:
+        await run_analysis(fresh, analysis_id=analysis_id, completion=_Stub())
+        await fresh.commit()
+
+    await db_session.refresh(analysis)
+    assert analysis.status == MatchStatus.READY
+    assert analysis.overall_score == 83
 
 
 async def test_the_prompt_carries_the_whole_posting_and_the_whole_profile(

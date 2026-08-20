@@ -7,6 +7,7 @@ decision here means one implementation rather than one per surface.
 
 from __future__ import annotations
 
+import uuid
 from decimal import Decimal
 from typing import Any
 
@@ -54,7 +55,8 @@ _JUDGEMENT: dict[str, Any] = {
             # the banding assertions test banding rather than the cap.
             "importance": 40,
             "verdict": "unverified",
-            "shortfall": "evidence",
+            # No shortfall: a silent profile cannot say *why* it is silent.
+            "shortfall": None,
             "evidence": None,
         },
     ],
@@ -184,6 +186,38 @@ async def test_the_four_states_are_named_by_the_server(
     if body["state"] == "ready":
         assert body["analysis"]["band"] == "strong"
         assert body["analysis"]["overall_score"] == 83
+
+
+async def test_triggering_a_run_returns_202_and_the_pending_analysis(
+    client: httpx.AsyncClient, db_session: AsyncSession, stub_completion: None
+) -> None:
+    """The 202 path, which nothing asserted until it 500'd in real use.
+
+    `test_the_four_states_are_named_by_the_server` accepts `{202, 409}` and
+    always got 409, because saving the job had already reserved a run. So the
+    branch that serialises a **freshly created** analysis was never exercised —
+    and it raised `MissingGreenlet`, because `analysis.requirements` on a
+    just-added object is a lazy load and async SQLAlchemy cannot do IO there.
+
+    A pending analysis has no requirements by definition, so the collection is
+    initialised at construction rather than left to be fetched.
+    """
+    alice = await _user_with_profile(db_session, ALICE)
+    created = await _create(client, alice)
+
+    # Clear whatever saving reserved, so this exercises the fresh-create path.
+    await db_session.execute(
+        MatchAnalysis.__table__.delete().where(
+            MatchAnalysis.application_id == uuid.UUID(created["id"])
+        )
+    )
+    await db_session.commit()
+
+    response = await _as(client, alice).post(f"/api/applications/{created['id']}/match")
+
+    assert response.status_code == 202, response.text
+    assert response.json()["state"] == "running"
+    assert response.json()["analysis"]["requirements"] == []
 
 
 async def test_another_users_analysis_is_404_not_403(
