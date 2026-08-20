@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { MatchCell, VERDICT_GLYPH, bandLabel } from "@/components/applications/match-score";
@@ -107,12 +107,12 @@ describe("the match tab", () => {
   const ANALYSIS: MatchAnalysis = {
     id: "a1",
     band: "stretch",
-    overall_score: 56,
+    // 85*1 + 85*.6 + 80*.2 + 65*.2 + 40*.25 + 35*.8 + 15*.2 = 206 of 405 → 51
+    overall_score: 51,
     verdict: "Strong backend fit, but Kubernetes and Terraform are unproven.",
     criteria_version: "v2-importance",
     error: null,
-    dimensions: { direct: 45, transferable: 65, adjacent: 55, impact: 60 },
-    weights: { direct: 0.4, transferable: 0.3, adjacent: 0.2, impact: 0.1 },
+    credit: { confirmed: 1, transferable: 0.8, partial: 0.6, gap: 0.25, unverified: 0.2 },
     capped_by: { ordinal: 2, text: "Kubernetes in production", importance: 80 },
     coverage: { confirmed: 2, partial: 1, transferable: 1, gap: 1, unverified: 2, total: 7 },
     requirements: [
@@ -142,8 +142,8 @@ describe("the match tab", () => {
     // The number is shown **beside** the band, never as a bare percentage: a
     // "56% match" implies a measurement nobody took, while a total sitting next
     // to its four parts and their weights is arithmetic a person can check.
-    expect(screen.getByTestId("score").textContent).toMatch(/56\s*\/\s*100/);
-    expect(screen.queryByText(/56%/)).toBeNull();
+    expect(screen.getByTestId("score").textContent).toMatch(/51\s*\/\s*100/);
+    expect(screen.queryByText(/51%/)).toBeNull();
   });
 
   it("draws the score as a ring, sized to the score", () => {
@@ -157,7 +157,7 @@ describe("the match tab", () => {
     // presentation of this value and `prefers-reduced-motion` removes it.
     const circumference = 2 * Math.PI * 32;
     const offset = Number(arc?.style.strokeDashoffset);
-    expect(offset).toBeCloseTo(circumference * (1 - 56 / 100), 1);
+    expect(offset).toBeCloseTo(circumference * (1 - 51 / 100), 1);
   });
 
   it("lands on the finished ring when motion is reduced, never on an empty one", () => {
@@ -175,7 +175,7 @@ describe("the match tab", () => {
   it("names the score for assistive technology, not only in the drawing", () => {
     render(<MatchTab state="ready" analysis={ANALYSIS} stale={false} />);
 
-    expect(screen.getByRole("img", { name: /56 out of 100.*stretch/i })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /51 out of 100.*stretch/i })).toBeInTheDocument();
   });
 
   it("draws no ring for an analysis with no score", () => {
@@ -186,16 +186,29 @@ describe("the match tab", () => {
     expect(container.querySelector("[data-testid='score-arc']")).toBeNull();
   });
 
-  it("breaks the score into the four parts it is made of", () => {
+  it("shows where the score was earned, grouped by verdict", () => {
     render(<MatchTab state="ready" analysis={ANALYSIS} stale={false} />);
 
     const breakdown = screen.getByTestId("breakdown").textContent ?? "";
-    for (const label of ["Direct experience", "Transferable", "Adjacent", "Impact fit"]) {
+    // The same requirements a person is reading below, grouped — not four
+    // separate ratings that can disagree with them.
+    for (const label of ["Directly on your CV", "Related experience", "Not on your CV"]) {
       expect(breakdown).toContain(label);
     }
-    // The weights are on screen, so the total can be checked rather than trusted.
-    expect(breakdown).toMatch(/40/);
-    expect(breakdown).toMatch(/45/);
+  });
+
+  it("shows a breakdown that adds up to the score", () => {
+    render(<MatchTab state="ready" analysis={ANALYSIS} stale={false} />);
+
+    // The fixture: 85 confirmed, 85 partial, 80+65+15 unverified, 40 gap,
+    // 35 transferable. Worth 405; earned 85 + 51 + 32 + 10 + 28 = 206 → 51.
+    const rows = screen.getAllByTestId("earned");
+    const totalEarned = rows.reduce((sum, el) => sum + Number(el.dataset.earned), 0);
+    const totalWorth = rows.reduce((sum, el) => sum + Number(el.dataset.worth), 0);
+
+    expect(Math.round((100 * totalEarned) / totalWorth)).toBe(
+      ANALYSIS.overall_score,
+    );
   });
 
   it("says which requirement held the band down", () => {
@@ -206,15 +219,15 @@ describe("the match tab", () => {
     expect(screen.getByTestId("cap-reason").textContent).toMatch(/Kubernetes in production/);
   });
 
-  it("does not claim a breakdown for an analysis that never kept one", () => {
-    const older = {
-      ...ANALYSIS,
-      dimensions: { direct: null, transferable: null, adjacent: null, impact: null },
-    };
-    render(<MatchTab state="ready" analysis={older} stale={false} />);
+  it("shows no breakdown when there are no requirements to group", () => {
+    render(
+      <MatchTab
+        state="ready"
+        analysis={{ ...ANALYSIS, requirements: [] }}
+        stale={false}
+      />,
+    );
 
-    // Its total is still correct; it simply cannot be explained. Inventing
-    // parts that sum to it would be fabricating the explanation.
     expect(screen.queryByTestId("breakdown")).toBeNull();
     expect(screen.getByTestId("score")).toBeInTheDocument();
   });
@@ -257,7 +270,8 @@ describe("the match tab", () => {
     // each row restates the heading four times and buries the one row that
     // means something different. `unverified` is the default here and goes
     // unlabelled; the explanation appears once, for the section.
-    expect(screen.queryAllByText("Not on your CV")).toHaveLength(0);
+    const missing = within(screen.getByTestId("whats-missing"));
+    expect(missing.queryAllByText("Not on your CV")).toHaveLength(0);
     expect(screen.getAllByText(/add anything you have and score again/i)).toHaveLength(1);
 
     // And it still never claims you lack the skill.
@@ -270,7 +284,8 @@ describe("the match tab", () => {
     // A `gap` is a *proven* shortfall, not a silence. It is the exception in
     // this section, so it is the thing that earns a label — the distinction
     // the five-verdict taxonomy exists for stays visible while the noise goes.
-    expect(screen.getByText(/below what they ask/i)).toBeInTheDocument();
+    const missing = within(screen.getByTestId("whats-missing"));
+    expect(missing.getByText(/below what they ask/i)).toBeInTheDocument();
   });
 
   it("shows how much each requirement matters", () => {

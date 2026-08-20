@@ -26,7 +26,7 @@ from careerhq.domain.models import MatchBand, RequirementKind, RequirementVerdic
 #: against a whole posting, so the weights carry over and the thresholds below
 #: are ours. `v1` because a rubric arrived before implementation did — the
 #: uncalibrated `v0` state the design planned for was never entered.
-CRITERIA_VERSION = "v2-importance"
+CRITERIA_VERSION = "v3-earned"
 
 #: What each dimension is worth. Deliberately not an average: a direct match in
 #: the same domain at comparable scale is worth four times an adjacent one.
@@ -76,8 +76,58 @@ _ORDER: tuple[MatchBand, ...] = (
 )
 
 
+#: What each verdict earns, as a share of a requirement's importance.
+#:
+#: v3 computes the score from these rather than from four abstract
+#: dimensions. Under v2 the dimensions and the per-requirement verdicts were
+#: two independent judgements about the same thing, reconciled by nothing --
+#: so a real job returned eight requirements addressed and a score of 48. The
+#: summary was not explaining the detail; it was disagreeing with it.
+#:
+#: `transferable` at 0.8 is the calibration knob. On the job that exposed
+#: this, 0.8 reproduces an independent assessment of the same CV against the
+#: same posting almost exactly, using v2's own verdicts unchanged.
+#:
+#: `unverified` earns nearly as little as `gap`, which keeps v2's decision:
+#: a recruiter reads the same profile the model does and draws the same
+#: conclusion from silence. `gap` earns a little more because a demonstrated
+#: near-miss -- six years against ten -- beats nothing at all.
+CREDIT: dict[RequirementVerdict, float] = {
+    RequirementVerdict.CONFIRMED: 1.0,
+    RequirementVerdict.TRANSFERABLE: 0.8,
+    RequirementVerdict.PARTIAL: 0.6,
+    RequirementVerdict.GAP: 0.25,
+    RequirementVerdict.UNVERIFIED: 0.2,
+}
+
+
+def score_from(requirements: Sequence[Judged]) -> int:
+    """The share of what this posting asks for that the profile earns.
+
+    Weighted by importance, so boilerplate cannot sink a profile that meets
+    the requirements the role is actually about -- and cannot rescue one that
+    misses them.
+
+    Derived from the requirements rather than asked of the model, which is
+    what makes the number auditable against the list a person is reading
+    instead of a second opinion that may contradict it.
+    """
+    total = sum(r.importance for r in requirements)
+    if total == 0:
+        # No requirements, or all rated zero. There is nothing to earn a
+        # share of, and inventing one would be a number with nothing behind
+        # it -- the same objection as scoring an empty requirement list.
+        return 0
+
+    earned = sum(r.importance * CREDIT[RequirementVerdict(r.verdict)] for r in requirements)
+    return round(100 * earned / total)
+
+
 def overall_score(direct: int, transferable: int, adjacent: int, impact: int) -> int:
-    """Combine the four rated dimensions into one 0-100 score.
+    """**v2 only.** Combine the four rated dimensions into one 0-100 score.
+
+    Kept so a v2 analysis can still be explained; nothing computes a new
+    score with it. See `score_from`, and `research.md` R11 for why.
 
     Computed here rather than asked of the model: a model returning both the
     parts and the total will sometimes return a total that does not follow from
@@ -171,6 +221,7 @@ def band_for(score: int, *, requirements: Sequence[Judged]) -> MatchBand:
 
 __all__ = [
     "CAP_IMPORTANCE",
+    "CREDIT",
     "CRITERIA_VERSION",
     "WEIGHTS",
     "Judged",
@@ -178,4 +229,5 @@ __all__ = [
     "cap_bit",
     "caps_band",
     "overall_score",
+    "score_from",
 ]

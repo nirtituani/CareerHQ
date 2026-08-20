@@ -196,15 +196,14 @@ export type MatchAnalysis = {
   band: "strong" | "moderate" | "stretch" | "low_probability" | null;
   /** The weighted sum of `dimensions`. Shown beside the band, never alone. */
   overall_score: number | null;
-  /** The four rated parts. `null` on analyses scored before they were kept. */
-  dimensions: {
-    direct: number | null;
-    transferable: number | null;
-    adjacent: number | null;
-    impact: number | null;
-  };
-  /** What each part contributes, so the arithmetic is checkable on screen. */
-  weights: Record<string, number>;
+  /**
+   * What each verdict earns, as a share of a requirement's importance.
+   *
+   * The score is `sum(importance * credit) / sum(importance)`, so this is what
+   * makes the total checkable against the requirement rows rather than a
+   * number to be taken on trust.
+   */
+  credit: Record<string, number>;
   /**
    * The requirement holding the band below its arithmetic, if one is.
    *

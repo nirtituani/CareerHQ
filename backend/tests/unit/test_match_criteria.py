@@ -27,6 +27,7 @@ from careerhq.application.match_criteria import (
     band_for,
     cap_bit,
     overall_score,
+    score_from,
 )
 from careerhq.domain.models import MatchBand, RequirementKind, RequirementVerdict
 
@@ -47,9 +48,13 @@ def test_the_criteria_version_is_named_and_stable() -> None:
     incomparable, and docs/07 §3.2 evaluates this capability on Match Score
     calibration. v1 scores exist and must stay distinguishable from v2 ones.
     """
-    assert CRITERIA_VERSION == "v2-importance"
+    assert CRITERIA_VERSION == "v3-earned"
 
 
+# v2 only. Analyses scored under `v2-importance` keep their dimensions, so the
+# arithmetic that produced them has to remain readable — otherwise a stored
+# score becomes a number nobody can account for. Nothing computes a new score
+# this way; see `score_from`.
 @pytest.mark.parametrize(
     ("direct", "transferable", "adjacent", "impact", "expected"),
     [
@@ -64,7 +69,7 @@ def test_the_criteria_version_is_named_and_stable() -> None:
         (0, 0, 0, 100, 10),
     ],
 )
-def test_the_score_is_the_weighted_sum_of_the_four_dimensions(
+def test_v2_scores_can_still_be_explained(
     direct: int, transferable: int, adjacent: int, impact: int, expected: int
 ) -> None:
     assert overall_score(direct, transferable, adjacent, impact) == expected
@@ -199,3 +204,92 @@ def test_a_cap_that_changed_nothing_is_not_reported_as_one() -> None:
 
 def test_a_cap_that_changed_nothing_is_not_reported_as_one_marker() -> None:
     assert cap_bit(90, requirements=[]) is False
+
+
+# ---------------------------------------------------------------------------
+# v3 — the score is the requirements, not a second opinion about them
+# ---------------------------------------------------------------------------
+
+
+def test_the_score_is_earned_from_the_requirements() -> None:
+    """v3's whole point: the total is the list, so the two cannot disagree.
+
+    v2 asked the model for four abstract dimensions and computed the score from
+    those, while the per-requirement verdicts fed nothing but the cap. They were
+    two independent judgements about the same thing and nothing reconciled them
+    — so a real job came back with **eight requirements addressed and a score of
+    48**, which reads as broken because the summary and the detail were
+    genuinely unrelated.
+
+    Now the score is `sum(importance * credit) / sum(importance)`, which makes
+    it auditable against the rows a person is already reading.
+    """
+    requirements = [
+        _req(RequirementVerdict.CONFIRMED, 100),
+        _req(RequirementVerdict.CONFIRMED, 50),
+    ]
+
+    assert score_from(requirements) == 100
+
+
+def test_an_empty_requirement_list_scores_nothing_rather_than_dividing_by_zero() -> None:
+    assert score_from([]) == 0
+
+
+@pytest.mark.parametrize(
+    ("verdict", "expected"),
+    [
+        (RequirementVerdict.CONFIRMED, 100),
+        (RequirementVerdict.TRANSFERABLE, 80),
+        (RequirementVerdict.PARTIAL, 60),
+        (RequirementVerdict.GAP, 25),
+        (RequirementVerdict.UNVERIFIED, 20),
+    ],
+)
+def test_each_verdict_earns_its_share(verdict: RequirementVerdict, expected: int) -> None:
+    """The credit table, stated as a test so a change to it is deliberate.
+
+    `unverified` earns nearly as little as `gap`, which is the v2 decision kept:
+    a recruiter reads the same profile the model does and draws the same
+    conclusion from silence. `gap` earns slightly more because a demonstrated
+    near-miss — six years against ten — is better than nothing at all.
+    """
+    assert score_from([_req(verdict, 100)]) == expected
+
+
+def test_importance_decides_how_much_a_requirement_moves_the_score() -> None:
+    """A boilerplate requirement cannot sink a profile that meets the real ones."""
+    strong_where_it_matters = [
+        _req(RequirementVerdict.CONFIRMED, 90),
+        _req(RequirementVerdict.UNVERIFIED, 10),
+    ]
+    weak_where_it_matters = [
+        _req(RequirementVerdict.UNVERIFIED, 90),
+        _req(RequirementVerdict.CONFIRMED, 10),
+    ]
+
+    assert score_from(strong_where_it_matters) > score_from(weak_where_it_matters)
+
+
+def test_the_real_analysis_that_exposed_v2() -> None:
+    """The AI Workflow Engineer job, with **v2's own verdicts unchanged**.
+
+    Every verdict here is exactly what the model returned under v2. Only the
+    aggregation changed, and the score moves from **48 to 84** — which is where
+    an independent assessment of the same CV against the same posting landed.
+
+    That is the measure of how much of the gap was the arithmetic rather than
+    the judgement: nearly all of it.
+    """
+    as_v2_judged_them = [
+        _req(RequirementVerdict.TRANSFERABLE, 90),
+        _req(RequirementVerdict.CONFIRMED, 85),
+        _req(RequirementVerdict.TRANSFERABLE, 65),
+        _req(RequirementVerdict.TRANSFERABLE, 55),
+        _req(RequirementVerdict.TRANSFERABLE, 55),
+        _req(RequirementVerdict.TRANSFERABLE, 40),
+        _req(RequirementVerdict.CONFIRMED, 30),
+        _req(RequirementVerdict.PARTIAL, 25),
+    ]
+
+    assert score_from(as_v2_judged_them) == 84

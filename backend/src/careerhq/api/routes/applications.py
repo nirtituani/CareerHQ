@@ -27,7 +27,7 @@ from careerhq.application.analyze_match import (
     run_analysis,
 )
 from careerhq.application.extract_job import extract_job_from_text, extract_job_from_url
-from careerhq.application.match_criteria import WEIGHTS, Judged, cap_bit, caps_band
+from careerhq.application.match_criteria import CREDIT, Judged, cap_bit, caps_band
 from careerhq.application.ports import StructuredCompletion
 from careerhq.application.record_application import (
     apply_changes,
@@ -352,15 +352,10 @@ def _analysis_out(analysis: MatchAnalysis | None) -> dict[str, Any] | None:
         # sorting and calibration and must not be rendered bare (FR-001a).
         "band": analysis.band,
         "overall_score": analysis.overall_score,
-        # The parts, so the total is arithmetic a person can check rather than
-        # a number they must take on trust.
-        "dimensions": {
-            "direct": analysis.direct,
-            "transferable": analysis.transferable,
-            "adjacent": analysis.adjacent,
-            "impact": analysis.impact,
-        },
-        "weights": WEIGHTS,
+        # What each verdict earns, so the total is arithmetic a person can check
+        # against the rows below it rather than a number they must take on
+        # trust. The breakdown is the requirement list itself (research.md R11).
+        "credit": {verdict.value: share for verdict, share in CREDIT.items()},
         # The band is not the score bucketed. When an important unmet
         # requirement holds it down, say which one -- otherwise the label and
         # the number disagree on screen and it reads as a bug.

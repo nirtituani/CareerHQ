@@ -139,21 +139,17 @@ def test_unverified_carries_no_shortfall_because_it_cannot_know() -> None:
         )
 
 
-@pytest.mark.parametrize("dimension", ["direct", "transferable", "adjacent", "impact"])
-@pytest.mark.parametrize("value", [-1, 101])
-def test_dimension_ratings_stay_inside_the_scale(dimension: str, value: int) -> None:
-    payload: dict[str, object] = {
-        "direct": 50,
-        "transferable": 50,
-        "adjacent": 50,
-        "impact": 50,
-        "verdict": "A reasonable fit.",
-        "requirements": [],
-    }
-    payload[dimension] = value
+def test_the_model_rates_no_dimensions_at_all() -> None:
+    """v3 removed them, and removing them is the fix.
 
-    with pytest.raises(ValidationError):
-        MatchJudgement.model_validate(payload)
+    v2 asked for `direct`, `transferable`, `adjacent` and `impact`, computed
+    the score from those, and let the per-requirement verdicts feed nothing
+    but the band cap. Two independent judgements about the same thing, so a
+    real job returned every requirement addressed and a score of 48 -- the
+    summary disagreeing with the detail rather than explaining it.
+    """
+    for dimension in ("direct", "adjacent", "impact"):
+        assert dimension not in MatchJudgement.model_fields
 
 
 def test_the_model_does_not_return_an_overall_score() -> None:

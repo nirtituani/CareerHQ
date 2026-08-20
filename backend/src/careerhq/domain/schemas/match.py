@@ -101,10 +101,13 @@ class JudgedRequirement(BaseModel):
 class MatchJudgement(BaseModel):
     """One scoring run's output, before it becomes a stored analysis."""
 
-    direct: int = Field(ge=0, le=100, description="Same capability, same domain, comparable scale")
-    transferable: int = Field(ge=0, le=100, description="Same capability in a different context")
-    adjacent: int = Field(ge=0, le=100, description="Secondary responsibility or related tooling")
-    impact: int = Field(ge=0, le=100, description="The kind of outcome this posting values")
+    # **No dimension ratings.** v2 asked for four, computed the score from them,
+    # and let the per-requirement verdicts feed nothing but the band cap — two
+    # independent judgements about the same thing that nothing reconciled. A
+    # real job came back with every requirement addressed and a score of 48.
+    #
+    # v3 earns the score from the requirements instead, so the total explains
+    # the list rather than arguing with it (research.md R11).
 
     verdict: str = Field(description="One sentence a person can act on")
 

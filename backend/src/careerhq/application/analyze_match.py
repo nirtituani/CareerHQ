@@ -29,7 +29,7 @@ from careerhq.application.match_criteria import (
     CRITERIA_VERSION,
     Judged,
     band_for,
-    overall_score,
+    score_from,
 )
 from careerhq.application.ports import StructuredCompletion
 from careerhq.domain.models import (
@@ -107,9 +107,18 @@ Rules, in order of importance:
 3. Silence is `unverified`, never `gap`. A profile that does not mention a
    requirement has not been shown to fail it. This is the most common mistake:
    do not turn "not mentioned" into "does not have".
-4. Use all five verdicts. Most real profiles are mostly `partial`,
-   `transferable` and `unverified`. A judgement that is only `confirmed` and
-   `gap` is wrong.
+4. Judge each requirement on its own. Do not aim for a spread of verdicts, and
+   do not avoid `confirmed` because it seems generous — if the profile shows it,
+   it is `confirmed`.
+4a. A domain qualifier does not downgrade a capability the profile plainly
+   shows. "Build AI workflows **for system architecture**" asks for building AI
+   workflows; a profile that shows exactly that is `confirmed`, not
+   `transferable`, even when the domain differs. Reserve `transferable` for a
+   genuinely different capability being carried across — not for the same work
+   in another setting.
+4b. Generic professional requirements — communication, collaboration, a
+   quality mindset — are `confirmed` when the profile evidences them at all.
+   They are not domain skills and rarely deserve `transferable`.
 5. `transferable` is not `confirmed`. Do not present adjacent experience as
    direct experience.
 6. Copy each requirement as the posting worded it. Do not paraphrase or merge.
@@ -140,15 +149,10 @@ Rules, in order of importance:
    Most postings have only two to five requirements above 80. If you rate ten
    that way, you have taken the heading at face value instead of judging.
 
-Rate four dimensions from 0 to 100:
-- `direct`: same capability, same domain, comparable scale.
-- `transferable`: the same capability in a different context.
-- `adjacent`: touched as a secondary responsibility, or related tooling.
-- `impact`: the kind of outcome this posting values.
-
 `verdict` is one sentence a person can act on.
 
-Do not return an overall score; it is computed from the four dimensions.
+Do not return a score. It is computed from your per-requirement judgements and
+their importance, so those are what decide it — judge them carefully.
 
 === PROFILE ===
 {profile}
@@ -346,18 +350,13 @@ async def run_analysis(
         )
         for r in judgement.requirements
     ]
-    score = overall_score(
-        judgement.direct, judgement.transferable, judgement.adjacent, judgement.impact
-    )
+    score = score_from(verdicts)
 
     analysis.overall_score = score
     analysis.band = band_for(score, requirements=verdicts)
-    # Kept, not discarded once summed: they are what lets the interface say
-    # where the number came from instead of asserting it.
-    analysis.direct = judgement.direct
-    analysis.transferable = judgement.transferable
-    analysis.adjacent = judgement.adjacent
-    analysis.impact = judgement.impact
+    # The dimension columns stay NULL from v3 on. They belong to v2 analyses,
+    # whose stored scores must remain explicable; nothing new is scored that
+    # way. The breakdown now comes from the requirement rows themselves.
     analysis.verdict = judgement.verdict
     analysis.status = MatchStatus.READY
     analysis.completed_at = datetime.now(UTC)
