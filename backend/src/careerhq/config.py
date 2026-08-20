@@ -132,6 +132,13 @@ class Settings(BaseSettings):
     #: straight from the page with no completion at all, which covers most
     #: applicant tracking systems.
     llm_model_job_extraction: str = "anthropic/claude-sonnet-5"
+    #: Sonnet, per docs/08 §3.2.3's assignment of *analyze*. Defaulted in code
+    #: rather than left to the environment for the same reason as the two above,
+    #: and the margin here is the widest yet: research.md R8 measures $0.022 per
+    #: job on Sonnet against $0.065 on the Opus fallback, on every job added
+    #: whether or not it is ever opened. A hundred applications is the
+    #: difference between $2.20 and $6.50, bought silently.
+    llm_model_match_analysis: str = "anthropic/claude-sonnet-5"
     # Local by default so the stack runs with no API key. Anthropic has no
     # embeddings endpoint, which is why this is not an Anthropic model.
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"

@@ -162,3 +162,25 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* The match score ring.
+ *
+ * The keyframe supplies only the START. The element's own style already holds
+ * the finished offset, so when the reduced-motion rule below collapses every
+ * animation to 0.01ms the ring lands on its true value rather than on an empty
+ * circle — which is what would happen if the base style were the empty state
+ * and the animation drew it in.
+ *
+ * 201.06 is the circumference of the r=32 arc: 2 * pi * 32.
+ */
+@keyframes score-sweep {
+  from {
+    stroke-dashoffset: 201.06;
+  }
+}
+
+.score-arc {
+  animation: score-sweep 1000ms cubic-bezier(0.16, 1, 0.3, 1);
+  transform: rotate(-90deg);
+  transform-origin: center;
+}

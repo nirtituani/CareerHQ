@@ -341,3 +341,33 @@ def test_model_resolves_from_task_name_not_from_the_caller(
     # An unknown task falls back to the default model rather than raising: a new
     # task name should work before someone remembers to configure it.
     assert settings.model_for_task("some_future_task") == settings.llm_provider_model
+
+
+def test_match_analysis_does_not_fall_through_to_the_opus_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Slice 004 T002 — the fallback is the expensive failure, not a missing key.
+
+    `model_for_task` deliberately falls back to `llm_provider_model` rather than
+    raising, so a new task name works before anyone configures it (O3). That
+    kindness has a price: `llm_provider_model` is **Opus**, so a task with no
+    entry runs at roughly 2.5x Sonnet's cost, silently, with no quality gain and
+    nothing in the output to show for it.
+
+    This is not hypothetical. The same fallback already caught CV extraction
+    once, and `research.md` R8 puts match analysis at $0.065 per job on Opus
+    against $0.022 on Sonnet.
+
+    The second assertion is the one that matters. Asserting only the model
+    string would still pass if someone changed `llm_provider_model` to Sonnet —
+    the entry would then be redundant rather than protective, and the next
+    change to the default would silently re-arm the trap.
+    """
+    for key, value in TEST_ENV.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.delenv("LLM_MODEL_MATCH_ANALYSIS", raising=False)
+
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+
+    assert settings.model_for_task("match_analysis") == "anthropic/claude-sonnet-5"
+    assert settings.model_for_task("match_analysis") != settings.llm_provider_model

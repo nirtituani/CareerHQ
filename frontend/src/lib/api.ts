@@ -138,8 +138,21 @@ export type Application = {
   company: { id: string; name: string; domain: string | null };
   job_title: string;
   location: string | null;
-  /** The stored text slice 004 tailors against — not a link to a posting. */
+  /** The **full posting**, which match analysis scores against. */
   job_description: string | null;
+  /**
+   * What the posting asks of the candidate.
+   *
+   * `null` and `[]` are different facts. `null` means no posting was ever
+   * captured — a row recorded before slice 004, whose `job_description` holds a
+   * joined requirements list rather than an advert. `[]` means the posting was
+   * read and stated none. Only `null` rows are unscoreable for want of a
+   * posting, so collapsing these loses the thing that tells them apart.
+   */
+  requirements: string[] | null;
+  /** Computed against the profile. Never `imported_match_rating`, which is the
+   *  person's own 1–5 judgement and a separate fact (FR-013). */
+  match?: MatchSummary;
   job_url: string | null;
   job_description_url: string | null;
   /** The user's own words, verbatim. */
@@ -160,6 +173,82 @@ export type Application = {
   status_history: StatusChange[];
 };
 
+export type MatchState = "running" | "ready" | "failed" | "nothing_to_score";
+
+/** One requirement, and how the profile answers it. */
+export type MatchRequirement = {
+  ordinal: number;
+  text: string;
+  /** What the posting **said**. */
+  kind: "must_have" | "preferred";
+  /** What the model **judged** it is worth for this role, 0-100. */
+  importance: number;
+  verdict: "confirmed" | "partial" | "transferable" | "gap" | "unverified";
+  /** Absent on `confirmed` (nothing to explain) and on `unverified` (nothing
+   *  to explain it with — guessing why a CV is silent is inference). */
+  shortfall: "wording" | "evidence" | "capability" | null;
+  /** Quoted from the profile. Null only on `unverified`. */
+  evidence: string | null;
+};
+
+export type MatchAnalysis = {
+  id: string;
+  band: "strong" | "moderate" | "stretch" | "low_probability" | null;
+  /** The weighted sum of `dimensions`. Shown beside the band, never alone. */
+  overall_score: number | null;
+  /** The four rated parts. `null` on analyses scored before they were kept. */
+  dimensions: {
+    direct: number | null;
+    transferable: number | null;
+    adjacent: number | null;
+    impact: number | null;
+  };
+  /** What each part contributes, so the arithmetic is checkable on screen. */
+  weights: Record<string, number>;
+  /**
+   * The requirement holding the band below its arithmetic, if one is.
+   *
+   * The band is not the score bucketed. Without this the label and the number
+   * disagree on screen and it reads as a bug; with it, it is the most useful
+   * line on the page.
+   */
+  capped_by: { ordinal: number; text: string; importance: number } | null;
+  verdict: string | null;
+  criteria_version: string;
+  error: string | null;
+  coverage: Record<string, number>;
+  requirements: MatchRequirement[];
+  model: string | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  /** A string, because a Decimal audit value must not become a float. */
+  cost: string | null;
+  is_fixture: boolean;
+  created_at: string;
+  completed_at: string | null;
+};
+
+export type MatchResult = {
+  state: MatchState;
+  analysis: MatchAnalysis | null;
+  /** The profile changed after this was scored. Computed by the server. */
+  stale: boolean;
+};
+
+export function fetchMatch(applicationId: string): Promise<MatchResult> {
+  return request<MatchResult>(`/api/applications/${applicationId}/match`);
+}
+
+export function runMatch(applicationId: string): Promise<MatchResult> {
+  return request<MatchResult>(`/api/applications/${applicationId}/match`, { method: "POST" });
+}
+
+export type MatchSummary = {
+  state: "running" | "ready" | "failed" | "nothing_to_score";
+  band: "strong" | "moderate" | "stretch" | "low_probability" | null;
+  overall_score: number | null;
+};
+
 /** Fields a client may write. `normalized_status` is deliberately absent. */
 export type ApplicationInput = {
   company: string;
@@ -167,6 +256,7 @@ export type ApplicationInput = {
   /** Belongs to the employer, so a second job there inherits it. */
   company_domain?: string;
   job_description?: string;
+  requirements?: string[];
   location?: string;
   status?: string;
   /** When the job was recorded — the staleness signal for a Pre-Applied row. */
@@ -217,7 +307,10 @@ export type JobPostingExtraction = {
   job_title: string | null;
   location: string | null;
   salary_text: string | null;
+  /** The **whole posting**, which match analysis scores against. */
   job_description: string | null;
+  /** The extracted list, kept beside the posting rather than in place of it. */
+  requirements: string[];
   company_domain: string | null;
 };
 

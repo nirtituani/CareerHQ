@@ -128,17 +128,33 @@ async def engine() -> AsyncIterator[AsyncEngine]:
 
     test_engine = create_async_engine(url, pool_pre_ping=True)
     async with test_engine.begin() as connection:
-        # Matches migration 0001; the schema itself comes from the models.
+        # The schema is dropped wholesale rather than table by table, because
+        # `create_all` skips tables that already exist rather than reconciling
+        # them. Without this the test database keeps whatever shape it had when
+        # it was first built, and any test reading the *schema* silently checks
+        # a stale one. Not hypothetical: T067 asserts no `rejected` column
+        # exists anywhere (FR-016, a release blocker), and it passed against a
+        # deliberately added column until this drop existed.
+        #
+        # `DROP SCHEMA` rather than `metadata.drop_all`, changed in slice 004.
+        # `drop_all` emits its statements from the **metadata**, not from what
+        # the database actually contains, so it tries to drop things that may
+        # not be there. Adding the first `use_alter` foreign key — the cycle
+        # between `applications` and `match_analyses` — made it fail outright
+        # with `constraint ... does not exist`, because the existing test
+        # database predated the constraint.
+        #
+        # Dropping the schema is also strictly stronger for the original
+        # purpose: it removes anything `create_all` would not know to drop,
+        # including a column added by hand, which is precisely the scenario
+        # above.
+        await connection.execute(text("DROP SCHEMA public CASCADE"))
+        await connection.execute(text("CREATE SCHEMA public"))
+        # After the schema exists again — extensions install into it, so
+        # creating them first would drop them a line later. Matches migration
+        # 0001; the schema itself comes from the models.
         await connection.execute(text("CREATE EXTENSION IF NOT EXISTS pgcrypto"))
         await connection.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-        # Dropped first, because `create_all` skips tables that already exist
-        # rather than reconciling them. Without this the test database keeps
-        # whatever shape it had when it was first built, and any test that
-        # reads the *schema* silently checks a stale one. That is not
-        # hypothetical: T067 asserts no `rejected` column exists anywhere
-        # (FR-016, a release blocker), and it passed against a deliberately
-        # added column until this line existed.
-        await connection.run_sync(Base.metadata.drop_all)
         await connection.run_sync(Base.metadata.create_all)
 
     yield test_engine

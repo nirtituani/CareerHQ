@@ -38,6 +38,10 @@ WRITABLE_FIELDS = frozenset(
         "job_title",
         "location",
         "job_description",
+        # The list beside the posting, not in place of it (research.md R1).
+        # Accepted from the client because the Add form lets a person write or
+        # correct requirements by hand, exactly as it does the description.
+        "requirements",
         "job_url",
         "job_description_url",
         "date_added",
