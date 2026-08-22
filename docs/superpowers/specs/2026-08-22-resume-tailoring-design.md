@@ -18,22 +18,40 @@ It is the first thing in CareerHQ that **loops**. Every prior AI call is one str
 completion in and one validated object out. This one drafts, criticises its own draft, and
 revises — bounded, and with a human gate before anything is kept.
 
-### Sequencing — why this is 005 and evaluation is 006
+### Sequencing — why this is 005, and where evaluation went
 
 `docs/05` §5.5 assigns evaluation to slice 005 and `docs/07` §3.3 assigns the Reviewer to
 "004 (the loop), 005 (the metrics)". Both predate the **split of slice 004**, which shipped
 match analysis alone and deferred the tailoring agent. The Reviewer loop went with it.
 
-Evaluation was reconsidered for this position and moved behind tailoring. Of the seven
+Evaluation was reconsidered for this position and moved behind the flagship. Of the seven
 metrics `docs/05` §5.5 lists, four measure the tailoring agent — requirement coverage of a
 tailored resume, retrieval quality of the RAG step, LLM-as-judge of tailored output, and
 grounding accuracy of generated claims. Building the harness first means building a
 measuring instrument for something that does not exist and extending it later anyway, which
 is most of the argument for building it first.
 
-**Evaluation remains non-optional.** It is an explicit project requirement, it is the
-difference between "I built an agent" and "I know how well it works", and this slice is
-what gives it something to measure.
+**Applied consistently, that argument puts evaluation at 007, not 006.** Retrieval quality
+is one of the four, so a harness built before the RAG step lands would have to be extended
+again for exactly the reason it was not built first. Slice 006 finishes the Optimizer;
+slice 007 measures it once, whole.
+
+The order, renumbered here because the affected slices have **no artifacts** — `specs/`
+holds 001 through 004 only, so this is one edit to `docs/05` rather than the three-slice
+churn that made renumbering not worth it after the 004 split:
+
+| | Slice | |
+|---|---|---|
+| 005 | **Resume Tailoring** | This document |
+| 006 | **Document & Retrieval** — RAG over guidelines, PDF export, submit-and-lock | Completes the flagship |
+| 007 | **Evaluation & Benchmark** | Graded |
+| 008 | Company Research | Droppable (`docs/08` §656) |
+| 009 | Career Advisor | Droppable |
+
+**Evaluation remains non-optional**, and the risk in moving it is stated rather than
+buried: it is an explicit project requirement, it has now been deferred twice, and two
+slices stand in front of it. If the budget runs short, the work at the end is what gets cut
+— so 008 and 009, which are droppable by design, must be the ones dropped, not 007.
 
 ### Scope
 
@@ -237,7 +255,7 @@ the list it summarised, free to disagree with it. Here the disagreement would be
 prose that quietly optimises for something other than the plan nobody wrote down.
 
 Keeping the Plan separate also makes it **inspectable, persisted, and evaluable**, which is
-what slice 006's harness will need.
+what slice 007's harness will need.
 
 ### What the Plan contains
 
@@ -350,7 +368,7 @@ consulted. Principle II governs everything else, so judgement calls reach the hu
 
 The rules live beside `match_criteria.py` as a **named version**, recorded on every run.
 Changing a threshold or reclassifying a finding kind is a **new version, never an edit** —
-otherwise every historical run is silently reinterpreted, and slice 006 evaluates this
+otherwise every historical run is silently reinterpreted, and slice 007 evaluates this
 capability by comparing runs over time.
 
 ---
@@ -468,12 +486,14 @@ Slice 004 bought these lessons at full price. They apply here unchanged.
 ## 12. Open questions
 
 - **The confidence threshold has no calibrated value.** It is a constant in the finalisation
-  rules version, and its first value is a guess. Slice 006 is what turns it into a measurement;
+  rules version, and its first value is a guess. Slice 007 is what turns it into a measurement;
   until then, changing it is a new rules version like any other constant.
 - **Re-tailoring after approval.** A `Ready` version remains editable, but whether a second
   tailoring run against the same application produces a new version or replaces the draft is
   not decided here. It is not needed for the first implementation and is easier to answer with
   one real run to look at.
-- **`docs/07` §3.3 and `docs/05` §5.5 both need updating** for the split — the Reviewer's loop
-  is 005, its metrics are 006. Deferred to the spec, so the slice's own artifacts do not
-  disagree with the plan while it is being written.
+- ~~`docs/07` §3.3 and `docs/05` §5.5 need updating for the split.~~ **Done in the same commit
+  as this line.** `docs/05` §5 carries the nine-slice roadmap, `docs/07` §3.2 splits the
+  Optimizer across 005 and 006, §3.3 reads "005 (the loop), 007 (the metrics)", and `docs/08`
+  §6.1 was corrected too — it still listed 003 as Next and 004 as the tailoring agent, which
+  predates the 004 split entirely.

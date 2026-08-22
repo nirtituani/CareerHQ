@@ -653,7 +653,7 @@ checkout of the repo shares one set of Docker volumes, because `docker-compose.y
 
 | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|
-| **Four-to-six weeks is not enough for seven slices** | High | High | Slices 001–005 are the core and satisfy every graded requirement; 006 and 007 are explicitly droppable ([docs/05](05_Implementation_Plan.md) §5) |
+| **Four-to-six weeks is not enough for nine slices** | High | High | Slices 001–007 are the core and satisfy every graded requirement; 008 and 009 are explicitly droppable ([docs/05](05_Implementation_Plan.md) §5) |
 | **Reviewer fails to catch fabrication** | Medium | **Critical** | Principle III is a release blocker. Slice 005 *measures* grounding accuracy rather than assuming it — this is precisely why evaluation was promoted to a slice |
 | ~~Railway pgvector support unverified (A2)~~ | — | — | **Retired.** Verified on the deployed database: PostgreSQL 18.4, `vector` 0.8.6 created successfully |
 | Production security path unproven (§4.2) | Medium | Medium | Slice 002 exists partly to prove it; deploying early is the mitigation |
@@ -704,13 +704,15 @@ identified gaps demonstrably narrow over time.
 |---|---|---|---|---|
 | 001 | Platform Foundation | Containers, Google sign-in, authenticated shell, CI | — | ✅ **Complete** |
 | 002 | Deployment | Public HTTPS URL, redeploy on merge | 001 | ✅ Complete |
-| 003 | Data Foundation | CV import and parsing, profile, applications, JobTracker import | 001 | ⏭️ **Next** — specified and planned |
-| 004 | **Resume Tailoring Agent** | LangGraph workflow, RAG, Reviewer, item-level approval, PDF | 003 | 📋 Planned |
-| 005 | Evaluation & Benchmark | Test set, metrics, LLM-as-judge, results view | 004 | 📋 Planned |
-| 006 | Company Research | Research agent over web search MCP | 003 | 📋 Planned |
-| 007 | Career Advisor | Quantified skill gaps over history | 003, 004 | 📋 Planned |
+| 003 | Data Foundation | CV import and parsing, profile, applications, JobTracker import | 001 | ✅ US1–US2 complete; US3 blocked |
+| 004 | Match Analysis | Score a job against the profile, per-requirement evidence | 003 | ✅ **Complete**, verified in production |
+| 005 | **Resume Tailoring** | LangGraph workflow, Reviewer, versions, item-level approval | 004 | ⏭️ **Next** — designed |
+| 006 | Document & Retrieval | RAG over resume guidelines, PDF export, submit-and-lock | 005 | 📋 Planned |
+| 007 | Evaluation & Benchmark | Benchmark set, metrics, LLM-as-judge, regression runs | 006 | 📋 Planned |
+| 008 | Company Research | Research agent over web search MCP | 003 | 📋 Planned |
+| 009 | Career Advisor | Quantified skill gaps over history | 003, 004 | 📋 Planned |
 
-**Slices 001–005 are the core** and together satisfy every project requirement. 006 and 007
+**Slices 001–007 are the core** and together satisfy every project requirement. 008 and 009
 add the most product value per unit of effort, but the project is defensible without them.
 
 ## 6.2 Definition of done

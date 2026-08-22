@@ -83,14 +83,16 @@ is written; it is finished when it can be demonstrated against a deployed enviro
 |---|---|---|---|---|
 | 001 | Platform Foundation | Containerized environment, Google sign-in, authenticated shell, CI | — | **Complete** |
 | 002 | Deployment | Public URL, deployed from Docker, redeployed on every merge | 001 | **Live** |
-| 003 | Data Foundation | Resume import and parsing, Professional Profile, applications, JobTracker import | 001 | **Next** |
-| 004 | **Resume Tailoring Agent** | LangGraph workflow, RAG, self-critique Reviewer, item-level approval, versions, PDF | 003 | Planned |
-| 005 | Evaluation & Benchmark | Test set, metrics, LLM-as-judge, results dashboard | 004 | Planned |
-| 006 | Company Research | Research agent over a web search MCP, citation-preserving snapshots | 003 | Planned |
-| 007 | Career Advisor | Quantified recurring skill gaps and learning priorities over history | 003, 004 | Planned |
+| 003 | Data Foundation | Resume import and parsing, Professional Profile, applications, JobTracker import | 001 | US1–US2 complete; **US3 blocked** on a JobTracker CSV |
+| 004 | Match Analysis | Score a recorded job against the approved profile, with per-requirement evidence | 003 | **Complete**, verified in production |
+| 005 | **Resume Tailoring** | LangGraph workflow, self-critique Reviewer, versions with lineage, item-level approval | 004 | **Next** — designed 2026-08-22 |
+| 006 | Document & Retrieval | RAG over resume guidelines, PDF export, submit-and-lock | 005 | Planned |
+| 007 | Evaluation & Benchmark | Benchmark set, metrics, LLM-as-judge, regression runs, results view | 006 | Planned — **graded** |
+| 008 | Company Research | Research agent over a web search MCP, citation-preserving snapshots | 003 | Planned — droppable |
+| 009 | Career Advisor | Quantified recurring skill gaps and learning priorities over history | 003, 004 | Planned — droppable |
 
-Slices 001–005 are the **core**: together they satisfy every project requirement. Slices 006 and
-007 add the most product value per unit of effort and should follow immediately, but the project
+Slices 001–007 are the **core**: together they satisfy every project requirement. Slices 008 and
+009 add the most product value per unit of effort and should follow immediately, but the project
 is defensible without them.
 
 ---
@@ -196,8 +198,9 @@ by removing a field rather than adding one.
 > work, so building it first also puts the tailoring agent's inputs on screen.
 >
 > Specified in [`specs/004-match-analysis/`](../specs/004-match-analysis/). The tailoring agent
-> below is unchanged in scope and is **the next slice**; the numbering of 005–007 has deliberately
-> not been shifted, because renumbering three downstream slices to record one split costs more
+> described below is **slice 005** (§5.5), and its scope was cut there: the workflow, the Reviewer,
+> versions and approval ship in 005; retrieval and PDF export in 006. **The numbering was shifted on
+> 2026-08-22** — it had deliberately not been after the split, because renumbering to record one split cost more
 > than the sentence you are reading.
 
 **The flagship.** Everything before it exists to make this possible; everything after builds on it.
@@ -239,7 +242,55 @@ than a schema change.
 
 ---
 
-## 5.5 Slice 005 — Evaluation & Benchmark
+## 5.5 Slice 005 — Resume Tailoring
+
+> **Designed 2026-08-22**:
+> [`docs/superpowers/specs/2026-08-22-resume-tailoring-design.md`](superpowers/specs/2026-08-22-resume-tailoring-design.md),
+> which is the authoritative description. This section says only what the roadmap needs.
+
+**The flagship, scoped to what one slice can carry.** A recorded job becomes a tailored
+resume: the agent plans what to emphasise, drafts it, criticises its own draft, revises, and
+presents a diff the user approves item by item. Nothing is kept without that approval.
+
+The **Reviewer** is the point. It verifies every claim traces to existing profile content,
+detects overstated phrasing, checks coverage, and returns a confidence score that sends work
+back without asking the user. It is what makes the system trustworthy rather than merely
+generative, and it is the loop `docs/07` §3.3 assigned to "004" before slice 004 was split.
+
+**LangGraph orchestrates and owns nothing.** Persistence, business state, audit and
+ownership stay in CareerHQ; every model call goes through the existing `complete()` seam.
+The checkpointer is declined for now, because approval starts no further graph execution and
+two persistent representations of one workflow leave no answer to which is authoritative.
+
+**RAG and PDF export are deliberately not here** — see §5.6. §5.4's original scope was six
+subsystems; slice 004 was one structured call and ran 89 tasks.
+
+---
+
+## 5.6 Slice 006 — Document & Retrieval
+
+**Delivers the half of the Optimizer slice 005 left out**, and turns an approved version into
+a document that can actually be sent:
+
+- **Knowledge Context** — document ingestion, chunking, embeddings, and pgvector retrieval
+  with citations preserved. This is the project's only RAG, and it retrieves **resume-writing
+  guidelines**, which the Draft node consumes in place of slice 005's static rubric.
+- **PDF export** against one well-designed ATS-safe template, the `Exported` and `Submitted`
+  lifecycle states, and `SubmittedResume` — locked permanently, which is what lets slice 009
+  later analyse which versions led to interviews.
+
+**The constraint that matters**: structured facts are retrieved relationally; only semantic
+knowledge goes through vector search ([03_Domain_Model.md](03_Domain_Model.md) §7.5).
+Embedding structured profile data and asking a model to retrieve it produces approximate
+answers to questions the database answers exactly (ADR-008).
+
+**Why after 005**: swapping the Draft node's rubric from static code to retrieval changes one
+node's input, not the design — so the workflow can be built, run and corrected first, against
+a rubric that is fully under control.
+
+---
+
+## 5.7 Slice 007 — Evaluation & Benchmark
 
 **Delivers** a real evaluation harness, not a spreadsheet of impressions:
 
@@ -257,12 +308,20 @@ which was a mistake on two counts. It is an explicit project requirement, and it
 between "I built an agent" and "I know how well my agent works" — which is the more interesting
 claim.
 
-**Why here**: there is nothing to evaluate before slice 004 produces output, and everything built
-afterwards can be measured against a harness that already exists.
+**Why here, and not earlier**: it was 005 in an earlier version of this plan, and moved twice.
+Four of the seven metrics above measure the tailoring agent — requirement coverage of a tailored
+resume, retrieval quality of the RAG step, LLM-as-judge of tailored output, and grounding accuracy
+of generated claims. Building the harness before them means building a measuring instrument for
+something that does not exist, then extending it anyway. Retrieval quality is one of the four,
+which is what puts this behind 006 rather than between 005 and 006.
+
+**The risk in that, stated rather than buried**: evaluation is a graded requirement and it has now
+been deferred twice. If the budget runs short, 008 and 009 are what get dropped — they are
+droppable by design (§5, and [08_Technical_Spec.md](08_Technical_Spec.md) §11). This is not.
 
 ---
 
-## 5.6 Slice 006 — Company Research
+## 5.8 Slice 008 — Company Research
 
 **Delivers** on-demand company research — what the company does, its product and customers, its
 market and competitors, publicly visible technologies, and interview-preparation notes — summarized
@@ -274,7 +333,7 @@ and the provider is replaceable.
 
 ---
 
-## 5.7 Slice 007 — Career Advisor
+## 5.9 Slice 009 — Career Advisor
 
 **Delivers** quantified analysis across accumulated application history:
 
@@ -319,7 +378,7 @@ Kept in the architecture, not built in this version.
 | Capability | Why deferred |
 |---|---|
 | Resume Builder from scratch, and the Designer surface | Roughly forty presentation settings and a guided editor, demonstrating none of the project requirements. Import reaches the same structured data far faster, and the data model is identical so the builder is a later interface addition (ADR-013). |
-| Application Workflow Agent | Proactive follow-up prompts, stale-application detection, deadline awareness. Genuinely agentic and cheap on top of the lineage model — the first stretch goal if slices 001–005 land early. |
+| Application Workflow Agent | Proactive follow-up prompts, stale-application detection, deadline awareness. Genuinely agentic and cheap on top of the lineage model — the first stretch goal if slices 001–007 land early. |
 | Interview Preparation Agent | Reuses Company Research output; second stretch goal. |
 | Multi-provider routing | LiteLLM makes providers swappable by configuration. Building routing before a second provider is needed is speculative complexity. |
 | Cover letters, LinkedIn, calendar, email integration | Out of scope for Version 1 per [01_Functional_Product_Requirements.md](01_Functional_Product_Requirements.md) §11. |
