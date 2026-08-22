@@ -248,6 +248,14 @@ Analyze job description
   → PDF export → Submitted and locked  (Principle IV)
 ```
 
+> **Retrieval is an input, not a step** (added 2026-08-22). The diagram above draws
+> `Retrieve resume guidelines` between Analyze and Draft, but it is not a graph node. Slice
+> 005 builds the workflow with guidance behind a `GuidelineSource` port backed by a static
+> rubric; slice 006 re-implements that port over pgvector. The Plan and Draft nodes call the
+> port, so adding RAG changes no vertex and no edge. Draft's query depends on what Plan
+> decided, which is why the call sits inside the nodes rather than ahead of the graph. See
+> `docs/superpowers/specs/2026-08-22-resume-tailoring-design.md` §3.4.
+
 **Model selection is per node, matched to how much judgement each step needs.** LangGraph
 nodes carry their own model configuration and LiteLLM makes the provider a setting
 (ADR-005), so this is configuration rather than architecture.

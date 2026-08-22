@@ -60,14 +60,40 @@ slices stand in front of it. If the budget runs short, the work at the end is wh
 **Out, and deliberately** — these become slice 006, "the version becomes a document":
 
 - **Knowledge Context / RAG** — ingestion, chunking, embeddings, retrieval with citations.
-  The Draft node consumes a guideline rubric; in this slice that rubric is static application
-  code. Swapping its source to retrieval later changes one node's input, not the design.
-  This defers the graded RAG requirement by one slice, knowingly.
+  The Plan and Draft nodes consume a guideline rubric; in this slice that rubric is static
+  application code, behind the port described in §3.4. This defers the graded RAG requirement
+  by one slice, knowingly.
 - **PDF export, the ATS-safe template, `SubmittedResume`, and the `Exported`/`Submitted`
   lifecycle states.**
 
 §5.4 as written is six subsystems. Slice 004 was one structured call and ran 89 tasks; all
 six in one slice is how a four-to-six-week budget ends with nothing demonstrable.
+
+### The 005/006 boundary, and why it is a port rather than an intention
+
+**Slice 006 upgrades this agent's knowledge source. It is not a redesign, and there is no
+"Tailoring Agent v2."** The workflow, the nodes, their responsibilities, the state, the
+finalisation rules and the lifecycle all stay as built here. The single change is where
+guidance comes from.
+
+An intention stated once in prose erodes under implementation pressure, so §3.4 makes it
+structural: the guideline source is a **port defined in this slice with a static
+implementation**, and slice 006 supplies a second implementation plus the ingestion machinery
+beside it. The graph is untouched — not by agreement, but because nothing in it refers to
+where guidance came from.
+
+This is the same move `ports.py` made for the provider seam, and its docstring gives the
+reason: *"defined with one caller rather than discovered with five."*
+
+**Retrieval does not become a graph node in 006.** `docs/08` §3.2.3 draws
+`Retrieve resume guidelines` as a step between Analyze and Draft, and building it that way
+would add a vertex with no branching — a workflow change caused by nothing but RAG arriving,
+which is exactly what this boundary forbids. Retrieval is an **input to the Plan and Draft
+nodes**, fetched through the port. `docs/08` §3.2.3 gets a note to that effect.
+
+The counter-argument, recorded because it is real: a Retrieve node would appear in the graph
+visualisation, and visualisation is one of the reasons for adopting LangGraph at all. It is
+not worth changing the workflow for.
 
 ---
 
@@ -167,6 +193,39 @@ async def draft(state: TailoringState) -> TailoringState:
 
 This is what makes every node testable against a fake seam with no provider and no database,
 and it is why the graph can return final state and write nothing.
+
+---
+
+### 3.4 The guideline port — built here, re-implemented in 006
+
+Resume-writing guidance reaches the Plan and Draft nodes through a port, not through a
+constant they read directly.
+
+```python
+class GuidelineSource(Protocol):
+    async def guidelines_for(self, *, context: GuidelineQuery) -> Sequence[Guideline]: ...
+
+
+@dataclass(frozen=True, slots=True)
+class Guideline:
+    text: str
+    source: str   # which guide this came from — a citation, not decoration
+```
+
+**In this slice** the implementation is a static rubric in application code. **In slice 006**
+it is retrieval over pgvector. Nothing else changes: the nodes call the same method, the
+prompt builders consume the same type, and the graph does not know either exists.
+
+**`source` is present from the first implementation on purpose.** `docs/08` requires
+retrieval to preserve citations. Adding the field in 006 would change what the prompt
+builders consume — a small node-input change, and precisely the kind that compounds into the
+redesign the boundary exists to prevent. A static rubric has a provenance too, so recording
+it is accurate rather than speculative.
+
+**What is deliberately *not* in this signature**: no `top_k`, no similarity scores, no
+embedding parameters. Those are retrieval's vocabulary, and putting them here in advance
+would be designing 006 inside 005 — the opposite error, and equally costly. The port asks a
+question; how an implementation answers it is its own business.
 
 ---
 
@@ -307,6 +366,13 @@ recorded, never inherited). Carries the tailoring workflow reference (`docs/03` 
 **`tailoring_runs`** — one row per execution. Holds the Plan, attempts, per-node `Usage`,
 model configuration, the finalisation rules version, and the failure reason when there is
 one. Referenced **by** the version, not the reverse.
+
+It also records **the guidelines the run actually used, with their sources** (§3.4). In this
+slice that is a static rubric and the record looks redundant; in 006 it is what makes slice
+007's *retrieval quality* metric measurable at all — "were the guidelines this run retrieved
+relevant?" cannot be answered from a run that did not keep them. Storing it from the start
+also means runs from 005 and 006 stay comparable, which is the whole point of a regression
+harness.
 
 **`resume_version_items`** — one row per included item: source item id, original text,
 proposed text, the user's decision (accepted / rejected / edited), and the final text.
