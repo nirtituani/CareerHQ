@@ -77,15 +77,15 @@ saved version exists that differs from the master in ways shown before agreeing 
 ### Tests for User Story 1
 
 - [ ] T028 [P] [US1] Write `backend/tests/integration/test_tailoring_preconditions.py` — 422 with no completed analysis, 422 with a stale one, and the two messages differing (FR-001)
-- [ ] T029 [P] [US1] Write `backend/tests/integration/test_tailoring_workflow.py::test_clears_review_first_time` — three calls, one usage record each, no revision
-- [ ] T030 [P] [US1] Add `test_one_revision_then_clears` — five calls; the second draft is what persists
-- [ ] T031 [P] [US1] Add `test_full_budget_exhausted` — seven calls, the second revision uses `tailor_revise_escalated`, finalisation still runs (FR-013)
+- [X] T029 [P] [US1] Write `backend/tests/integration/test_tailoring_workflow.py::test_clears_review_first_time` — three calls, one usage record each, no revision
+- [X] T030 [P] [US1] Add `test_one_revision_then_clears` — five calls; the second draft is what persists
+- [X] T031 [P] [US1] Add `test_full_budget_exhausted` — seven calls, the second revision uses `tailor_revise_escalated`, finalisation still runs (FR-013)
 - [ ] T031a [P] [US1] Add `test_invalid_model_output_fails_the_run` to `backend/tests/integration/test_tailoring_workflow.py` — drive **each** node (plan, draft, review, revise) with a fixture returning output that fails schema validation, and assert for every one: the run records `status='failed'` with a `failure_reason`, the version returns to `draft` and is readable, and no partial items or findings were written (FR-006, FR-037)
 - [ ] T031b [P] [US1] Add `test_a_failed_run_can_be_retried` — after a failed run, a second `POST .../tailor` is accepted rather than 409'd, because the partial index only holds for `tailoring` and `reviewing` (FR-007)
-- [ ] T032 [P] [US1] Add `test_usage_accumulates` asserting **seven** usage records on the full path. This is the R3 failure: without an append reducer only the last survives and nothing raises
-- [ ] T033 [P] [US1] Add `test_ungrounded_claim_never_persisted` — the proposal is absent from every row, `original_text` stands, the finding persists (FR-018, FR-046). **Watch it fail** before trusting it
-- [ ] T033a [P] [US1] Add `test_guidelines_used_are_persisted` — after a run, `tailoring_runs.guidelines_used` holds every guideline the nodes consumed **and each one's `source`**. Without this FR-016 is a column nobody fills, and slice 007's retrieval-quality metric has nothing to measure (FR-016)
-- [ ] T033b [P] [US1] Add `test_rejecting_every_proposal_yields_the_master` — reject every item, approve, and assert the saved version's content equals the master resume exactly, with no error and status `ready` (SC-005). The cheapest end-to-end test of the approval path, and quickstart §2 already promises it exists
+- [X] T032 [P] [US1] Add `test_usage_accumulates` asserting **seven** usage records on the full path. This is the R3 failure: without an append reducer only the last survives and nothing raises
+- [X] T033 [P] [US1] Add `test_ungrounded_claim_never_persisted` — the proposal is absent from every row, `original_text` stands, the finding persists (FR-018, FR-046). **Watch it fail** before trusting it
+- [X] T033a [P] [US1] Add `test_guidelines_used_are_persisted` — after a run, `tailoring_runs.guidelines_used` holds every guideline the nodes consumed **and each one's `source`**. Without this FR-016 is a column nobody fills, and slice 007's retrieval-quality metric has nothing to measure (FR-016)
+- [X] T033b [P] [US1] Add `test_rejecting_every_proposal_yields_the_master` — reject every item, approve, and assert the saved version's content equals the master resume exactly, with no error and status `ready` (SC-005). The cheapest end-to-end test of the approval path, and quickstart §2 already promises it exists
 - [ ] T034 [P] [US1] Write `backend/tests/integration/test_tailoring_concurrency.py` — a second request while one is in flight returns 409 (FR-004), asserted against the partial index rather than the code path
 - [ ] T035 [P] [US1] Write `backend/tests/integration/test_owner_data_untouched.py` — snapshot **every owner-owned table** (the match analysis, and the profile's contact, titles, summaries, experiences, bullets, skills, projects, education, certifications, languages, military service, volunteering) before a run and assert byte-identical after, for a run that **succeeds**, one that **fails**, and one that is **abandoned and reaped** (FR-011, FR-021). Constitution Principle II is non-negotiable and this is the only thing that checks it
 - [ ] T036 [P] [US1] Write `backend/tests/integration/test_version_status_transitions.py` exercising every transition **against a re-read record** (FR-047) — the `is`-versus-`==` bug that left every slice-004 analysis stuck on `pending` under a green suite
@@ -93,17 +93,17 @@ saved version exists that differs from the master in ways shown before agreeing 
 
 ### Implementation for User Story 1
 
-- [ ] T037 [US1] Create `backend/src/careerhq/application/agents/tailoring/state.py` — the frozen `TailoringState` dataclass with **append reducers on `usage` and `findings`** (research R3, verified in T006)
-- [ ] T038 [US1] Create `backend/src/careerhq/application/agents/tailoring/prompts.py` with the plan prompt — consumes the match analysis, produces emphasis, de-emphasis, and the gaps that must not be misrepresented (FR-009, FR-010)
-- [ ] T039 [US1] Add the draft prompt to `prompts.py` — works **from the plan**, never deriving its own strategy (FR-005 of the design's commitments); returns item ids with changed text only
-- [ ] T040 [US1] Add the review prompt to `prompts.py` — grounding, overstatement, coverage, and a confidence score, with the closed `kind` set stated explicitly (FR-012)
-- [ ] T041 [US1] Add the revise prompt to `prompts.py`, taking the findings as input
-- [ ] T042 [US1] Create `backend/src/careerhq/application/agents/tailoring/graph.py` — four nodes, each state-in/state-out, calling `complete()` and the guideline port and nothing else (contract O2). **No node holds a session or writes**
-- [ ] T043 [US1] Add the conditional edge in `graph.py` — bounded at two revisions, escalating by **task name** on the second (`tailor_revise_escalated`), never by a branch on model (contract O4, O7)
-- [ ] T044 [US1] Create `backend/src/careerhq/application/tailor_resume.py` — `create_pending_version` creating version and run **synchronously in one transaction** before the background work starts (FR-003)
-- [ ] T045 [US1] Add the precondition check to `tailor_resume.py`, reusing the existing read-time staleness comparison rather than adding a flag (FR-001, data-model.md)
-- [ ] T046 [US1] Add `run_tailoring` to `tailor_resume.py` — invokes the graph, applies `finalisation_rules`, and writes version, items, findings, usage **and `guidelines_used` with each guideline's source** (FR-016) **in one transaction** (contract O3). Assign collections at construction to avoid `MissingGreenlet` on serialisation
-- [ ] T047 [US1] Add the abandoned-run reaper to `tailor_resume.py` with a **named threshold constant** and the reasoning beside it — it must not release a run legitimately in its second revision (research R7)
+- [X] T037 [US1] Create `backend/src/careerhq/application/agents/tailoring/state.py` — the frozen `TailoringState` dataclass with **append reducers on `usage` and `findings`** (research R3, verified in T006)
+- [X] T038 [US1] Create `backend/src/careerhq/application/agents/tailoring/prompts.py` with the plan prompt — consumes the match analysis, produces emphasis, de-emphasis, and the gaps that must not be misrepresented (FR-009, FR-010)
+- [X] T039 [US1] Add the draft prompt to `prompts.py` — works **from the plan**, never deriving its own strategy (FR-005 of the design's commitments); returns item ids with changed text only
+- [X] T040 [US1] Add the review prompt to `prompts.py` — grounding, overstatement, coverage, and a confidence score, with the closed `kind` set stated explicitly (FR-012)
+- [X] T041 [US1] Add the revise prompt to `prompts.py`, taking the findings as input
+- [X] T042 [US1] Create `backend/src/careerhq/application/agents/tailoring/graph.py` — four nodes, each state-in/state-out, calling `complete()` and the guideline port and nothing else (contract O2). **No node holds a session or writes**
+- [X] T043 [US1] Add the conditional edge in `graph.py` — bounded at two revisions, escalating by **task name** on the second (`tailor_revise_escalated`), never by a branch on model (contract O4, O7)
+- [X] T044 [US1] Create `backend/src/careerhq/application/tailor_resume.py` — `create_pending_version` creating version and run **synchronously in one transaction** before the background work starts (FR-003)
+- [X] T045 [US1] Add the precondition check to `tailor_resume.py`, reusing the existing read-time staleness comparison rather than adding a flag (FR-001, data-model.md)
+- [X] T046 [US1] Add `run_tailoring` to `tailor_resume.py` — invokes the graph, applies `finalisation_rules`, and writes version, items, findings, usage **and `guidelines_used` with each guideline's source** (FR-016) **in one transaction** (contract O3). Assign collections at construction to avoid `MissingGreenlet` on serialisation
+- [X] T047 [US1] Add the abandoned-run reaper to `tailor_resume.py` with a **named threshold constant** and the reasoning beside it — it must not release a run legitimately in its second revision (research R7)
 - [ ] T048 [P] [US1] Write `backend/tests/integration/test_tailoring_reaper.py` covering both sides of that threshold
 - [ ] T049 [US1] Create `backend/src/careerhq/api/routes/tailoring.py` with `POST /api/applications/{id}/tailor` per [contracts/http-api.md](contracts/http-api.md) — 202, 409, 422 distinguishing both causes, 404
 - [ ] T050 [US1] Add `GET /api/versions/{id}` returning the version, items and nested findings; empty items while `tailoring` or `reviewing`
