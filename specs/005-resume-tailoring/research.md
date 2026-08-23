@@ -94,6 +94,24 @@ wrong by a factor of up to seven, and *nothing raises*. It looks exactly like a 
 against the installed version before building the graph** — a task, not an assumption — and assert
 it with a test that runs a two-revision graph against a fake seam and counts seven usage entries.
 
+### Measured (T006) — the prediction held exactly
+
+Probed against the **installed** `langgraph 1.2.11` / `langchain-core 1.6.0` /
+`langgraph-checkpoint 4.2.0`, with a three-node graph writing to two keys, one carrying
+`Annotated[list[str], operator.add]` and one bare:
+
+| Key | Result after three nodes each returning one element |
+|---|---|
+| no reducer | `['c']` — **overwritten** |
+| `operator.add` | `['a', 'b', 'c']` — appended |
+
+So the failure mode is real and silent: across a seven-call run, a bare `usage` key keeps **one**
+record. The audit would be incomplete, the cost figure wrong by up to 7x, nothing would raise, and
+the run would look cheap.
+
+Also confirmed in the same probe: **the graph compiles and invokes with no checkpointer at all**,
+which is what R1's decision depends on.
+
 ---
 
 ## R4 — Five task names, and the escalation that is not a branch

@@ -27,13 +27,13 @@ implementation is a broken test.
 **Sequenced first because the dependency creates the hole the guard must cover** (research R2).
 T001 and T002 land in the **same commit**.
 
-- [ ] T001 Add `langgraph>=1.2.11,<1.3` to `backend/pyproject.toml`, with a comment beside it recording that `langgraph-checkpoint-postgres` is deliberately **not** installed and why (research R1) — an absent dependency with no note is indistinguishable from an oversight
-- [ ] T002 Widen `forbidden` to `("litellm", "anthropic", "openai", "langchain_anthropic", "langchain_openai", "langchain_community")` in `backend/tests/unit/test_architecture.py::test_the_application_layer_imports_no_provider_sdk`, with a comment explaining that `langchain_core` is deliberately permitted because LangGraph's own types come from it
-- [ ] T003 **Watch T002 fail**: add `import anthropic` to a scratch module under `application/`, confirm the test names that file, remove it. A gate nobody has watched fail is not a gate
-- [ ] T004 [P] Add `llm_model_tailor_plan`, `llm_model_tailor_draft`, `llm_model_tailor_review`, `llm_model_tailor_revise`, `llm_model_tailor_revise_escalated` to `backend/src/careerhq/config.py` — Sonnet, Sonnet, **Opus**, Sonnet, **Opus**
-- [ ] T005 [P] Write `backend/tests/unit/test_task_model_config.py` asserting every `task=` literal in `application/` has a matching `llm_model_<task>` setting. Watch it fail by removing one entry — the fallback is Opus and the failure is silent
-- [ ] T006 Verify LangGraph's state-merge semantics against the **installed** version — confirm that a key without a reducer is overwritten and that `Annotated[list, operator.add]` appends — and record the finding in `research.md` R3. Do not build the graph on an assumption here (research R3)
-- [ ] T007 Run `docker compose build backend && docker compose up -d backend` and confirm the stack is healthy with the new dependency
+- [X] T001 Add `langgraph>=1.2.11,<1.3` to `backend/pyproject.toml`, with a comment beside it recording that `langgraph-checkpoint-postgres` is deliberately **not** installed and why (research R1) — an absent dependency with no note is indistinguishable from an oversight
+- [X] T002 Widen `forbidden` to `("litellm", "anthropic", "openai", "langchain_anthropic", "langchain_openai", "langchain_community")` in `backend/tests/unit/test_architecture.py::test_the_application_layer_imports_no_provider_sdk`, with a comment explaining that `langchain_core` is deliberately permitted because LangGraph's own types come from it
+- [X] T003 **Watch T002 fail**: add `import anthropic` to a scratch module under `application/`, confirm the test names that file, remove it. A gate nobody has watched fail is not a gate
+- [X] T004 [P] Add `llm_model_tailor_plan`, `llm_model_tailor_draft`, `llm_model_tailor_review`, `llm_model_tailor_revise`, `llm_model_tailor_revise_escalated` to `backend/src/careerhq/config.py` — Sonnet, Sonnet, **Opus**, Sonnet, **Opus**
+- [X] T005 [P] Write `backend/tests/unit/test_task_model_config.py` asserting every `task=` literal in `application/` has a matching `llm_model_<task>` setting. Watch it fail by removing one entry — the fallback is Opus and the failure is silent
+- [X] T006 Verify LangGraph's state-merge semantics against the **installed** version — confirm that a key without a reducer is overwritten and that `Annotated[list, operator.add]` appends — and record the finding in `research.md` R3. Do not build the graph on an assumption here (research R3)
+- [X] T007 Run `docker compose build backend && docker compose up -d backend` and confirm the stack is healthy with the new dependency
 
 **Checkpoint**: dependency in, guard widened and watched failing, model config complete.
 
