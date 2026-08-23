@@ -36,6 +36,27 @@ dependencies = [
     # UploadFile, and the failure without it is a runtime error at request time
     # rather than at import.
     "python-multipart>=0.0.32,<0.1",
+    # -- Slice 005 ---------------------------------------------------------
+    # The agent runtime. LangGraph orchestrates the tailoring workflow and
+    # owns nothing else: persistence, business state, audit and ownership stay
+    # in CareerHQ, and every model call goes through `application/ports.py`
+    # rather than through a LangChain model binding
+    # (specs/005-resume-tailoring/contracts/tailoring-workflow.md O1-O2).
+    #
+    # `langgraph-checkpoint` arrives transitively and is unavoidable — it
+    # carries the in-memory saver the runtime itself needs. What is
+    # deliberately ABSENT is `langgraph-checkpoint-postgres`, which is a
+    # separate package and is not installed: it would create a second
+    # persistent representation of a workflow whose state CareerHQ already
+    # owns, leaving no answer to which one is authoritative. Approval starts
+    # no further graph execution, so durable pause/resume has no requirement
+    # behind it here (research.md R1, design §3.2). Adding it is a decision,
+    # not a convenience.
+    #
+    # `langchain-core` also arrives transitively. It is permitted; the
+    # provider bindings are not, and `tests/unit/test_architecture.py` forbids
+    # them by name.
+    "langgraph>=1.2.11,<1.3",
 ]
 
 [project.optional-dependencies]
