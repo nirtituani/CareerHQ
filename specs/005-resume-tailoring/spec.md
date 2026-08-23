@@ -341,6 +341,34 @@ Settled during design. Recorded so they are not re-litigated in planning.
 | Does approval resume any workflow? | No | Nothing runs after approval in this slice |
 | Where does persistence happen? | In the application layer, never inside a workflow step | Workflow steps take state and return state; the layer that owns transactions owns the writes |
 
+## Open Decisions
+
+Raised by `/speckit-analyze` and **deliberately not decided here**, because deciding it inside a
+task would be inventing behaviour rather than specifying it.
+
+### Does `user_corrected` constrain what tailoring may rewrite?
+
+A profile fact the owner corrected by hand carries `user_corrected`, and slice 003 gave that mark
+one meaning: **a later import must not overwrite it.** Whether it also constrains the *tailoring
+agent* has never been stated. Neither this spec, the approved design, nor `docs/03` addresses it,
+and the mark's existing semantics do not settle it — an import replaces a fact with a different
+fact, whereas tailoring proposes a rewording of the same fact for one job, subject to approval.
+
+Three readings, each defensible:
+
+| Reading | Consequence |
+|---|---|
+| **No constraint** | Tailoring may reword a corrected fact like any other. The owner still approves every change, so Principle II is satisfied by the existing gate. |
+| **Flag it** | The agent may propose, but the diff marks the item as one the owner already corrected, so a rewrite of their own words is a visible decision rather than a quiet one. |
+| **Leave it alone** | The agent may include and reorder the item but never reword it. Strongest reading of "the owner has spoken", and the only one that changes the drafting prompt. |
+
+**Until this is decided, tailoring treats corrected facts like any other** — the first reading,
+which is what the current requirements already describe, so no task implements a rule nobody chose.
+Recording it here rather than in a task keeps the absence visible: an undecided question buried in
+an implementation note becomes an accident.
+
+It is worth deciding before slice 006, where a retrieved rubric may push harder on rewording.
+
 ## Assumptions
 
 - The owner has an approved Professional Profile with at least one work experience. Tailoring an

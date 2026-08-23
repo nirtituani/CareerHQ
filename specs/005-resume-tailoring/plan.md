@@ -48,7 +48,7 @@ Revise must return item identifiers with changed text, never the whole resume re
 is 57–86% of cost and the slow half of a completion.
 
 **Scale/Scope**: Single user per profile, one job tailored at a time. Roughly 30–60 items per
-version. Four HTTP routes, two migrations, one new frontend tab.
+version. Six HTTP routes, two migrations, one new frontend tab.
 
 ## Constitution Check
 
@@ -79,7 +79,7 @@ specs/005-resume-tailoring/
 ├── quickstart.md        # Phase 1 — how to prove it works
 ├── contracts/
 │   ├── tailoring-workflow.md   # O1–O8: the LangGraph/CareerHQ boundary
-│   └── http-api.md             # Four routes, ownership from the session
+│   └── http-api.md             # Six routes, ownership from the session
 ├── checklists/
 │   └── requirements.md
 └── tasks.md             # /speckit-tasks — not created here
@@ -93,7 +93,7 @@ backend/
 │   ├── 0010_resume_versions.py
 │   └── 0011_version_items_and_findings.py
 ├── src/careerhq/
-│   ├── api/routes/tailoring.py            NEW  four routes
+│   ├── api/routes/tailoring.py            NEW  six routes
 │   ├── application/
 │   │   ├── tailor_resume.py               NEW  the use case: transactions, finalisation, audit
 │   │   ├── finalisation_rules.py          NEW  named + versioned, beside match_criteria.py
@@ -110,7 +110,7 @@ backend/
 └── tests/
     ├── unit/test_architecture.py          MOD  widen the forbidden provider list
     ├── unit/test_finalisation_rules.py    NEW
-    ├── integration/test_tailoring_workflow.py  NEW  the five paths
+    ├── integration/test_tailoring_workflow.py  NEW  the seven paths
     └── conftest.py                        MOD  fixture gateway returns sequences
 
 frontend/src/
@@ -118,7 +118,7 @@ frontend/src/
 │   ├── tailor-tab.tsx                     NEW  the diff and approval surface
 │   ├── tailor-diff-item.tsx               NEW  original / proposed / finding / decision
 │   └── detail-tabs.tsx                    MOD  add the tab
-└── lib/api.ts                             MOD  four calls
+└── lib/api.ts                             MOD  six calls
 ```
 
 **Structure Decision**: the existing layered backend (`api/ → application/ → domain/`, with

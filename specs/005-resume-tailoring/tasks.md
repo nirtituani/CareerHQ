@@ -80,11 +80,16 @@ saved version exists that differs from the master in ways shown before agreeing 
 - [ ] T029 [P] [US1] Write `backend/tests/integration/test_tailoring_workflow.py::test_clears_review_first_time` — three calls, one usage record each, no revision
 - [ ] T030 [P] [US1] Add `test_one_revision_then_clears` — five calls; the second draft is what persists
 - [ ] T031 [P] [US1] Add `test_full_budget_exhausted` — seven calls, the second revision uses `tailor_revise_escalated`, finalisation still runs (FR-013)
+- [ ] T031a [P] [US1] Add `test_invalid_model_output_fails_the_run` to `backend/tests/integration/test_tailoring_workflow.py` — drive **each** node (plan, draft, review, revise) with a fixture returning output that fails schema validation, and assert for every one: the run records `status='failed'` with a `failure_reason`, the version returns to `draft` and is readable, and no partial items or findings were written (FR-006, FR-037)
+- [ ] T031b [P] [US1] Add `test_a_failed_run_can_be_retried` — after a failed run, a second `POST .../tailor` is accepted rather than 409'd, because the partial index only holds for `tailoring` and `reviewing` (FR-007)
 - [ ] T032 [P] [US1] Add `test_usage_accumulates` asserting **seven** usage records on the full path. This is the R3 failure: without an append reducer only the last survives and nothing raises
 - [ ] T033 [P] [US1] Add `test_ungrounded_claim_never_persisted` — the proposal is absent from every row, `original_text` stands, the finding persists (FR-018, FR-046). **Watch it fail** before trusting it
+- [ ] T033a [P] [US1] Add `test_guidelines_used_are_persisted` — after a run, `tailoring_runs.guidelines_used` holds every guideline the nodes consumed **and each one's `source`**. Without this FR-016 is a column nobody fills, and slice 007's retrieval-quality metric has nothing to measure (FR-016)
+- [ ] T033b [P] [US1] Add `test_rejecting_every_proposal_yields_the_master` — reject every item, approve, and assert the saved version's content equals the master resume exactly, with no error and status `ready` (SC-005). The cheapest end-to-end test of the approval path, and quickstart §2 already promises it exists
 - [ ] T034 [P] [US1] Write `backend/tests/integration/test_tailoring_concurrency.py` — a second request while one is in flight returns 409 (FR-004), asserted against the partial index rather than the code path
-- [ ] T035 [P] [US1] Write `backend/tests/integration/test_match_analysis_untouched.py` — no tailoring outcome, including failure, modifies a match analysis (FR-011)
+- [ ] T035 [P] [US1] Write `backend/tests/integration/test_owner_data_untouched.py` — snapshot **every owner-owned table** (the match analysis, and the profile's contact, titles, summaries, experiences, bullets, skills, projects, education, certifications, languages, military service, volunteering) before a run and assert byte-identical after, for a run that **succeeds**, one that **fails**, and one that is **abandoned and reaped** (FR-011, FR-021). Constitution Principle II is non-negotiable and this is the only thing that checks it
 - [ ] T036 [P] [US1] Write `backend/tests/integration/test_version_status_transitions.py` exercising every transition **against a re-read record** (FR-047) — the `is`-versus-`==` bug that left every slice-004 analysis stuck on `pending` under a green suite
+- [ ] T036a [P] [US1] Write `backend/tests/integration/test_version_immutability.py` — create a version, then mutate the profile (edit a bullet, add an experience, remove a skill) and its source master, then **reload the version in a fresh session** and assert every item's `original_text`, `proposed_text` and `final_text` are unchanged and `source_profile_updated_at` still holds the creation-time value (FR-030, FR-031, SC-007). Constitution Principle IV — *profile updates MUST NOT alter existing Resume Versions* — and `data-model.md` copies text rather than referencing it precisely so this holds. The fresh session matters for the same reason it does in T036
 
 ### Implementation for User Story 1
 
@@ -97,7 +102,7 @@ saved version exists that differs from the master in ways shown before agreeing 
 - [ ] T043 [US1] Add the conditional edge in `graph.py` — bounded at two revisions, escalating by **task name** on the second (`tailor_revise_escalated`), never by a branch on model (contract O4, O7)
 - [ ] T044 [US1] Create `backend/src/careerhq/application/tailor_resume.py` — `create_pending_version` creating version and run **synchronously in one transaction** before the background work starts (FR-003)
 - [ ] T045 [US1] Add the precondition check to `tailor_resume.py`, reusing the existing read-time staleness comparison rather than adding a flag (FR-001, data-model.md)
-- [ ] T046 [US1] Add `run_tailoring` to `tailor_resume.py` — invokes the graph, applies `finalisation_rules`, and writes version, items, findings and usage **in one transaction** (contract O3). Assign collections at construction to avoid `MissingGreenlet` on serialisation
+- [ ] T046 [US1] Add `run_tailoring` to `tailor_resume.py` — invokes the graph, applies `finalisation_rules`, and writes version, items, findings, usage **and `guidelines_used` with each guideline's source** (FR-016) **in one transaction** (contract O3). Assign collections at construction to avoid `MissingGreenlet` on serialisation
 - [ ] T047 [US1] Add the abandoned-run reaper to `tailor_resume.py` with a **named threshold constant** and the reasoning beside it — it must not release a run legitimately in its second revision (research R7)
 - [ ] T048 [P] [US1] Write `backend/tests/integration/test_tailoring_reaper.py` covering both sides of that threshold
 - [ ] T049 [US1] Create `backend/src/careerhq/api/routes/tailoring.py` with `POST /api/applications/{id}/tailor` per [contracts/http-api.md](contracts/http-api.md) — 202, 409, 422 distinguishing both causes, 404
@@ -105,7 +110,8 @@ saved version exists that differs from the master in ways shown before agreeing 
 - [ ] T051 [US1] Add `PATCH /api/versions/{id}/items/{item_id}` — accept, reject, edit; reject restores `original_text` and **triggers no AI work** (FR-026)
 - [ ] T052 [US1] Add `POST /api/versions/{id}/approve` — every still-`pending` item counts as accepted (FR-025, the import-review precedent), transition to `ready`, **start nothing** (FR-028)
 - [ ] T053 [US1] Add `GET /api/applications/{id}/versions` for the list view
-- [ ] T054 [US1] Register the router in `backend/src/careerhq/api/routes/__init__.py` and confirm the existing route-enumeration test now covers all five as authenticated
+- [ ] T053a [US1] Add `GET /api/versions/{id}/run` per [contracts/http-api.md](contracts/http-api.md) — the audit record: plan, attempts, guidelines used with sources, per-task models, tokens, cost, finalisation rules version and timings (FR-034). Its own endpoint rather than a field on the version, because it is inspection rather than the document, and slice 007 reads it programmatically
+- [ ] T054 [US1] Register the router in `backend/src/careerhq/api/routes/__init__.py` and confirm the existing route-enumeration test now covers all **six** as authenticated
 - [ ] T055 [P] [US1] Write `backend/tests/integration/test_tailoring_ownership.py` — no route accepts a client-supplied owner, and another user's version is 404 not 403
 - [ ] T056 [US1] Add the five API calls to `frontend/src/lib/api.ts`
 - [ ] T057 [US1] Create `frontend/src/components/applications/tailor-diff-item.tsx` — original, proposed, decision controls. **One component for every source kind**; a second render path costs an affordance every time
@@ -207,6 +213,13 @@ Phase 6 (T080–T091)
 
 **US2 and US3 are independent of each other** and may be built in either order once US1 lands.
 
+**T035 and T036a are the two invariant tests**, added after `/speckit-analyze` found them missing.
+Both correspond to constitution MUSTs that no task verified — Principle II (owner data is not
+modified) and Principle IV (a version does not change when the profile does). The pattern is worth
+noting: the gaps were both *invariants*, not features. Feature work generates obvious tasks;
+"nothing changed" does not, which is exactly why slice 003's absence tests had to be written
+deliberately.
+
 **T026 is the hidden critical path.** Until the fixture gateway returns sequences, T031, T032 and
 T033 cannot be written — and those cover the revision bound, the usage accumulation, and the
 grounding discard. An untestable path is an untested path, which is how slice 004 shipped nine
@@ -216,7 +229,7 @@ defects under a green suite.
 
 - **Phase 2**: T008–T011 are one file and must be sequential, but T018, T019, T021 and T027 run in
   parallel with each other and with the migration work
-- **Phase 3 tests**: T028–T036 are nine independent files, all parallel
+- **Phase 3 tests**: T028–T036a are fifteen independent tests across six files, all parallel
 - **Phase 3 frontend**: T057 and T061 can proceed against the contract before the backend lands
 - **Phase 6**: T083 and T084 in parallel; T080–T082 are three independent documents
 
@@ -225,7 +238,7 @@ defects under a green suite.
 **Ship US1 alone if the budget tightens.** It delivers a tailored, approved resume — the flagship's
 whole claim — and both later stories refine confidence rather than capability.
 
-**The order within US1 is not negotiable**: tests T028–T036 before implementation T037–T063. Slice
+**The order within US1 is not negotiable**: tests T028–T036a before implementation T037–T063. Slice
 004 is the case study for why. Nine defects shipped under a green suite, and every one was found by
 running the thing rather than by testing it — so the tests exist to make the *mechanisms* provable,
 and T062, T063, T073 and T087 exist because tests never found a display bug in this project.

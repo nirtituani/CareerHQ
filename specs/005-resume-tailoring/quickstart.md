@@ -60,6 +60,9 @@ What must be demonstrated, each as a named test:
 | Full budget exhausted | 7 calls; **the second revision used the escalated task name**; finalisation still ran |
 | An `ungrounded` finding | The proposal is **absent from every row**; `original_text` stands; the finding persists |
 | Every proposal rejected | Version content equals the master, saved without error (SC-005) |
+| Invalid output at each node | Run `failed` with a reason; version readable at `draft`; no partial rows; a retry is accepted |
+| Profile mutated after a version exists | Version content and `source_profile_updated_at` unchanged, read in a fresh session |
+| Any run outcome | Every owner-owned profile table byte-identical before and after |
 
 The exhausted-budget and escalation paths need the fixture gateway to return a **sequence** per
 task name (research R10). Until it does, those rows are unprovable — and they carry the
