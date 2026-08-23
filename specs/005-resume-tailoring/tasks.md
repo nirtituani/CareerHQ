@@ -41,26 +41,26 @@ T001 and T002 land in the **same commit**.
 
 ## Phase 2: Foundational (blocks every user story)
 
-- [ ] T008 [P] Create `backend/src/careerhq/domain/models/tailoring.py` with `ResumeVersion` per [data-model.md](data-model.md) — including the **named** `use_alter` foreign key to `tailoring_runs` (an unnamed one cannot be dropped and breaks `drop_all` outright)
-- [ ] T009 [P] Add `TailoringRun` to `backend/src/careerhq/domain/models/tailoring.py` — `plan` and `guidelines_used` as `jsonb`, `cost` as `Numeric(12,6)` never float, `is_fixture`
-- [ ] T010 [P] Add `ResumeVersionItem` to `backend/src/careerhq/domain/models/tailoring.py` — `original_text` copied not referenced, `final_text` materialised, `decision` enum
-- [ ] T011 [P] Add `ReviewerFinding` to `backend/src/careerhq/domain/models/tailoring.py` — closed `kind` set, `quoted_text` required for `ungrounded` as a check constraint
-- [ ] T012 Add the `VersionStatus` enum (`draft`, `tailoring`, `reviewing`, `awaiting_approval`, `ready`) to `backend/src/careerhq/domain/models/tailoring.py`. **Do not add `exported` or `submitted`** — a state nothing can reach is a claim the code does not support
-- [ ] T013 Export the new models from `backend/src/careerhq/domain/models/__init__.py`
-- [ ] T014 Write `backend/alembic/versions/0010_resume_versions.py` — `resume_versions`, `tailoring_runs`, the named `use_alter` FK, and `uq_resume_versions_one_in_flight_per_application` as a **partial unique index** (FR-004 belongs in the schema; an application-level check can be raced by a double-click)
-- [ ] T015 Write `backend/alembic/versions/0011_version_items_and_findings.py` — `resume_version_items`, `reviewer_findings`, and the `ungrounded`-quotes-text check constraint
-- [ ] T016 Run `alembic upgrade head` then `alembic downgrade -2` and back, against a real database, to prove both migrations reverse
-- [ ] T017 Confirm `backend/tests/conftest.py` drops the schema before creating. `create_all` does not reconcile an existing table, so every schema-shaped assertion below would silently check a stale snapshot
-- [ ] T018 [P] Write `backend/tests/integration/test_tailoring_schema.py` asserting there is **no `failed` value** in the version status enum and **no `is_stale` column** anywhere. Watch both fail by adding them temporarily (data-model.md, *Two absences*)
-- [ ] T019 [P] Create `backend/src/careerhq/domain/schemas/tailoring.py` — `TailoringPlan`, `TailoredDraft`, `ReviewResult` Pydantic schemas. **Draft and Revise return item ids with changed text, never the whole resume** (research R5: output is 57–86% of cost and the slow half of a completion)
-- [ ] T020 Add a validator to `ReviewResult` requiring `quoted_text` on every `ungrounded` finding, and **forbidding** an item reference on `uncovered` findings (research R9 — a field the model has no honest basis to fill is what broke slice 004's `unverified`)
-- [ ] T021 [P] Write `backend/tests/unit/test_tailoring_schema_validation.py` covering both rules in T020
-- [ ] T022 Create `backend/src/careerhq/application/guidelines.py` — the `GuidelineSource` protocol and `Guideline` dataclass exactly as [contracts/tailoring-workflow.md](contracts/tailoring-workflow.md) O6 specifies. **No `top_k`, no scores, no embedding parameters**
-- [ ] T023 Implement `StaticGuidelines` in `backend/src/careerhq/application/guidelines.py` — 10–15 rules, each carrying a `source` (research R6)
-- [ ] T024 Create `backend/src/careerhq/application/finalisation_rules.py` with `FINALISATION_RULES_VERSION = "v1-severity"`, the severity table, and the confidence threshold as a named constant with its uncalibrated status stated in the docstring — modelled on `match_criteria.py`, where changing a constant is a **new version, never an edit**
-- [ ] T025 Write `backend/tests/unit/test_finalisation_rules.py` — an `ungrounded` finding discards its item's proposal and restores `original_text`; `overstated` and `uncovered` survive untouched. Pure functions, no database, no provider
-- [ ] T026 Extend the fixture gateway in `backend/src/careerhq/infrastructure/ai/fixture_gateway.py` to accept a **sequence per task name**, consuming one entry per call (research R10). Without this the two-revision and exhausted-budget paths are untestable — and that is where FR-013 and FR-018 live
-- [ ] T027 Write `backend/tests/unit/test_fixture_gateway_sequences.py` proving successive calls to one task name return successive results
+- [X] T008 [P] Create `backend/src/careerhq/domain/models/tailoring.py` with `ResumeVersion` per [data-model.md](data-model.md) — including the **named** `use_alter` foreign key to `tailoring_runs` (an unnamed one cannot be dropped and breaks `drop_all` outright)
+- [X] T009 [P] Add `TailoringRun` to `backend/src/careerhq/domain/models/tailoring.py` — `plan` and `guidelines_used` as `jsonb`, `cost` as `Numeric(12,6)` never float, `is_fixture`
+- [X] T010 [P] Add `ResumeVersionItem` to `backend/src/careerhq/domain/models/tailoring.py` — `original_text` copied not referenced, `final_text` materialised, `decision` enum
+- [X] T011 [P] Add `ReviewerFinding` to `backend/src/careerhq/domain/models/tailoring.py` — closed `kind` set, `quoted_text` required for `ungrounded` as a check constraint
+- [X] T012 Add the `VersionStatus` enum (`draft`, `tailoring`, `reviewing`, `awaiting_approval`, `ready`) to `backend/src/careerhq/domain/models/tailoring.py`. **Do not add `exported` or `submitted`** — a state nothing can reach is a claim the code does not support
+- [X] T013 Export the new models from `backend/src/careerhq/domain/models/__init__.py`
+- [X] T014 Write `backend/alembic/versions/0010_resume_versions.py` — `resume_versions`, `tailoring_runs`, the named `use_alter` FK, and `uq_resume_versions_one_in_flight_per_application` as a **partial unique index** (FR-004 belongs in the schema; an application-level check can be raced by a double-click)
+- [X] T015 Write `backend/alembic/versions/0011_version_items_and_findings.py` — `resume_version_items`, `reviewer_findings`, and the `ungrounded`-quotes-text check constraint
+- [X] T016 Run `alembic upgrade head` then `alembic downgrade -2` and back, against a real database, to prove both migrations reverse
+- [X] T017 Confirm `backend/tests/conftest.py` drops the schema before creating. `create_all` does not reconcile an existing table, so every schema-shaped assertion below would silently check a stale snapshot
+- [X] T018 [P] Write `backend/tests/integration/test_tailoring_schema.py` asserting there is **no `failed` value** in the version status enum and **no `is_stale` column** anywhere. Watch both fail by adding them temporarily (data-model.md, *Two absences*)
+- [X] T019 [P] Create `backend/src/careerhq/domain/schemas/tailoring.py` — `TailoringPlan`, `TailoredDraft`, `ReviewResult` Pydantic schemas. **Draft and Revise return item ids with changed text, never the whole resume** (research R5: output is 57–86% of cost and the slow half of a completion)
+- [X] T020 Add a validator to `ReviewResult` requiring `quoted_text` on every `ungrounded` finding, and **forbidding** an item reference on `uncovered` findings (research R9 — a field the model has no honest basis to fill is what broke slice 004's `unverified`)
+- [X] T021 [P] Write `backend/tests/unit/test_tailoring_schema_validation.py` covering both rules in T020
+- [X] T022 Create `backend/src/careerhq/application/guidelines.py` — the `GuidelineSource` protocol and `Guideline` dataclass exactly as [contracts/tailoring-workflow.md](contracts/tailoring-workflow.md) O6 specifies. **No `top_k`, no scores, no embedding parameters**
+- [X] T023 Implement `StaticGuidelines` in `backend/src/careerhq/application/guidelines.py` — 10–15 rules, each carrying a `source` (research R6)
+- [X] T024 Create `backend/src/careerhq/application/finalisation_rules.py` with `FINALISATION_RULES_VERSION = "v1-severity"`, the severity table, and the confidence threshold as a named constant with its uncalibrated status stated in the docstring — modelled on `match_criteria.py`, where changing a constant is a **new version, never an edit**
+- [X] T025 Write `backend/tests/unit/test_finalisation_rules.py` — an `ungrounded` finding discards its item's proposal and restores `original_text`; `overstated` and `uncovered` survive untouched. Pure functions, no database, no provider
+- [X] T026 **Amended during implementation**: built as a test double at `backend/tests/support/scripted_seam.py`, *not* in `infrastructure/ai/fixture_gateway.py`. That adapter is production code selected by `AI_PROVIDER=fixture` for demos; scripting a sequence of differing answers is purely a test concern, and putting the API there would ship a mechanism only tests use. Returns a **sequence per task name**, one entry per call, and raises rather than repeating its last answer when the script runs out (research R10)
+- [X] T027 Write `backend/tests/unit/test_scripted_seam.py` proving successive calls to one task name return successive results, that exhausting the script raises rather than repeating (a repeated last answer would make an unbounded loop look convergent), and that a scripted answer still faces the real schema
 
 **Checkpoint**: schema, schemas, rules and test infrastructure exist. No workflow yet.
 
