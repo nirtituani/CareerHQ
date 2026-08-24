@@ -183,14 +183,14 @@ there and marked owner-authored.
 - [X] T080 Amend `docs/03_Domain_Model.md` §10.1 to add `Awaiting approval` between `Reviewing` and `Ready` (research R8). A lifecycle described in two places will disagree. **Two further corrections while there**: the diagram had no edge for a failed run, and the rules did not record that `Exported`/`Submitted` are drawn but deliberately absent from the `VersionStatus` enum
 - [X] T081 Update the `ports.py` docstring, which says self-critique "belongs in the agent runtime, not here" and names it slice 004 — the runtime now exists and is slice 005. Rewritten to say what is true: the graph *does* loop and react to its own output, by calling `complete()` repeatedly while holding the state itself, and the paragraph is now marked as a description rather than a guarantee
 - [X] T082 Correct `CLAUDE.md`, which describes the no-loop boundary as "the line the guard actually protects". Nothing executable ever asserted it; the import-graph guard is the real one. The claim was also **no longer true** — the tailoring graph loops by design — so the correction names the enforced property instead, and records that the guard was widened from one forbidden package to six
-- [ ] T083 [P] Run the full backend gates on the host: `pytest` at ≥80%, `ruff format --check`, `ruff check`, `mypy src`
-- [ ] T084 [P] Run the full frontend gates: `lint`, `typecheck`, `test`, `build`
+- [X] T083 [P] Run the full backend gates on the host: `pytest` at ≥80%, `ruff format --check`, `ruff check`, `mypy src` — **400 passed, 82.98%**, all clean
+- [X] T084 [P] Run the full frontend gates: `lint`, `typecheck`, `test`, `build` — **147 passed** across 10 files, all clean
 - [ ] T085 Measure a real run on a real posting — both the first-pass-clear and full-revision-budget paths — and record tokens, cost and elapsed time in `research.md` R5, the way slice 004's R8 recorded its own
 - [ ] T086 Compare the measurement against SC-006 ($0.30) and SC-001 (90s / 3min). **If missed, mark missed in `spec.md`** rather than adjusting the target — slice 004 did exactly this with SC-004
 - [ ] T087 Read a tailored resume as a person and ask whether it claims anything the owner did not do. FR-017 has no test that answers this
 - [ ] T088 Deploy and verify on the live system: a real run with `is_fixture = false`, a real model name, real token counts, a real cost
 - [ ] T089 Query the deployed database with the mandatory `PGHOST=localhost PGPORT=5432` override — the running container carries a stale host from a deleted proxy, and Railway recycles those ports, so the default address now serves another tenant's database
-- [ ] T090 Run `/security-review` on the branch diff — four new routes, two migrations, and a new owner-facing surface
+- [X] T090 Run `/security-review` on the branch diff — four new routes, two migrations, and a new owner-facing surface. **One finding, fixed**: `run_tailoring` wrote the full stringified exception into `run.failure_reason` and `version.failure_reason`, both returned verbatim by two endpoints and rendered in an alert, while logging only the exception's class — exactly inverted from the T068 rule in `health.py`. A `psycopg.OperationalError` stringifies to the internal IP, port and database user. Now the kind to the owner, the detail to the log's `extra={}`. The regression test asserts **both** halves, because a gate checking only absence would pass against a fix that discarded the detail entirely
 - [ ] T091 Update `HANDOFF.md` and `docs/08_Technical_Spec.md` §6.1 status markers
 
 ---
