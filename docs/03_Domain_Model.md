@@ -1478,8 +1478,10 @@ stateDiagram-v2
     Draft --> Tailoring
     Tailoring --> Reviewing: Agent self-critique
     Reviewing --> Tailoring: Confidence below threshold
-    Reviewing --> Draft: User requests changes
-    Reviewing --> Ready: User approves
+    Reviewing --> AwaitingApproval: Agent finished
+    AwaitingApproval --> Ready: User approves
+    Tailoring --> Draft: Run failed or was abandoned
+    Reviewing --> Draft: Run failed or was abandoned
     Ready --> Draft: Further editing
     Ready --> Exported
     Exported --> Submitted: User confirms it was sent
@@ -1492,10 +1494,24 @@ stateDiagram-v2
 - `Reviewing` is the Reviewer agent's grounding, integrity, and coverage check. It may loop back to
   `Tailoring` on its own initiative when the Confidence Score is below threshold — this loop is
   internal and does not require user input.
+- **`Awaiting approval` was split out of `Reviewing` in slice 005** (T080). `Reviewing` had been
+  carrying two meanings: *the agent is criticising its own draft* and *the agent has finished and
+  it is your turn*. Those are a machine working for tens of seconds and a human queue that may
+  last days — different next actions, different interfaces, and a person watching one spinner
+  cannot tell which of the two they are in. FR-040 requires them distinguishable, and a state that
+  means two things cannot be.
+- **There is no `Failed` state, and the absence is deliberate.** A run that fails returns the
+  Version to `Draft` and records the reason on the Tailoring Run. What remains on disk is an
+  untailored resume plus an explanation of the attempt, and a retry reuses that `Draft` rather
+  than accumulating abandoned Versions. The two edges into `Draft` above are that path.
 - `Ready` means user-approved. It remains editable; approval is not a one-way door until export.
 - Export does not imply submission. A user may export a PDF and never send it.
 - `Submitted` is terminal and **locked**. The Version cannot be edited again. Duplicating it
   creates a new `Draft` with its own lineage.
+- **`Exported` and `Submitted` are not yet reachable.** Slice 005 implements `Draft` through
+  `Ready`; export is slice 006. They are drawn here because the lifecycle is the design, but the
+  `VersionStatus` enum deliberately omits them — a state nothing can reach is a claim the code
+  does not support.
 - A Version's source Resume Profile may change at any time without affecting the Version.
 
 ---

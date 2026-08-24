@@ -4,8 +4,10 @@ The specification for this file is
 `specs/003-data-foundation/contracts/extraction-seam.md`. Read that for the
 reasoning; what follows is the shape it requires.
 
-**This is the artifact slice 004 inherits**, which is why it is defined with one
-caller rather than discovered with five.
+**This is the artifact later slices inherit**, which is why it was defined with
+one caller rather than discovered with five. There are now four call sites —
+`extract_resume`, `extract_job`, `analyze_match`, and the four nodes of the
+slice 005 tailoring graph — and the signature has not changed for any of them.
 """
 
 from __future__ import annotations
@@ -67,18 +69,31 @@ class StructuredCompletion(Protocol):
     * **`schema` is required and the return is typed.** FR-025 and Principle VI
       become structural (O1).
     * **`task` is a name, not a model.** Model choice resolves from
-      configuration keyed by task, which is what lets slice 004 express
+      configuration keyed by task, which is what lets **slice 005** express
       docs/08 §3.2.3 — its escalation from Sonnet to Opus after a failed
-      revision is a different task name, not a branch in workflow code (O3).
+      revision is a different task name, `tailor_revise_escalated`, rather than
+      a branch in workflow code (O3). That is now built, not planned.
     * **Usage is returned, not logged internally** (O4).
     * **It is a Protocol**, so `domain/` and `application/` import no provider
       code. Principle V becomes a property of the import graph, asserted by a
       test, rather than a rule someone remembers (O5).
 
-    Multi-step orchestration, tool use, retries with feedback and self-critique
-    are **slice 004**. A caller that needs the model to react to its own previous
-    output belongs in the agent runtime, not here — that boundary is the scope
-    guard this slice relies on.
+    Multi-step orchestration, tool use and self-critique live **above** this
+    seam, in `application/agents/`, and as of slice 005 they exist: the
+    tailoring graph loops, reacts to its own output and revises. It does all of
+    that by calling `complete()` repeatedly. This signature has no memory, no
+    conversation and no tools, and the graph adds none — it holds the state
+    itself and passes a fresh prompt each time.
+
+    **This paragraph is a description, not a guarantee.** It once read as though
+    the boundary were enforced; nothing executable ever asserted it, and
+    `CLAUDE.md` repeated the overstatement until slice 005 corrected both
+    (T081, T082). What *is* enforced, by
+    `tests/unit/test_architecture.py::test_the_application_layer_imports_no_provider_sdk`,
+    is the narrower and more useful property: no module under `application/`
+    imports a provider SDK, so nothing above this seam can reach a model except
+    through it. A caller that looped without saying so would still be caught by
+    that test the moment it tried to talk to a provider directly.
     """
 
     async def complete[T: BaseModel](
