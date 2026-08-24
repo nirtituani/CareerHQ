@@ -7,6 +7,9 @@ for real — only the network call to Google is removed (research.md R-009).
 
 from __future__ import annotations
 
+import re
+import uuid
+
 import httpx
 import pytest
 from sqlalchemy import func, select
@@ -20,7 +23,19 @@ from careerhq.infrastructure.security import SESSION_COOKIE, create_session_toke
 PROTECTED = ("/api/auth/me", "/api/profile")
 
 #: Routes reachable without a session. Everything else must return 401.
-PUBLIC_PREFIXES = ("/api/health", "/api/auth/google", "/api/docs", "/api/openapi.json")
+#:
+#: `logout` is here deliberately and was found by the enumeration below the
+#: first time it actually ran: signing out without a session is a **no-op, not
+#: an error**. Clearing a cookie the caller does not have has already achieved
+#: what was asked, and a 401 would strand anyone whose session expired in the
+#: tab on the one action that recovers it.
+PUBLIC_PREFIXES = (
+    "/api/health",
+    "/api/auth/google",
+    "/api/auth/logout",
+    "/api/docs",
+    "/api/openapi.json",
+)
 
 
 def _as(client: httpx.AsyncClient, token: str) -> httpx.AsyncClient:
@@ -74,23 +89,45 @@ async def test_every_non_public_route_requires_a_session(client: httpx.AsyncClie
 
     This is what catches an endpoint added later without authentication: it
     fails here instead of shipping open.
+
+    **Enumerated from the OpenAPI schema, not from `app.routes`** — changed in
+    slice 005, and the reason matters more than the change. This walked
+    `app.routes` and skipped any path containing `{`, "no parameterised routes
+    yet". Two things then went wrong quietly:
+
+    * Slice 003 added `/api/applications/{id}`, and the skip silently exempted
+      every parameterised route this project has added since.
+    * FastAPI 0.141 stopped flattening included routers into `app.routes` — they
+      arrive as `_IncludedRouter` objects with no `path` at all. So the walk
+      matched only `/api/docs` and `/api/openapi.json`, both of which are public
+      and skipped. **The gate was examining zero routes and passing.**
+
+    Neither failure is visible from the result: a gate that checks nothing looks
+    exactly like a gate that finds nothing. Hence the count assertion at the
+    bottom, which is the only part that would have caught either.
+
+    A random id is substituted for each parameter. An unauthenticated request
+    must be refused *before* anything is looked up, so an id naming nothing is
+    the point rather than a limitation.
     """
     unprotected: list[str] = []
+    checked = 0
 
-    for route in app.routes:
-        path = getattr(route, "path", "")
-        methods = getattr(route, "methods", set()) or set()
+    for path, operations in app.openapi()["paths"].items():
         if not path.startswith("/api") or path.startswith(PUBLIC_PREFIXES):
             continue
-        if "{" in path:  # no parameterised routes yet; revisit when there are
-            continue
 
-        for method in methods & {"GET", "POST", "PUT", "PATCH", "DELETE"}:
-            response = await client.request(method, path)
+        concrete = re.sub(r"\{[^}]+\}", lambda _: str(uuid.uuid4()), path)
+
+        for method in {"get", "post", "put", "patch", "delete"} & set(operations):
+            checked += 1
+            response = await client.request(method.upper(), concrete)
             if response.status_code != 401:
-                unprotected.append(f"{method} {path} -> {response.status_code}")
+                unprotected.append(f"{method.upper()} {path} -> {response.status_code}")
 
     assert not unprotected, f"routes reachable without a session: {unprotected}"
+    # A guard with nothing to examine passes forever, and this one did.
+    assert checked >= 25, f"only {checked} routes were examined; the enumeration is broken"
 
 
 # -- sign-in flow (T037, T038) ----------------------------------------------

@@ -523,11 +523,15 @@ async def decide_item(
     and re-running the whole tailoring is still available if the draft is
     broadly wrong.
     """
-    if decision is ProposalDecision.ACCEPTED:
+    # `==` throughout, never `is`. `decision` is an enum member when a route
+    # passes one, but these columns are `String`, so anything read back from the
+    # database is a plain `str` and the identity comparison silently never
+    # matches. See `approve_version` below, where that is not hypothetical.
+    if decision == ProposalDecision.ACCEPTED:
         item.final_text = item.proposed_text or item.original_text
-    elif decision is ProposalDecision.REJECTED:
+    elif decision == ProposalDecision.REJECTED:
         item.final_text = item.original_text
-    elif decision is ProposalDecision.EDITED:
+    elif decision == ProposalDecision.EDITED:
         if not (text or "").strip():
             raise ValueError("an edited item needs text")
         item.final_text = text or ""
@@ -548,7 +552,15 @@ async def approve_version(session: AsyncSession, *, version: ResumeVersion) -> R
     precisely why the workflow needs no durable pause/resume.
     """
     for item in version.items:
-        if item.decision is ProposalDecision.PENDING:
+        # `==`, not `is`. `decision` is a `String(16)` column, so an item loaded
+        # by a route — a session that did not create the row — returns a plain
+        # `str` and `is ProposalDecision.PENDING` is never true. Nothing raises;
+        # approval simply accepts nothing and every item stays `pending`. That
+        # is precisely the defect slice 004 shipped in `run_analysis` under a
+        # green suite, and the tests missed it there for the same reason they
+        # would here: they hold the session that wrote the row, whose identity
+        # map still has the enum member.
+        if item.decision == ProposalDecision.PENDING:
             item.decision = ProposalDecision.ACCEPTED
             item.final_text = item.proposed_text or item.original_text
 
