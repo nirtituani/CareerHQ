@@ -145,9 +145,23 @@ come back; the model is chosen by **task name**, which is what lets slice 004 ex
 §3.2.3 as configuration rather than branches; and usage is returned so the audit record Principle V
 requires is written in the same transaction as the work.
 
-There are now **two** call sites — `extract_resume` and `extract_job` — and that was a decision
-recorded in T096, not drift. Neither loops, uses tools, or reacts to its own output, which is the
-line the guard actually protects.
+There are now **four** call sites — `extract_resume`, `extract_job`, `analyze_match`, and the four
+nodes of the slice 005 tailoring graph — and each addition was a recorded decision rather than
+drift. The signature has not changed for any of them.
+
+**What the guard actually protects is narrower than this file used to claim** (T082). It said the
+line was "no call site loops, uses tools, or reacts to its own output". Nothing executable ever
+asserted that, and as of slice 005 it is no longer even true: the tailoring graph loops, reacts to
+its own output, and revises — that is what a self-critique workflow *is*. It does so by calling
+`complete()` repeatedly, holding the state itself and passing a fresh prompt each time, because
+the seam has no memory, no conversation and no tools to offer it.
+
+The real, enforced boundary is
+`tests/unit/test_architecture.py::test_the_application_layer_imports_no_provider_sdk`: **no module
+under `application/` may import a provider SDK**, so nothing above the seam can reach a model
+except through it. That guard was widened in slice 005 from a single forbidden package to six,
+because adding LangGraph pulls in `langchain-core` transitively and puts `langchain_anthropic` one
+install away — and the idiomatic LangGraph example binds a model *inside* the node.
 
 **`llm_model_<task>` must be set for every new task.** `model_for_task` falls back to
 `llm_provider_model`, which is **Opus** — so a task with no entry silently runs at 2.5× the price

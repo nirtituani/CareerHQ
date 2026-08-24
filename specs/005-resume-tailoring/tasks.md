@@ -180,9 +180,9 @@ there and marked owner-authored.
 
 ## Phase 6: Polish, measurement and deployment
 
-- [ ] T080 Amend `docs/03_Domain_Model.md` §10.1 to add `Awaiting approval` between `Reviewing` and `Ready` (research R8). A lifecycle described in two places will disagree
-- [ ] T081 Update the `ports.py` docstring, which says self-critique "belongs in the agent runtime, not here" and names it slice 004 — the runtime now exists and is slice 005
-- [ ] T082 Correct `CLAUDE.md`, which describes the no-loop boundary as "the line the guard actually protects". Nothing executable ever asserted it; the import-graph guard is the real one
+- [X] T080 Amend `docs/03_Domain_Model.md` §10.1 to add `Awaiting approval` between `Reviewing` and `Ready` (research R8). A lifecycle described in two places will disagree. **Two further corrections while there**: the diagram had no edge for a failed run, and the rules did not record that `Exported`/`Submitted` are drawn but deliberately absent from the `VersionStatus` enum
+- [X] T081 Update the `ports.py` docstring, which says self-critique "belongs in the agent runtime, not here" and names it slice 004 — the runtime now exists and is slice 005. Rewritten to say what is true: the graph *does* loop and react to its own output, by calling `complete()` repeatedly while holding the state itself, and the paragraph is now marked as a description rather than a guarantee
+- [X] T082 Correct `CLAUDE.md`, which describes the no-loop boundary as "the line the guard actually protects". Nothing executable ever asserted it; the import-graph guard is the real one. The claim was also **no longer true** — the tailoring graph loops by design — so the correction names the enforced property instead, and records that the guard was widened from one forbidden package to six
 - [ ] T083 [P] Run the full backend gates on the host: `pytest` at ≥80%, `ruff format --check`, `ruff check`, `mypy src`
 - [ ] T084 [P] Run the full frontend gates: `lint`, `typecheck`, `test`, `build`
 - [ ] T085 Measure a real run on a real posting — both the first-pass-clear and full-revision-budget paths — and record tokens, cost and elapsed time in `research.md` R5, the way slice 004's R8 recorded its own
