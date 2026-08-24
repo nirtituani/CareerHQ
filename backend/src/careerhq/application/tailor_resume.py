@@ -495,18 +495,45 @@ async def run_tailoring(
         await session.flush()
 
     except Exception as exc:
+        # **The kind of failure to the owner, the detail to the log** — the rule
+        # `health.py` established under T068, applied here because these two
+        # columns are returned verbatim by two endpoints and rendered on screen.
+        #
+        # This was the wrong way round until T090's review, and the consequence
+        # is not hypothetical: a `psycopg.OperationalError` stringifies to
+        # `connection to server at "172.19.0.4", port 5432 failed: FATAL:
+        # password authentication failed for user "careerhq"`. That is the
+        # internal address, port and database user, written into a column the
+        # interface renders in an alert box.
+        #
+        # `str(exc)` still exists, in the log, where an operator can read it and
+        # a browser cannot. Losing it entirely would trade a disclosure for an
+        # undebuggable failure, which is not a trade worth making — and on
+        # Railway it must travel in `extra={}` regardless, because the platform
+        # blanks the `message` field of parsed JSON logs.
         logger.warning(
             "tailoring run failed",
-            extra={"version_id": str(version_id), "error": type(exc).__name__},
+            extra={
+                "version_id": str(version_id),
+                "error": type(exc).__name__,
+                "detail": str(exc),
+            },
         )
         run.status = RunStatus.FAILED
-        run.failure_reason = f"{type(exc).__name__}: {exc}"
+        run.failure_reason = type(exc).__name__
         run.finished_at = datetime.now(UTC)
         # Back to DRAFT, not to a `failed` status that does not exist. What is
         # left is an untailored resume plus a run explaining the attempt, and a
         # retry reuses this draft rather than creating another version.
         version.status = VersionStatus.DRAFT
-        version.failure_reason = f"{type(exc).__name__}: {exc}"
+        # One sentence, written for the person reading it and naming no
+        # internals. **Deliberately just the fact.** The interface already says
+        # what it means — that nothing was saved and the profile is untouched —
+        # and a message repeating that puts the same reassurance on screen
+        # twice, which reads as though something went wrong twice. The run's
+        # `failure_reason` beside it carries the exception class, which is what
+        # makes a support conversation possible without a stack trace.
+        version.failure_reason = "The tailoring run stopped before it finished."
         await session.flush()
 
 
