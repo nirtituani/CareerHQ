@@ -461,3 +461,129 @@ async def test_rejecting_every_proposal_yields_the_master(
             assert item.final_text == item.original_text, (
                 "rejecting every proposal must leave the master's content exactly"
             )
+
+
+@pytest.mark.parametrize(
+    ("node", "script"),
+    [
+        # `emphasise` has min_length=1, so an empty plan fails validation.
+        ("plan", {"tailor_plan": [{"emphasise": [], "strategy": ""}]}),
+        # `items` has min_length=1.
+        ("draft", {"tailor_draft": [{"items": []}]}),
+        # `confidence` is bounded 0-100.
+        ("review", {"tailor_review": [{"confidence": 500, "findings": []}]}),
+    ],
+)
+async def test_invalid_model_output_fails_the_run_at_any_node(
+    db_session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
+    node: str,
+    script: dict,
+) -> None:
+    """FR-006 and FR-037 — a provider can return anything, and often does.
+
+    The seam raises rather than returning partial data, so the interesting
+    question is what the *use case* leaves behind. A run that half-wrote its
+    items and then failed would leave a version showing proposals nobody
+    reviewed, which is the one thing worse than no version at all.
+    """
+    seeded = await seed_tailorable(db_session, sub=f"bad-{node}", email=f"bad-{node}@example.com")
+    bullet = seeded.bullet_ids[0]
+    version = await create_pending_version(db_session, seeded.application)
+    await db_session.commit()
+
+    # Everything up to the failing node succeeds, so each parametrisation
+    # reaches a different point in the graph.
+    full = {
+        "tailor_plan": [_plan()],
+        "tailor_draft": [_draft(bullet)],
+        "tailor_review": [_review(90)],
+    }
+    full.update(script)
+
+    async with session_factory() as session:
+        await run_tailoring(
+            session,
+            version_id=version.id,
+            completion=ScriptedSeam(script=full),
+            guidelines=StaticGuidelines(),
+        )
+        await session.commit()
+
+    async with session_factory() as session:
+        reloaded = (
+            (
+                await session.execute(
+                    select(ResumeVersion)
+                    .where(ResumeVersion.id == version.id)
+                    .options(selectinload(ResumeVersion.items))
+                )
+            )
+            .unique()
+            .scalar_one()
+        )
+        run = await session.scalar(
+            select(TailoringRun).where(TailoringRun.resume_version_id == version.id)
+        )
+        assert run is not None
+
+        assert run.status == RunStatus.FAILED
+        assert run.failure_reason, "a failure must record why (FR-006)"
+        assert run.finished_at is not None, "a failed run is finished, not still going"
+
+        assert reloaded.status == VersionStatus.DRAFT, (
+            "a failed run returns the version to draft — there is no `failed` status"
+        )
+        assert reloaded.failure_reason
+        assert reloaded.items == [], (
+            "no partial items may survive a failed run; the owner would be shown "
+            "proposals that were never reviewed"
+        )
+
+
+async def test_a_failed_run_can_be_retried(
+    db_session: AsyncSession, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    """FR-007. The partial index only holds for `tailoring` and `reviewing`, so
+    a version back at `draft` does not block the retry that recovers it."""
+    seeded = await seed_tailorable(db_session, sub="retry", email="retry@example.com")
+    bullet = seeded.bullet_ids[0]
+    version = await create_pending_version(db_session, seeded.application)
+    await db_session.commit()
+
+    async with session_factory() as session:
+        await run_tailoring(
+            session,
+            version_id=version.id,
+            completion=ScriptedSeam(script={"tailor_plan": [{"emphasise": [], "strategy": ""}]}),
+            guidelines=StaticGuidelines(),
+        )
+        await session.commit()
+
+    async with session_factory() as session:
+        application = await session.get(type(seeded.application), seeded.application.id)
+        assert application is not None
+        retried = await create_pending_version(session, application)
+        await session.commit()
+        retried_id = retried.id
+
+    async with session_factory() as session:
+        await run_tailoring(
+            session,
+            version_id=retried_id,
+            completion=ScriptedSeam(
+                script={
+                    "tailor_plan": [_plan()],
+                    "tailor_draft": [_draft(bullet)],
+                    "tailor_review": [_review(93)],
+                }
+            ),
+            guidelines=StaticGuidelines(),
+        )
+        await session.commit()
+
+    async with session_factory() as session:
+        reloaded = await session.get(ResumeVersion, retried_id)
+        assert reloaded is not None
+        assert reloaded.status == VersionStatus.AWAITING_APPROVAL
+        assert reloaded.confidence_score == 93
