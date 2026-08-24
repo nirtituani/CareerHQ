@@ -16,10 +16,15 @@ from sqlalchemy.orm import selectinload
 
 from careerhq.application.finalisation_rules import FINALISATION_RULES_VERSION
 from careerhq.application.guidelines import StaticGuidelines
-from careerhq.application.tailor_resume import create_pending_version, run_tailoring
+from careerhq.application.tailor_resume import (
+    create_pending_version,
+    decide_item,
+    run_tailoring,
+)
 from careerhq.domain.models import (
     ProposalDecision,
     ResumeVersion,
+    ResumeVersionItem,
     ReviewerFinding,
     RunStatus,
     TailoringRun,
@@ -587,3 +592,273 @@ async def test_a_failed_run_can_be_retried(
         assert reloaded is not None
         assert reloaded.status == VersionStatus.AWAITING_APPROVAL
         assert reloaded.confidence_score == 93
+
+
+# -- User Story 2: what the Reviewer caught, and where it is filed ----------
+
+
+async def test_findings_attach_to_their_item(
+    db_session: AsyncSession, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    """T064, FR-042. A finding must be filed against the proposal it concerns.
+
+    The alternative — a flat list on the run — reads on screen as a banner, and
+    a banner is unattributable: eleven proposals and one note saying the wording
+    is stronger than the profile shows leaves a person guessing which of the
+    eleven it means, or re-reading all of them.
+
+    **`uncovered` is the exception, and it must stay one.** An unaddressed
+    requirement concerns the draft as a whole; there is no item for it to point
+    at. Manufacturing one would repeat slice 004's `unverified`-shortfall
+    mistake exactly: demanding a structured reference the model has no honest
+    basis to fill. The schema enforces it with a check constraint, so this test
+    is about the *use case* obeying it rather than the database refusing.
+
+    Re-read through a second session (FR-047), because the attachment is only
+    interesting once it has survived a round trip to storage.
+    """
+    seeded = await seed_tailorable(db_session, sub="us2-attach", email="us2-attach@example.com")
+    bullet = seeded.bullet_ids[0]
+    version = await create_pending_version(db_session, seeded.application)
+    await db_session.commit()
+
+    async with session_factory() as session:
+        await run_tailoring(
+            session,
+            version_id=version.id,
+            completion=ScriptedSeam(
+                script={
+                    "tailor_plan": [_plan()],
+                    "tailor_draft": [_draft(bullet)],
+                    "tailor_review": [
+                        _review(
+                            88,
+                            [
+                                {
+                                    "kind": "overstated",
+                                    "source_item_id": str(bullet),
+                                    "detail": "'Owned' inflates a team lead role.",
+                                    "quoted_text": "Owned the payments platform",
+                                },
+                                {
+                                    "kind": "uncovered",
+                                    "source_item_id": None,
+                                    "detail": "Kubernetes is never addressed.",
+                                    "quoted_text": None,
+                                },
+                            ],
+                        )
+                    ],
+                }
+            ),
+            guidelines=StaticGuidelines(),
+        )
+        await session.commit()
+
+    async with session_factory() as session:
+        reloaded = (
+            await session.execute(
+                select(ResumeVersion)
+                .where(ResumeVersion.id == version.id)
+                .options(selectinload(ResumeVersion.items))
+            )
+        ).scalar_one()
+
+        # The row the proposal was made against, found by its source rather
+        # than by position — position is the agent's choice and may move.
+        target = next(item for item in reloaded.items if item.source_item_id == bullet)
+
+        findings = list(
+            await session.scalars(select(ReviewerFinding).order_by(ReviewerFinding.kind))
+        )
+        by_kind = {finding.kind: finding for finding in findings}
+        assert set(by_kind) == {"overstated", "uncovered"}
+
+        assert by_kind["overstated"].resume_version_item_id == target.id
+        assert by_kind["overstated"].quoted_text == "Owned the payments platform"
+
+        # Draft level, and it must stay there.
+        assert by_kind["uncovered"].resume_version_item_id is None
+
+        # And nothing was filed against an item that had no proposal — a
+        # finding on an untouched bullet would render a note beside wording the
+        # agent never suggested changing.
+        untouched = [item for item in reloaded.items if item.id != target.id]
+        attached = {f.resume_version_item_id for f in findings}
+        assert all(item.id not in attached for item in untouched)
+
+
+async def test_clean_draft_still_reports_confidence(
+    db_session: AsyncSession, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    """T065. A clean result must be visibly a result.
+
+    The failure this guards against is not a crash: it is a run that produces no
+    findings and therefore leaves `confidence_score` null, so the interface has
+    nothing to show and renders the same emptiness it shows for a draft that has
+    not run. "The Reviewer found nothing wrong" and "the Reviewer has not looked
+    yet" would then be the same screen, which is the FR-039 conflation pointed
+    at the good outcome instead of the bad one.
+    """
+    seeded = await seed_tailorable(db_session, sub="us2-clean", email="us2-clean@example.com")
+    version = await create_pending_version(db_session, seeded.application)
+    await db_session.commit()
+
+    async with session_factory() as session:
+        await run_tailoring(
+            session,
+            version_id=version.id,
+            completion=ScriptedSeam(
+                script={
+                    "tailor_plan": [_plan()],
+                    "tailor_draft": [_draft(seeded.bullet_ids[0])],
+                    # No findings at all. The whole point of the case.
+                    "tailor_review": [_review(94)],
+                }
+            ),
+            guidelines=StaticGuidelines(),
+        )
+        await session.commit()
+
+    async with session_factory() as session:
+        reloaded = await session.get(ResumeVersion, version.id)
+        assert reloaded is not None
+        assert reloaded.confidence_score == 94, "a clean run must still carry a score"
+        assert reloaded.status == VersionStatus.AWAITING_APPROVAL
+
+        assert (await session.scalars(select(ReviewerFinding))).all() == []
+
+
+# -- User Story 3: the owner's own words ------------------------------------
+
+
+async def test_edited_item_is_distinguishable(
+    db_session: AsyncSession, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    """T074, FR-027, and the spec's US3 scenarios in the order it states them.
+
+    Reject first, *then* correct the restored wording — the case where the agent
+    was wrong about **how** to say it rather than **whether** to say it, and the
+    owner's own line was not right either.
+
+    The claim being tested is that three authorships stay separable after a
+    round trip to storage: the master's original, the agent's proposal, and the
+    owner's replacement. Collapsing any two is how a resume ends up containing a
+    sentence nobody can account for — and `user_corrected` exists on the profile
+    for exactly this reason. A correction nobody can identify later is
+    indistinguishable from something the machine wrote.
+    """
+    seeded = await seed_tailorable(db_session, sub="us3-edit", email="us3-edit@example.com")
+    bullet = seeded.bullet_ids[0]
+    version = await create_pending_version(db_session, seeded.application)
+    await db_session.commit()
+
+    async with session_factory() as session:
+        await run_tailoring(
+            session,
+            version_id=version.id,
+            completion=ScriptedSeam(
+                script={
+                    "tailor_plan": [_plan()],
+                    "tailor_draft": [_draft(bullet)],
+                    "tailor_review": [_review(91)],
+                }
+            ),
+            guidelines=StaticGuidelines(),
+        )
+        await session.commit()
+
+    owners_words = "Led the payments platform, and grew the team from three to nine."
+
+    # Scenario 1: reject, then replace the restored text.
+    async with session_factory() as session:
+        item = await session.scalar(
+            select(ResumeVersionItem).where(
+                ResumeVersionItem.resume_version_id == version.id,
+                ResumeVersionItem.source_item_id == bullet,
+            )
+        )
+        assert item is not None
+        original = item.original_text
+        proposal = item.proposed_text
+        assert proposal is not None and proposal != original
+
+        await decide_item(session, item=item, decision=ProposalDecision.REJECTED)
+        # Rejection restores the owner's wording and nothing else (FR-026).
+        assert item.final_text == original
+
+        await decide_item(session, item=item, decision=ProposalDecision.EDITED, text=owners_words)
+        await session.commit()
+
+    # Scenario 2: reopen. Everything below is read through a session that did
+    # not write any of it (FR-047).
+    async with session_factory() as session:
+        reopened = await session.scalar(
+            select(ResumeVersionItem).where(
+                ResumeVersionItem.resume_version_id == version.id,
+                ResumeVersionItem.source_item_id == bullet,
+            )
+        )
+        assert reopened is not None
+
+        assert reopened.final_text == owners_words
+        assert reopened.decision == ProposalDecision.EDITED
+
+        # The other two authorships survive intact beside it. Overwriting
+        # `original_text` with the edit would destroy the lineage the version
+        # exists to record, and overwriting `proposed_text` would erase what the
+        # agent actually suggested — which is what the run is audited against.
+        assert reopened.original_text == original
+        assert reopened.proposed_text == proposal
+        assert reopened.final_text not in (original, proposal)
+
+
+async def test_an_edit_with_no_text_is_refused(
+    db_session: AsyncSession, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    """T075. Both shapes of empty, refused at the use case rather than the route.
+
+    A blank `edited` item would write an empty string into `final_text` and
+    silently delete a line from the resume — no error, no proposal, no original,
+    just a bullet that is gone. The route returns 422 for this, but the rule
+    belongs where the write happens: slice 006's export and any later caller
+    reach `decide_item` without passing through the route.
+    """
+    seeded = await seed_tailorable(db_session, sub="us3-blank", email="us3-blank@example.com")
+    version = await create_pending_version(db_session, seeded.application)
+    await db_session.commit()
+
+    async with session_factory() as session:
+        await run_tailoring(
+            session,
+            version_id=version.id,
+            completion=ScriptedSeam(
+                script={
+                    "tailor_plan": [_plan()],
+                    "tailor_draft": [_draft(seeded.bullet_ids[0])],
+                    "tailor_review": [_review(91)],
+                }
+            ),
+            guidelines=StaticGuidelines(),
+        )
+        await session.commit()
+
+    async with session_factory() as session:
+        item = await session.scalar(
+            select(ResumeVersionItem).where(
+                ResumeVersionItem.resume_version_id == version.id,
+                ResumeVersionItem.source_item_id == seeded.bullet_ids[0],
+            )
+        )
+        assert item is not None
+        before = item.final_text
+
+        # Absent, and present-but-whitespace. The second is the one a text field
+        # actually produces.
+        for text in (None, "", "   \n  "):
+            with pytest.raises(ValueError):
+                await decide_item(session, item=item, decision=ProposalDecision.EDITED, text=text)
+
+        # And nothing was written on the way to raising.
+        assert item.final_text == before
+        assert item.decision == ProposalDecision.PENDING

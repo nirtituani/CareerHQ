@@ -136,19 +136,19 @@ against that item, and the confidence score is visible and not confusable with t
 
 ### Tests for User Story 2
 
-- [ ] T064 [P] [US2] Add `test_findings_attach_to_their_item` to `backend/tests/integration/test_tailoring_workflow.py` — item-level findings nest under items, `uncovered` findings appear only at draft level (FR-042)
-- [ ] T065 [P] [US2] Add `test_clean_draft_still_reports_confidence` — a run with no findings still returns a score, so a clean result is visibly a result
-- [ ] T066 [P] [US2] Write `frontend/src/components/__tests__/tailor-findings.test.tsx` — a finding renders against its item and never as a banner
+- [X] T064 [P] [US2] Add `test_findings_attach_to_their_item` to `backend/tests/integration/test_tailoring_workflow.py` — item-level findings nest under items, `uncovered` findings appear only at draft level (FR-042). Drilled by flattening the attachment to `None`, the realistic banner regression; the first drill attempted — misattributing to an arbitrary row — was refused by the `ck_reviewer_findings_uncovered_has_no_item` check constraint before the assertion could run, which is a stronger result than the test
+- [X] T065 [P] [US2] Add `test_clean_draft_still_reports_confidence` — a run with no findings still returns a score, so a clean result is visibly a result. Drilled by making the score conditional on findings existing
+- [X] T066 [P] [US2] Write `frontend/src/components/__tests__/tailor-findings.test.tsx` — a finding renders against its item and never as a banner. Asserts **containment**, not presence: `getByText` passes against a banner. **Added beyond the task**: findings persist from every review pass, and two near-identical notes on one bullet read as two simultaneous complaints rather than as a history — so each names its pass (`first pass`, `revision 1`) when and only when the item was flagged in more than one
 
 ### Implementation for User Story 2
 
-- [ ] T067 [US2] Persist `confidence_score` on the version in `tailor_resume.py` and expose it in `GET /api/versions/{id}`
-- [ ] T068 [US2] Render per-item findings in `frontend/src/components/applications/tailor-diff-item.tsx`, visually subordinate to the proposal they concern
-- [ ] T069 [US2] Render draft-level `uncovered` findings in `tailor-tab.tsx`, separately from item findings
-- [ ] T070 [US2] Render the confidence score in `tailor-tab.tsx` **labelled distinctly from the match score** (FR-043) — different questions, different units, never one number
-- [ ] T071 [P] [US2] Extend `frontend/src/components/__tests__/tokens.test.ts` coverage to the new components — an undefined CSS custom property fails silently and differently per property, and `fill:` renders black on a dark ground
-- [ ] T072 [US2] If a progress reveal is animated, build it so **removing the animation lands on the finished state** — `prefers-reduced-motion` collapses animations to 0.01ms, so a base of "empty" plus an animation that fills it shows zero to everyone who reduces motion
-- [ ] T073 [US2] In a browser: confirm a person can tell *the agent is reviewing* from *it is your turn* (FR-040) — the state this slice added; if it looks like the one before it, the amendment bought nothing
+- [X] T067 [US2] Persist `confidence_score` on the version in `tailor_resume.py` and expose it in `GET /api/versions/{id}`. **Built during US1** rather than here; verified by drilling the API response to `None` and watching `test_tailoring_api.py` name it
+- [X] T068 [US2] Render per-item findings in `frontend/src/components/applications/tailor-diff-item.tsx`, visually subordinate to the proposal they concern. **Built during US1**; drilled here (8 tests fail without it). Subordination is asserted on document order, not on styling
+- [X] T069 [US2] Render draft-level `uncovered` findings in `tailor-tab.tsx`, separately from item findings. **Built during US1**; drilled here
+- [X] T070 [US2] Render the confidence score in `tailor-tab.tsx` **labelled distinctly from the match score** (FR-043) — different questions, different units, never one number. **Built during US1** as `82/100 grounded in your profile`; drilled by rendering it as a bare `82%`
+- [X] T071 [P] [US2] Extend `frontend/src/components/__tests__/tokens.test.ts` coverage to the new components — an undefined CSS custom property fails silently and differently per property, and `fill:` renders black on a dark ground. The walk already reached them, so the extension is a **non-vacuity assertion**: the scan must prove it saw `tailor-tab.tsx` and `tailor-diff-item.tsx`, because a walk that silently stopped finding files reports zero missing tokens and passes
+- [X] T072 [US2] If a progress reveal is animated, build it so **removing the animation lands on the finished state** — `prefers-reduced-motion` collapses animations to 0.01ms, so a base of "empty" plus an animation that fills it shows zero to everyone who reduces motion. **The rule applies the opposite way round here**, and the amendment matters: the match ring animates *to* a real value, so its base style is the finished state. The tailoring spinner has no value yet, so a full ring resting still would read as a finished run and an empty one as a failure — it rests on a quarter arc, which is plainly unfinished, and the step name and `aria-busy` carry the meaning. Three gates added, drilled by lengthening the reduced-motion duration and by widening the arc to a full circle
+- [X] T073 [US2] In a browser: confirm a person can tell *the agent is reviewing* from *it is your turn* (FR-040) — the state this slice added; if it looks like the one before it, the amendment bought nothing. Verified by flipping a seeded row `reviewing` → `awaiting_approval` and watching the 2-second poll pick it up unaided: muted grey "Checking its own work" with a travelling arc, against full-weight "Ready for your approval" with a primary button. The seeded row was deleted afterwards
 
 **Checkpoint**: approval is a judgement rather than a formality.
 
@@ -164,15 +164,15 @@ there and marked owner-authored.
 
 ### Tests for User Story 3
 
-- [ ] T074 [P] [US3] Add `test_edited_item_is_distinguishable` to `backend/tests/integration/test_tailoring_workflow.py` — `decision = 'edited'` distinguishes owner text from both proposal and original (FR-027)
-- [ ] T075 [P] [US3] Add a 422 case for `decision = 'edited'` with absent or empty `text`
+- [X] T074 [P] [US3] Add `test_edited_item_is_distinguishable` to `backend/tests/integration/test_tailoring_workflow.py` — `decision = 'edited'` distinguishes owner text from both proposal and original (FR-027). Follows the spec's own sequence: reject, *then* correct the restored wording, then re-read through a session that wrote none of it. Drilled by having an edit overwrite `original_text`
+- [X] T075 [P] [US3] Add a 422 case for `decision = 'edited'` with absent or empty `text`. Covered at **both** layers: the route returns 422 (US1), and `decide_item` raises — because slice 006's export and any later caller reach the use case without passing through the route. Asserts nothing was written on the way to raising
 
 ### Implementation for User Story 3
 
-- [ ] T076 [US3] Handle `edited` in `PATCH /api/versions/{id}/items/{item_id}` — `final_text` becomes the supplied text
-- [ ] T077 [US3] Add a plain text field to `tailor-diff-item.tsx`, revealed on rejection. **A text field, not an editor** — a WYSIWYG resume editor is an explicit project non-goal
-- [ ] T078 [US3] Mark owner-edited items in the interface, mirroring how profile corrections show `user_corrected`
-- [ ] T079 [P] [US3] Extend `frontend/src/components/__tests__/tailor.test.tsx` for the edit path
+- [X] T076 [US3] Handle `edited` in `PATCH /api/versions/{id}/items/{item_id}` — `final_text` becomes the supplied text. **Built during US1**
+- [X] T077 [US3] Add a plain text field to `tailor-diff-item.tsx`. **Amended, with the author's approval**: the field is reached by an `Edit` control that is a **peer of Accept and Reject**, not one revealed by rejection. Most rejections mean "my wording was fine", so an editor springing open on every one asks a question nobody asked — and the peer control keeps a single render path, which is what this project has repeatedly lost affordances to. The spec's US3 scenario is unaffected and is tested in that order. Still a plain `<textarea>`: a WYSIWYG resume editor is an explicit project non-goal
+- [X] T078 [US3] Mark owner-edited items in the interface, mirroring how profile corrections show `user_corrected`. **Built during US1** as `Using your words`; drilled here
+- [X] T079 [P] [US3] Extend `frontend/src/components/__tests__/tailor.test.tsx` for the edit path — the reject-then-edit sequence, identifiability after a reopen rendered from stored data rather than from the interaction that produced it, all three authorships on screen at once, and that the field is a `<textarea>` rather than anything `contenteditable`
 
 **Checkpoint**: all three stories complete.
 
