@@ -52,6 +52,19 @@ describe("design tokens", () => {
       .map(([token, files]) => `${token} — used in ${[...new Set(files)].join(", ")}`);
 
     expect(missing).toEqual([]);
+
+    // T071. The walk is the whole test, and a walk that silently stopped
+    // finding files would report zero missing tokens and pass — the same
+    // vacuous-gate failure the route enumeration in `test_auth.py` shipped for
+    // two slices. Naming the newest components is what makes this scan provably
+    // about them rather than about whatever it happened to reach.
+    const scanned = [...used.values()].flat();
+    for (const component of ["tailor-tab.tsx", "tailor-diff-item.tsx"]) {
+      expect(
+        scanned.some((file) => file.endsWith(component)),
+        `${component} names no design token; either it was not scanned or it is styling itself off-system`,
+      ).toBe(true);
+    }
   });
 });
 

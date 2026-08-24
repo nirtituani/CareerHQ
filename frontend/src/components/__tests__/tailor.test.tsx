@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -449,5 +452,127 @@ describe("a refusal to start", () => {
     await userEvent.click(screen.getByRole("button", { name: /tailor for this job/i }));
 
     expect(await screen.findByTestId("refusal")).toHaveTextContent(/score it again/i);
+  });
+});
+
+// -- T072: what survives when the motion is taken away ----------------------
+
+describe("the progress state under reduced motion", () => {
+  it("carries its meaning in text, never in the animation", async () => {
+    await renderTab(version({ status: "reviewing", items: [] }));
+
+    // The global `prefers-reduced-motion` rule collapses every animation to
+    // 0.01ms. Whatever the arc is doing then, it stops doing — so nothing about
+    // the state may be carried by the movement alone.
+    expect(screen.getByTestId("working-step")).toHaveTextContent(/checking its own work/i);
+    const status = screen.getByRole("status");
+    expect(status).toHaveAttribute("aria-busy", "true");
+  });
+
+  it("rests on a partial arc, which is a placeholder rather than a claim", async () => {
+    const { container } = { container: document.body };
+    await renderTab(version({ status: "tailoring", items: [] }));
+
+    const arc = container.querySelector<SVGCircleElement>(".score-pending");
+    expect(arc).not.toBeNull();
+
+    // A **quarter turn**: long enough to read as motion, short enough that a
+    // still frame is plainly unfinished. This is the opposite construction to
+    // the match ring, and deliberately so — that one animates *to* a real
+    // value, so its base style is the finished state and the keyframe supplies
+    // only the start. Here there is no value yet, so a full ring resting still
+    // would read as a completed run and an empty one as a failed draft.
+    const circumference = 2 * Math.PI * 15;
+    const [dash] = (arc?.getAttribute("stroke-dasharray") ?? "").split(" ").map(Number);
+    expect(dash).toBeCloseTo(circumference / 4, 1);
+    expect(dash).toBeLessThan(circumference);
+    expect(dash).toBeGreaterThan(0);
+  });
+
+  it("keeps the reduced-motion rule that makes all of this true", () => {
+    // The assertions above are only meaningful while the global rule exists. If
+    // it were deleted, they would keep passing and say nothing — so the rule
+    // itself is asserted here rather than assumed.
+    const css = readFileSync(
+      resolve(__dirname, "../../app/globals.css"),
+      "utf8",
+    );
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)/);
+    expect(css).toMatch(/animation-duration:\s*0\.01ms\s*!important/);
+  });
+});
+
+// -- User Story 3: the owner's own words ------------------------------------
+
+describe("correcting a proposal by hand", () => {
+  it("can be reached after rejecting, which is the case US3 is about", async () => {
+    // The spec's scenario: the agent was wrong about *how* to say it, not
+    // *whether*, and the owner's original line was not right either. Rejecting
+    // restores their wording; editing then replaces it.
+    //
+    // Edit is a peer of Accept and Reject rather than a field that springs open
+    // on rejection (T077, amended). Most rejections mean "my wording was fine",
+    // and an editor that opens unprompted every time asks a question nobody
+    // asked. It also keeps one render path, which is the thing this project has
+    // repeatedly lost affordances to.
+    const rejected = item({
+      decision: "rejected",
+      final_text: "Led the payments platform team for six years.",
+    });
+    mocked.decideItem.mockResolvedValue(rejected);
+    await renderTab(version());
+
+    await userEvent.click(screen.getByRole("button", { name: /^reject$/i }));
+    await waitFor(() => expect(screen.getByTestId("decision-label")).toBeInTheDocument());
+
+    // Still there, and it edits the *restored* text rather than the proposal.
+    const edit = screen.getByRole("button", { name: /^edit$/i });
+    expect(edit).toBeInTheDocument();
+    await userEvent.click(edit);
+    expect(screen.getByLabelText(/edit experience/i)).toHaveValue(
+      "Led the payments platform team for six years.",
+    );
+  });
+
+  it("stays identifiable as the owner's when the version is reopened", async () => {
+    // Scenario 2, rendered from stored data rather than from the state left
+    // behind by the interaction that produced it — which is the only version of
+    // this claim that means anything. `user_corrected` exists on the profile
+    // for the same reason: a correction nobody can identify later is
+    // indistinguishable from something the machine wrote.
+    await renderTab(
+      version({
+        status: "ready",
+        items: [item({ decision: "edited", final_text: "My own account of the work." })],
+      }),
+    );
+
+    expect(screen.getByTestId("decision-label")).toHaveTextContent(/your words/i);
+    expect(screen.getByTestId("diff-item")).toHaveAttribute("data-decision", "edited");
+  });
+
+  it("keeps all three authorships on screen at once", async () => {
+    await renderTab(
+      version({ items: [item({ decision: "edited", final_text: "My own account of the work." })] }),
+    );
+
+    // The master's original and the agent's proposal both survive an edit and
+    // both stay visible. Replacing either with the owner's text would destroy
+    // the lineage the version exists to record, and the diff would stop being
+    // a diff.
+    const row = screen.getByTestId("diff-item");
+    expect(within(row).getByTestId("original-text")).toHaveTextContent("Led the payments platform");
+    expect(within(row).getByTestId("proposed-text")).toHaveTextContent("Owned the payments platform");
+    expect(within(row).getByTestId("decision-label")).toHaveTextContent(/your words/i);
+  });
+
+  it("offers a plain text field, never an editor", async () => {
+    // A WYSIWYG resume editor is an explicit project non-goal (docs/05 §7).
+    await renderTab(version());
+
+    await userEvent.click(screen.getByRole("button", { name: /^edit$/i }));
+    const field = screen.getByLabelText(/edit experience/i);
+    expect(field.tagName).toBe("TEXTAREA");
+    expect(field).not.toHaveAttribute("contenteditable");
   });
 });

@@ -57,6 +57,11 @@ const FINDING_LABEL: Record<ReviewerFinding["kind"], string> = {
   uncovered: "Not addressed",
 };
 
+/** Which review pass caught a finding. `0` is the first draft. */
+function passLabel(attempt: number): string {
+  return attempt === 0 ? "first pass" : `revision ${attempt}`;
+}
+
 /**
  * A Reviewer note, against the proposal it concerns (FR-042).
  *
@@ -65,7 +70,28 @@ const FINDING_LABEL: Record<ReviewerFinding["kind"], string> = {
  * proposal would make every flagged item read as a failure, and on a normal
  * draft several of them are ordinary.
  */
-export function Finding({ finding }: { finding: ReviewerFinding }) {
+export function Finding({
+  finding,
+  showAttempt = false,
+}: {
+  finding: ReviewerFinding;
+  /**
+   * Whether to say which review pass caught this one.
+   *
+   * True only when the item carries findings from **more than one** pass.
+   * Findings persist from every pass deliberately — a fabrication caught on
+   * attempt one and fixed on attempt two still happened, and the record is the
+   * evidence the guardrail ran. But rendered without that context, three
+   * near-identical notes on one bullet read as three simultaneous complaints
+   * about the wording currently on screen. They are a history, and saying so
+   * costs four words.
+   *
+   * Off by default for the same reason `EXTRACTED` provenance is never
+   * labelled: a marker carried by every finding of every single-pass run tells
+   * a reader nothing and costs a line on each.
+   */
+  showAttempt?: boolean;
+}) {
   return (
     <li
       data-testid="finding"
@@ -81,6 +107,9 @@ export function Finding({ finding }: { finding: ReviewerFinding }) {
           {" "}
           “{finding.quoted_text}”
         </span>
+      )}
+      {showAttempt && (
+        <span style={{ color: "var(--faint)" }}> ({passLabel(finding.attempt)})</span>
       )}
     </li>
   );
@@ -143,6 +172,10 @@ export function TailorDiffItem({
 
   const discarded = item.proposed_text === null && item.findings.length > 0;
   const unchanged = item.proposed_text === null && item.findings.length === 0;
+
+  // Whether this item was objected to across more than one review pass. Only
+  // then does naming the pass tell the reader anything.
+  const spansPasses = new Set(item.findings.map((f) => f.attempt)).size > 1;
 
   async function decide(decision: Exclude<ProposalDecision, "pending">, text?: string) {
     setBusy(true);
@@ -211,7 +244,7 @@ export function TailorDiffItem({
       {item.findings.length > 0 && (
         <ul data-testid="item-findings">
           {item.findings.map((finding, index) => (
-            <Finding key={index} finding={finding} />
+            <Finding key={index} finding={finding} showAttempt={spansPasses} />
           ))}
         </ul>
       )}
