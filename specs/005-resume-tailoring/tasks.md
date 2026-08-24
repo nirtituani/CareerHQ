@@ -191,7 +191,7 @@ there and marked owner-authored.
 - [ ] T088 Deploy and verify on the live system: a real run with `is_fixture = false`, a real model name, real token counts, a real cost
 - [ ] T089 Query the deployed database with the mandatory `PGHOST=localhost PGPORT=5432` override — the running container carries a stale host from a deleted proxy, and Railway recycles those ports, so the default address now serves another tenant's database
 - [X] T090 Run `/security-review` on the branch diff — four new routes, two migrations, and a new owner-facing surface. **One finding, fixed**: `run_tailoring` wrote the full stringified exception into `run.failure_reason` and `version.failure_reason`, both returned verbatim by two endpoints and rendered in an alert, while logging only the exception's class — exactly inverted from the T068 rule in `health.py`. A `psycopg.OperationalError` stringifies to the internal IP, port and database user. Now the kind to the owner, the detail to the log's `extra={}`. The regression test asserts **both** halves, because a gate checking only absence would pass against a fix that discarded the detail entirely
-- [ ] T091 Update `HANDOFF.md` and `docs/08_Technical_Spec.md` §6.1 status markers
+- [X] T091 Update `HANDOFF.md` and `docs/08_Technical_Spec.md` §6.1 status markers. **Also corrected §6.4**, whose requirement-coverage table still named pre-renumbering slices — it credited the agent to 004, retrieval to 004 and evaluation to 005. Evaluation is **007**, and it is the row that matters: a graded requirement deferred twice
 
 ---
 
