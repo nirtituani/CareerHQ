@@ -3,6 +3,7 @@
 import { Tabs } from "radix-ui";
 
 import { MatchTab } from "@/components/applications/match-tab";
+import { TailorTab } from "@/components/applications/tailor-tab";
 import { NotBuiltYet } from "@/components/not-built-yet";
 import type { Application, MatchResult } from "@/lib/api";
 
@@ -42,7 +43,9 @@ const TABS = [
   // Read before any resume work: "is this worth applying to, and where am I
   // weak" is the question that decides whether the rest of the page matters.
   { value: "match", label: "Match", built: true },
-  { value: "versions", label: "Versions", built: false },
+  // After Match, because tailoring refuses to run without a completed
+  // analysis — the tab order is the order the work actually happens in.
+  { value: "tailor", label: "Tailor", built: true },
   { value: "company", label: "Company", built: false },
   { value: "interview", label: "Interview", built: false },
 ] as const;
@@ -56,11 +59,6 @@ const UNBUILT: Record<string, { title: string; arrives: string }> = {
   interview: {
     title: "Interview preparation",
     arrives: "Interview preparation is a future release, not a planned slice.",
-  },
-  versions: {
-    title: "Tailored versions",
-    arrives:
-      "Resumes tailored for this job, with their lineage, arrive with resume tailoring.",
   },
 };
 
@@ -163,6 +161,14 @@ export function DetailTabs({
           </Tabs.Trigger>
         ))}
       </Tabs.List>
+
+      <Tabs.Content value="tailor" className="outline-none">
+        {/* Fetches its own version and polls while a run is in flight, rather
+            than being handed data by the page. A tailoring run outlives the
+            request that started it, so there is nothing for a server render to
+            hand over that would still be true by the time it is read. */}
+        <TailorTab applicationId={application.id} />
+      </Tabs.Content>
 
       <Tabs.Content value="match" className="outline-none">
         <MatchTab
