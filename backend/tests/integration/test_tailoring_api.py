@@ -17,6 +17,8 @@ Two rules here are not ordinary endpoint hygiene:
 
 from __future__ import annotations
 
+import json
+import logging
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -691,3 +693,71 @@ async def test_approval_works_when_the_version_is_read_by_a_fresh_session(
 async def _proposed_item(client: httpx.AsyncClient, user: User, version_id: str) -> dict[str, Any]:
     body = (await _as(client, user).get(f"/api/versions/{version_id}")).json()
     return next(item for item in body["items"] if item["proposed_text"])
+
+
+# -- T090: what a failure is allowed to say ---------------------------------
+
+
+async def test_a_failure_names_its_kind_to_the_owner_and_its_detail_to_the_log(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Found by the T090 security review, and it was the wrong way round.
+
+    `run_tailoring` wrote `f"{type(exc).__name__}: {exc}"` into two columns that
+    two endpoints return verbatim and the interface renders in an alert, while
+    logging only the exception's class. The detail went to the browser and the
+    type went to the operator — precisely inverted from the rule `health.py`
+    established under T068.
+
+    It is not hypothetical. A `psycopg.OperationalError` stringifies to
+    `connection to server at "172.19.0.4", port 5432 failed: FATAL: password
+    authentication failed for user "careerhq"` — the internal address, port and
+    database user, on screen.
+
+    So this asserts both halves: the secret is absent from the response **and**
+    present in the log. Asserting only the first would pass against a fix that
+    threw the detail away, which trades a disclosure for an undebuggable
+    failure.
+    """
+    secret = 'connection to server at "172.19.0.4", port 5432 failed: user "careerhq"'
+
+    class _Exploding:
+        async def complete(self, *, task: str, schema: Any, prompt: str) -> Any:
+            raise RuntimeError(secret)
+
+    seeded = await _seeded(db_session, sub="api-leak", email="api-leak@example.com")
+    version = await create_pending_version(db_session, seeded.application)
+    await db_session.commit()
+
+    with caplog.at_level(logging.WARNING, logger="careerhq.application.tailor_resume"):
+        async with session_factory() as session:
+            await run_tailoring(
+                session,
+                version_id=version.id,
+                completion=_Exploding(),  # type: ignore[arg-type]
+                guidelines=StaticGuidelines(),
+            )
+            await session.commit()
+
+    body = (await _as(client, seeded.user).get(f"/api/versions/{version.id}")).json()
+    run_body = (await _as(client, seeded.user).get(f"/api/versions/{version.id}/run")).json()
+
+    # Nothing the driver said reaches the caller, through either endpoint.
+    assert secret not in json.dumps(body)
+    assert secret not in json.dumps(run_body)
+    assert "172.19.0.4" not in json.dumps(body) + json.dumps(run_body)
+
+    # The owner still learns what happened and what to do about it, and the run
+    # still names the class — enough for a support conversation without a trace.
+    assert body["failure_reason"]
+    assert body["failure_reason"] == "The tailoring run stopped before it finished."
+    assert run_body["failure_reason"] == "RuntimeError"
+
+    # And the operator keeps the detail. In `extra={}` rather than the message,
+    # because Railway blanks the message field of parsed JSON logs.
+    assert any(secret in str(getattr(record, "detail", "")) for record in caplog.records), (
+        "the detail must survive somewhere an operator can read it"
+    )
