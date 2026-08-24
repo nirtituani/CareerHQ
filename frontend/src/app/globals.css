@@ -131,6 +131,63 @@
   }
 }
 
+/* -- shadcn/ui's token names, bridged onto the tokens above --------------------
+ *
+ * `src/components/ui/` is shadcn, and shadcn's primitives are written against a
+ * fixed vocabulary — `bg-primary`, `bg-accent`, `border-input`, `ring-ring`.
+ * None of those names existed here, and **an undefined Tailwind theme colour
+ * does not fail a build or warn**: the utility is simply never generated, so
+ * `bg-primary` computed to `rgba(0, 0, 0, 0)` and every default `<Button>` in
+ * the application — twenty of them — rendered as bare text with no fill.
+ *
+ * That went unnoticed through three slices because the outline and ghost
+ * variants look correct by accident (they are meant to be transparent), and the
+ * default variant reads as a plain text link rather than as anything broken.
+ * It was found by looking at the Tailor tab in a browser, which is the only way
+ * anything of this kind has ever been found in this project.
+ *
+ * `@theme inline` rather than `@theme`: the values below are `var()`s that
+ * **change under the dark-mode media query**, and inline is what makes the
+ * generated utility read the current value rather than freezing the one it was
+ * compiled with. Without `inline` every one of these would be permanently light.
+ *
+ * Nothing new is invented here. Each name points at a token docs/09 already
+ * argued for, so the mapping cannot drift from the design language — it has no
+ * values of its own to drift with.
+ */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  /* shadcn's `muted` is a **surface**, not the muted text colour — `bg-muted`
+     is the avatar fallback and the skeleton. Pointing it at `--muted`, which
+     is a mid grey meant for type, would give both a solid grey block. Found
+     by the theme-colour gate on its first run. */
+  --color-muted: var(--surface-sunken);
+  --color-muted-foreground: var(--muted);
+
+  --color-border: var(--border);
+  --color-input: var(--border);
+  --color-ring: var(--focus);
+
+  /* The one primary action on a screen. Brand teal, as docs/09 §3 specifies —
+     never the failure red, which is reserved for things that broke. */
+  --color-primary: var(--color-brand-600);
+  --color-primary-foreground: oklch(0.99 0 0);
+
+  --color-secondary: var(--surface-sunken);
+  --color-secondary-foreground: var(--foreground);
+  --color-accent: var(--surface-sunken);
+  --color-accent-foreground: var(--foreground);
+
+  --color-popover: var(--surface);
+  --color-popover-foreground: var(--foreground);
+  --color-card: var(--surface);
+  --color-card-foreground: var(--foreground);
+
+  --color-destructive: var(--color-failure);
+  --color-destructive-foreground: oklch(0.99 0 0);
+}
+
 body {
   background: var(--background);
   color: var(--foreground);

@@ -134,14 +134,22 @@ describe("application detail tabs", () => {
     // discover it is not built, then clicks Interview to discover the same.
     render(<DetailTabs application={application()} match={NO_MATCH} />);
 
-    for (const label of ["Company", "Interview", "Versions"]) {
+    for (const label of ["Company", "Interview"]) {
       const tab = screen.getByRole("tab", { name: new RegExp(label) });
       expect(within(tab).getByLabelText("not built yet")).toBeInTheDocument();
     }
 
-    expect(
-      within(screen.getByRole("tab", { name: /Details/ })).queryByLabelText("not built yet"),
-    ).not.toBeInTheDocument();
+    // Every built tab, not only Details. The marker going stale in the other
+    // direction is the worse failure: a capability that exists, marked "later",
+    // is a feature nobody clicks into. Versions carried this marker until slice
+    // 005 built it and became Tailor.
+    for (const label of ["Details", "Match", "Tailor"]) {
+      expect(
+        within(screen.getByRole("tab", { name: new RegExp(label) })).queryByLabelText(
+          "not built yet",
+        ),
+      ).not.toBeInTheDocument();
+    }
   });
 
   it("shows the full job description text rather than linking out to it", async () => {
@@ -453,7 +461,7 @@ describe("editing from the row", () => {
 });
 
 describe("the record's tab order", () => {
-  it("runs Details, Match, Versions before the research tabs", () => {
+  it("runs Details, Match, Tailor before the research tabs", () => {
     render(<DetailTabs application={application()} match={NO_MATCH} />);
 
     // The order is the workflow: what the job is, whether it is worth applying
@@ -462,7 +470,9 @@ describe("the record's tab order", () => {
     // makes a person hunt for the next step.
     const labels = screen.getAllByRole("tab").map((t) => t.textContent?.replace(/\W+$/, ""));
 
-    expect(labels).toEqual(["Details", "Match", "Versions", "Company", "Interview"]);
+    // Tailor sits after Match because it refuses to run without a completed
+    // analysis — the order is a real dependency, not a preference.
+    expect(labels).toEqual(["Details", "Match", "Tailor", "Company", "Interview"]);
   });
 });
 

@@ -6,7 +6,6 @@ import { DetailTabs } from "@/components/applications/detail-tabs";
 import { StatusPill } from "@/components/applications/status-pill";
 import { ApiUnavailable } from "@/components/api-unavailable";
 import { AppShell } from "@/components/app-shell";
-import { Button } from "@/components/ui/button";
 import { ApiUnreachableError, type Application, type MatchResult, type User } from "@/lib/api";
 import { fetchCurrentUser, fetchFromApi } from "@/lib/session";
 
@@ -15,11 +14,18 @@ export const dynamic = "force-dynamic";
 /**
  * One application — docs/09 §6.3.
  *
- * **One primary action.** `Tailor CV` sits in the header at full weight and
- * everything else is a tab, so four unbuilt features cannot compete visually
- * with the thing the page exists to do. It is disabled until slice 004 builds
- * it, and says so — a button that looks live and does nothing is worse than one
- * that admits it is not ready.
+ * **The header's `Tailor CV` button is gone, as of slice 005.** It sat there
+ * disabled, titled "Resume tailoring arrives in the next release", on the
+ * reasoning that a button which looks live and does nothing is worse than one
+ * admitting it is not ready. That was right while it was true. Now tailoring
+ * *is* built and lives one tab down, and a disabled primary action announcing
+ * the opposite is worse than either — it tells a person the capability they are
+ * looking at does not exist yet.
+ *
+ * It was not replaced with a live button. The action depends on tab state, so a
+ * working one would have to hoist that state out of `DetailTabs` and into this
+ * page, and what it would buy is a second way to reach a tab that is already in
+ * the tab list and already unmarked. The tab is the affordance.
  *
  * Someone else's application arrives here as a 404, not a 403 (FR-019): the
  * backend does not confirm that the id names anything, and neither does this.
@@ -87,10 +93,6 @@ export default async function ApplicationDetail({
             {application.source && <span>· {application.source}</span>}
           </div>
         </div>
-
-        <Button disabled title="Resume tailoring arrives in the next release">
-          Tailor CV
-        </Button>
       </div>
 
       <DetailTabs application={application} match={match} />
