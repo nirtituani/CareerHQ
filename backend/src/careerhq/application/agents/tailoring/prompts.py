@@ -94,8 +94,16 @@ your job is to find what is wrong, not to confirm it is fine.
 ## The posting
 {job}
 
-## The draft
-{draft}
+## The resulting resume — every line that will appear once this draft is applied
+{resume}
+
+Lines marked `(rewritten)` are the ones this draft changed. **Every other line is
+the owner's existing wording, unchanged and still in the resume.** Judge coverage
+against this whole document, not only the rewritten lines: a requirement answered
+by an unchanged line is answered.
+
+You may only raise `ungrounded` or `overstated` against a `(rewritten)` line. The
+unchanged lines are the owner's own words, not this draft's claims.
 
 ## What to report
 
@@ -136,8 +144,12 @@ _REVISE = """You are revising a tailored resume draft that did not pass review.
 ## The profile — the ONLY source of facts
 {master}
 
-## The current draft
-{draft}
+## The resulting resume — every line that will appear once your changes are applied
+{resume}
+
+Lines marked `(rewritten)` are the ones already changed; the rest is the owner's
+existing wording. An `uncovered` finding is about this whole document, so check
+it against every line before concluding something is missing.
 
 ## Rules
 
@@ -155,16 +167,63 @@ _REVISE = """You are revising a tailored resume draft that did not pass review.
 6. Do not introduce new claims while fixing old ones."""
 
 
+def compose_resume(state: TailoringState) -> str:
+    """The resume that **results** from this draft, line by line.
+
+    The Reviewer used to be shown `state.items` — only what the draft changed or
+    dropped — under the heading "## The draft". On a run that rewrote one line it
+    received one line and reported eight requirements the resume "never
+    addresses", naming bullets that were sitting in the resume untouched.
+
+    `uncovered` is a question about the document. It cannot be answered from a
+    diff. So the diff is applied over the master here, in code, and the Reviewer
+    judges coverage against the result — the same content the owner will see.
+
+    **This is a view, not a document.** It carries no role headings, dates or
+    contact block, because `master_items` does not hold them and coverage does
+    not depend on them; the assembled résumé is slice 006's job. It also does not
+    re-sort: reordering is recorded in each row's `position` and read at render
+    time, and no coverage judgement turns on sequence. Master order is kept so
+    this view and the persisted rows can be compared item for item.
+
+    **Input-side only.** Draft and Revise still return item ids with changed
+    text. Showing a model a whole resume and letting it hand one back is what
+    research R5 identifies as the cost problem, not the fix.
+    """
+    changed = {
+        str(item.source_item_id): item for item in state.items if item.source_item_id is not None
+    }
+
+    lines: list[str] = []
+    for row in state.master_items:
+        item_id = str(row["source_item_id"])
+        proposal = changed.get(item_id)
+
+        # Dropped by the draft, so genuinely not in the resulting resume. A
+        # requirement it used to answer is now unaddressed, and the Reviewer
+        # should see that rather than be told otherwise.
+        if proposal is not None and not proposal.included:
+            continue
+
+        kind = str(row["source_kind"]).upper()
+        if proposal is not None and proposal.text:
+            # Marked, so `overstated` and `ungrounded` still know which lines
+            # they may object to. Without this the Reviewer cannot tell a
+            # proposal from the owner's own wording and starts objecting to the
+            # profile.
+            lines.append(f"[id: {item_id}] {kind} (rewritten): {proposal.text}")
+        else:
+            lines.append(f"[id: {item_id}] {kind}: {row['text']}")
+
+    return "\n".join(lines)
+
+
 def _json(value: Any) -> str:
     return json.dumps(value, indent=2, default=str)
 
 
 def _guidelines(state: TailoringState) -> str:
     return "\n".join(f"- {g['text']}  [{g['source']}]" for g in state.guidelines)
-
-
-def _draft_payload(state: TailoringState) -> str:
-    return _json([item.model_dump(mode="json") for item in state.items])
 
 
 def build_plan_prompt(state: TailoringState) -> str:
@@ -186,7 +245,7 @@ def build_draft_prompt(state: TailoringState) -> str:
 
 
 def build_review_prompt(state: TailoringState) -> str:
-    return _REVIEW.format(master=state.master, job=_json(state.job), draft=_draft_payload(state))
+    return _REVIEW.format(master=state.master, job=_json(state.job), resume=compose_resume(state))
 
 
 def build_revise_prompt(state: TailoringState) -> str:
@@ -194,7 +253,7 @@ def build_revise_prompt(state: TailoringState) -> str:
         findings=_json([f.model_dump(mode="json") for f in state.findings]),
         plan=_json(state.plan),
         master=state.master,
-        draft=_draft_payload(state),
+        resume=compose_resume(state),
     )
 
 
@@ -203,4 +262,5 @@ __all__ = [
     "build_plan_prompt",
     "build_review_prompt",
     "build_revise_prompt",
+    "compose_resume",
 ]
