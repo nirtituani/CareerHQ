@@ -8,6 +8,7 @@ the same: the branch was never exercised, so nothing was ever wrong.
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal
 
 import pytest
 from sqlalchemy import select
@@ -16,6 +17,7 @@ from sqlalchemy.orm import selectinload
 
 from careerhq.application.finalisation_rules import FINALISATION_RULES_VERSION
 from careerhq.application.guidelines import StaticGuidelines
+from careerhq.application.ports import Usage
 from careerhq.application.tailor_resume import (
     create_pending_version,
     decide_item,
@@ -862,3 +864,75 @@ async def test_an_edit_with_no_text_is_refused(
         # And nothing was written on the way to raising.
         assert item.final_text == before
         assert item.decision == ProposalDecision.PENDING
+
+
+async def test_a_failed_run_still_records_what_it_was_billed_for(
+    db_session: AsyncSession, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    """The accounting loss the first real run took, as a test.
+
+    Plan and draft succeeded and were billed; review was billed and failed
+    validation. The run recorded `0 tokens, $0` for all three, because usage was
+    only summed from the graph's return value and the graph raised instead of
+    returning.
+
+    FR-035 requires every run to record tokens and cost. A run that reports zero
+    reads as free rather than as unrecorded — which is why nobody would ever go
+    looking for the missing figure.
+    """
+    seeded = await seed_tailorable(db_session, sub="billed", email="billed@example.com")
+    version = await create_pending_version(db_session, seeded.application)
+    await db_session.commit()
+
+    class _BilledFailure(RuntimeError):
+        """Shaped like `ExtractionFailedError`: it carries what it cost."""
+
+        def __init__(self) -> None:
+            super().__init__("did not validate")
+            self.usage = Usage(
+                model="anthropic/claude-opus-5",
+                input_tokens=9_000,
+                output_tokens=800,
+                cost=Decimal("0.14"),
+            )
+
+    class _FailsAtReview:
+        """Plan and draft answer; review is billed and rejects."""
+
+        def __init__(self) -> None:
+            self.inner = ScriptedSeam(
+                script={
+                    "tailor_plan": [_plan()],
+                    "tailor_draft": [_draft(seeded.bullet_ids[0])],
+                },
+                input_tokens=1_000,
+                output_tokens=500,
+                cost_per_call=Decimal("0.01"),
+            )
+
+        async def complete(self, *, task: str, schema: object, prompt: str) -> object:
+            if task == "tailor_review":
+                raise _BilledFailure()
+            return await self.inner.complete(task=task, schema=schema, prompt=prompt)  # type: ignore[arg-type]
+
+    async with session_factory() as session:
+        await run_tailoring(
+            session,
+            version_id=version.id,
+            completion=_FailsAtReview(),  # type: ignore[arg-type]
+            guidelines=StaticGuidelines(),
+        )
+        await session.commit()
+
+    async with session_factory() as session:
+        run = await session.scalar(
+            select(TailoringRun).where(TailoringRun.resume_version_id == version.id)
+        )
+        assert run is not None
+        assert run.status == RunStatus.FAILED
+
+        # Two successful calls at 1,000 in / 500 out, plus the billed failure.
+        assert run.input_tokens == 2_000 + 9_000
+        assert run.output_tokens == 1_000 + 800
+        assert run.cost == Decimal("0.02") + Decimal("0.14")
+        assert run.is_fixture is False

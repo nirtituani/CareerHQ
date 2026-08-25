@@ -7,6 +7,8 @@ direction by unsetting the key entirely.
 
 from __future__ import annotations
 
+import json
+import logging
 from decimal import Decimal
 from typing import Any
 
@@ -145,3 +147,154 @@ async def test_real_gateway_never_claims_to_be_fixture(monkeypatch: pytest.Monke
     )
 
     assert result.usage.is_fixture is False
+
+
+# -- T-fix-1: a schema failure must say which field, and nothing the model wrote
+
+
+class _Review(BaseModel):
+    """Shaped like `ReviewResult`, so the diagnostics are exercised against the
+    schema that actually failed in production."""
+
+    confidence: int
+    finding: str
+
+
+async def test_a_schema_failure_logs_which_field_and_why(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The real run failed with `error: "ValidationError"` and nothing else.
+
+    That named the exception class and not one useful fact: not the field, not
+    the constraint, not whether the model had returned prose or a well-formed
+    object with a missing key. Diagnosing it took a reproduction; it should have
+    taken one line of the log.
+    """
+
+    async def _bad(**_: Any) -> dict[str, Any]:
+        return _response('{"confidence": 88}')  # `finding` missing
+
+    monkeypatch.setattr(litellm_gateway, "_acompletion", _bad)
+
+    with caplog.at_level(logging.INFO, logger="careerhq.ai"):
+        with pytest.raises(litellm_gateway.ExtractionFailedError):
+            await litellm_gateway.LiteLLMGateway().complete(
+                task="tailor_review", schema=_Review, prompt="…"
+            )
+
+    record = next(
+        r for r in caplog.records if r.msg == "extraction output did not satisfy the schema"
+    )
+    assert record.task == "tailor_review"  # type: ignore[attr-defined]
+    assert record.schema_errors == [{"at": "finding", "type": "missing"}]  # type: ignore[attr-defined]
+
+
+async def test_a_schema_failure_never_logs_what_the_model_wrote(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The constraint that makes the diagnostic above safe to keep.
+
+    `ValidationError.errors()` carries an `input` key holding the offending
+    value — which here is model output derived from a CV, and this record
+    travels into logs a third party operates. `include_input=False` is the
+    explicit guarantee, and this is what proves it stays.
+
+    `msg` is kept only for `value_error`, where the text is our own validator's
+    sentence. Pydantic's parsing messages can echo a fragment of the input —
+    `uuid_parsing` reports the character it choked on — so they are dropped in
+    favour of the error `type`, which is a fixed code.
+    """
+    secret = "Ran Kubernetes clusters for the Ministry of Fabricated Experience"
+
+    async def _bad(**_: Any) -> dict[str, Any]:
+        return _response(json.dumps({"confidence": "not-a-number", "finding": secret}))
+
+    monkeypatch.setattr(litellm_gateway, "_acompletion", _bad)
+
+    with caplog.at_level(logging.INFO, logger="careerhq.ai"):
+        with pytest.raises(litellm_gateway.ExtractionFailedError):
+            await litellm_gateway.LiteLLMGateway().complete(
+                task="tailor_review", schema=_Review, prompt="…"
+            )
+
+    everything = " ".join(
+        f"{r.getMessage()} {getattr(r, 'schema_errors', '')}" for r in caplog.records
+    )
+    assert secret not in everything
+    assert "not-a-number" not in everything
+    # Still diagnostic: the field and the constraint survive.
+    assert "confidence" in everything
+
+
+async def test_our_own_validator_message_survives(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A `value_error` message is text this repository wrote, not the model.
+
+    It is also the single most useful line — "a overstated finding must name the
+    item it concerns" is the whole diagnosis, where `type: value_error` alone
+    would send the next reader back to the source.
+    """
+    from careerhq.domain.schemas.tailoring import ReviewResult
+
+    async def _bad(**_: Any) -> dict[str, Any]:
+        return _response(
+            json.dumps(
+                {
+                    "confidence": 78,
+                    "findings": [
+                        {"kind": "overstated", "detail": "Inflated.", "quoted_text": "Owned"}
+                    ],
+                }
+            )
+        )
+
+    monkeypatch.setattr(litellm_gateway, "_acompletion", _bad)
+
+    with caplog.at_level(logging.INFO, logger="careerhq.ai"):
+        with pytest.raises(litellm_gateway.ExtractionFailedError):
+            await litellm_gateway.LiteLLMGateway().complete(
+                task="tailor_review", schema=ReviewResult, prompt="…"
+            )
+
+    errors = next(
+        r.schema_errors  # type: ignore[attr-defined]
+        for r in caplog.records
+        if r.msg == "extraction output did not satisfy the schema"
+    )
+    assert errors[0]["at"] == "findings.0"
+    assert "must name the item it concerns" in errors[0]["why"]
+
+
+# -- T-fix-3: the provider billed for the call that failed validation
+
+
+async def test_a_validation_failure_carries_the_usage_it_was_billed_for(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The call happened. The tokens were spent. The audit record must say so.
+
+    Before this, a run that failed validation recorded `0 tokens, $0` — for the
+    failing call **and** for every successful call before it, because usage was
+    only summed after the graph returned. Principle V requires the audit record
+    to be written in the same transaction as the work; a run that silently
+    reports zero cost is worse than one reporting none, because it reads as free.
+    """
+
+    async def _bad(**_: Any) -> dict[str, Any]:
+        return _response('{"confidence": 88}')
+
+    monkeypatch.setattr(litellm_gateway, "_acompletion", _bad)
+    monkeypatch.setattr(litellm_gateway, "_completion_cost", lambda _: Decimal("0.031"))
+
+    with pytest.raises(litellm_gateway.ExtractionFailedError) as failed:
+        await litellm_gateway.LiteLLMGateway().complete(
+            task="tailor_review", schema=_Review, prompt="…"
+        )
+
+    usage = failed.value.usage
+    assert usage is not None
+    assert usage.input_tokens == 1200
+    assert usage.output_tokens == 340
+    assert usage.cost == Decimal("0.031")
+    assert usage.is_fixture is False

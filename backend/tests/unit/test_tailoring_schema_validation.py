@@ -10,6 +10,7 @@ import uuid
 import pytest
 from pydantic import ValidationError
 
+from careerhq.application.agents.tailoring.prompts import _REVIEW
 from careerhq.domain.schemas.tailoring import DraftedItem, ReviewFinding, ReviewResult
 
 
@@ -100,3 +101,68 @@ def test_confidence_is_bounded() -> None:
     with pytest.raises(ValidationError):
         ReviewResult(confidence=101)
     assert ReviewResult(confidence=0).findings == []
+
+
+# -- the root cause of the first real run's failure -------------------------
+
+
+def test_every_conditional_rule_is_visible_in_what_the_model_is_sent() -> None:
+    """The first real tailoring run died here, and this is the gate for it.
+
+    `ReviewFinding` enforces three cross-field rules in a
+    `model_validator(mode="after")`. **Pydantic does not serialise those into
+    JSON Schema** — and the JSON Schema is the entire contract the gateway sends
+    the model. So the model was told `source_item_id` was optional with a
+    default of `null`, told separately to "omit anything you cannot find", and
+    then rejected in Python for omitting it.
+
+    An invariant enforced in a place the model cannot read is not a contract; it
+    is a trap. The validator stays exactly as it is — it is what makes the rule
+    true — but the schema now *says* the rule, in the one field of the schema
+    that survives serialisation: the description.
+    """
+    finding = ReviewResult.model_json_schema()["$defs"]["ReviewFinding"]
+    described = " ".join(
+        prop.get("description", "") for prop in finding["properties"].values()
+    ).lower()
+
+    # The rule that actually broke: required for the two item-level kinds.
+    assert "ungrounded" in described and "overstated" in described
+    assert "required" in described
+    # And the opposite rule, which the model was already getting right.
+    assert "uncovered" in described and "null" in described
+
+
+def test_the_review_prompt_states_the_requirement_too() -> None:
+    """Belt and braces, and they fail differently.
+
+    The schema is machine-readable and precise; the prompt is where a model
+    reading in prose picks the rule up. The first run had the requirement in
+    neither — the prompt mentioned quoting the words and never mentioned the id
+    at all, which is why omitting it looked correct.
+    """
+    assert "source_item_id" in _REVIEW
+    lowered = _REVIEW.lower()
+    assert "ungrounded" in lowered and "overstated" in lowered
+    # It must say where the value comes from. "Include an id" without "copy it
+    # from the draft above" invites a plausible invention, which validates and
+    # then attaches a finding to nothing.
+    assert "copy" in lowered or "exactly" in lowered
+
+
+def test_a_finding_that_obeys_only_the_json_schema_still_fails_closed() -> None:
+    """The fix is about compliance, not correctness.
+
+    Even with the description and the prompt, a model may still omit the field.
+    When it does, the run must fail rather than persist a finding attached to
+    nothing — a finding nobody can attribute is the banner problem FR-042
+    exists to prevent. The validator is what guarantees that, so it is asserted
+    here rather than assumed.
+    """
+    with pytest.raises(ValidationError):
+        ReviewResult.model_validate(
+            {
+                "confidence": 78,
+                "findings": [{"kind": "overstated", "detail": "Inflated.", "quoted_text": "Owned"}],
+            }
+        )

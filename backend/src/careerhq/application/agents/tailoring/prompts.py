@@ -101,12 +101,23 @@ your job is to find what is wrong, not to confirm it is fine.
 - `uncovered`: the posting asks for something the draft never addresses. This
   concerns the draft as a whole, so do not attach it to an item.
 
+## Attaching a finding to what it concerns
+
+Every `ungrounded` and `overstated` finding MUST carry `source_item_id`, copied
+exactly from the `source_item_id` of the draft item above that it concerns. Do
+not invent one and do not leave it out — a finding nobody can attribute to a
+specific line is one the person cannot act on, and it will be rejected.
+
+Only `uncovered` has no `source_item_id`, because it is about the draft as a
+whole. Leave it null there.
+
 An adjacent skill described accurately is not `ungrounded`. A domain qualifier
 is not a gap: "build AI workflows for system architecture" asks for building AI
 workflows. Judge the claim, not the vocabulary.
 
 `confidence` is 0-100: how sound this draft is **given this profile**. It is not
-a judgement of the person's fit for the job."""
+a judgement of the person's fit for the job. Report it as a whole number, never
+as a fraction of one."""
 
 _REVISE = """You are revising a tailored resume draft that did not pass review.
 

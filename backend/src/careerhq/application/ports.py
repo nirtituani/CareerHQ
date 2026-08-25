@@ -12,7 +12,7 @@ slice 005 tailoring graph — and the signature has not changed for any of them.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Protocol
 
@@ -111,4 +111,117 @@ class StructuredCompletion(Protocol):
         ...
 
 
-__all__ = ["Completion", "StructuredCompletion", "Usage"]
+def safe_validation_errors(exc: Exception) -> list[dict[str, str]]:
+    """Which field failed and why — never the value that failed.
+
+    Added after the first real tailoring run failed with `error:
+    "ValidationError"` and nothing else. That named the exception class and not
+    one useful fact: not the field, not the constraint, not whether the model
+    had returned prose or a well-formed object missing a key. Diagnosing it took
+    a reproduction; it should have taken one line of the log.
+
+    Three deliberate exclusions, because this record travels into logs a third
+    party operates and the value that failed is model output derived from a CV:
+
+    * **`include_input=False`** drops the offending value. This is the whole
+      privacy guarantee and it is asserted by a test.
+    * **`include_context=False`** drops constraint context, which can echo input
+      for some error types.
+    * **`msg` is kept only for `value_error`**, where the text is our own
+      validator's sentence — "a overstated finding must name the item it
+      concerns" is the entire diagnosis. Pydantic's *parsing* messages can quote
+      a fragment of the input (`uuid_parsing` reports the character it choked
+      on), so those are dropped in favour of `type`, which is a fixed code.
+    """
+    errors = getattr(exc, "errors", None)
+    if not callable(errors):
+        # Not a pydantic failure — a JSONDecodeError, say. `type(exc).__name__`
+        # is already logged beside this and says everything there is to say.
+        return []
+
+    reported: list[dict[str, str]] = []
+    for error in errors(include_url=False, include_context=False, include_input=False):
+        entry = {
+            "at": ".".join(str(part) for part in error.get("loc", ())),
+            "type": str(error.get("type", "")),
+        }
+        if entry["type"] == "value_error":
+            entry["why"] = str(error.get("msg", ""))
+        reported.append(entry)
+    return reported
+
+
+# ---------------------------------------------------------------------------
+# Accounting
+# ---------------------------------------------------------------------------
+
+
+@dataclass(slots=True)
+class UsageRecorder:
+    """A `StructuredCompletion` that remembers what every call cost.
+
+    **Added because the first real tailoring run reported `0 tokens, $0` for a
+    run that made three provider calls and was billed for all three.** Usage was
+    summed from the graph's return value, and a graph that raises does not
+    return — so a failed run's accounting was not merely incomplete, it was
+    silently zero. A run that reads as free is worse than one that reads as
+    unrecorded: nobody investigates a free run.
+
+    This wraps the seam rather than changing it. The graph, the state and the
+    nodes are untouched, and `state.usage` still accumulates exactly as research
+    R3 requires — this is simply the record that survives an exception, and it is
+    what `tailor_resume` reports from on **both** paths, so success and failure
+    cannot drift into two different sums.
+
+    **It duck-types on `.usage`** rather than importing `ExtractionFailedError`,
+    which lives in `infrastructure/`. An exception that carries a `Usage` is one
+    the provider billed for; one that does not never reached the provider's
+    accounting, and inventing a zero-token entry for it would make the call count
+    wrong in the other direction.
+
+    Recording is **not** recovering: the exception is always re-raised. Whether a
+    failed call should be retried is a separate decision, deliberately not taken
+    in slice 005.
+    """
+
+    inner: StructuredCompletion
+    calls: list[Usage] = field(default_factory=list)
+
+    async def complete[T: BaseModel](
+        self, *, task: str, schema: type[T], prompt: str
+    ) -> Completion[T]:
+        try:
+            result = await self.inner.complete(task=task, schema=schema, prompt=prompt)
+        except Exception as exc:
+            billed = getattr(exc, "usage", None)
+            if isinstance(billed, Usage):
+                self.calls.append(billed)
+            raise
+        self.calls.append(result.usage)
+        return result
+
+    @property
+    def total_input_tokens(self) -> int:
+        return sum(call.input_tokens for call in self.calls)
+
+    @property
+    def total_output_tokens(self) -> int:
+        return sum(call.output_tokens for call in self.calls)
+
+    @property
+    def total_cost(self) -> Decimal:
+        """Decimal throughout. An audit value accumulated over many calls."""
+        return sum((call.cost for call in self.calls), start=Decimal("0"))
+
+    @property
+    def any_fixture(self) -> bool:
+        return any(call.is_fixture for call in self.calls)
+
+
+__all__ = [
+    "Completion",
+    "StructuredCompletion",
+    "Usage",
+    "UsageRecorder",
+    "safe_validation_errors",
+]

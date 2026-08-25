@@ -761,3 +761,50 @@ async def test_a_failure_names_its_kind_to_the_owner_and_its_detail_to_the_log(
     assert any(secret in str(getattr(record, "detail", "")) for record in caplog.records), (
         "the detail must survive somewhere an operator can read it"
     )
+
+
+async def test_a_validation_failure_does_not_leak_the_model_output_into_the_log(
+    db_session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Found while verifying the T090 fix, in the log it had just written.
+
+    `str(ValidationError)` embeds `input_value=` — so logging `str(exc)`
+    reinstated, one layer up, exactly the model output the gateway strips from
+    its own record. The gateway's guarantee was real and bypassable.
+
+    Both logs now use the same extractor: field paths and constraint types, and
+    our own validator sentences, never the value.
+    """
+    invented = "Ran Kubernetes clusters for the Ministry of Fabricated Experience"
+
+    class _Rejecting:
+        """Returns a well-formed object whose *content* fails validation, the
+        way a real provider does — not a transport error."""
+
+        async def complete(self, *, task: str, schema: Any, prompt: str) -> Any:
+            from careerhq.domain.schemas.tailoring import TailoringPlan
+
+            TailoringPlan.model_validate({"strategy": invented})  # raises
+            raise AssertionError("unreachable")
+
+    seeded = await _seeded(db_session, sub="api-noleak", email="api-noleak@example.com")
+    version = await create_pending_version(db_session, seeded.application)
+    await db_session.commit()
+
+    with caplog.at_level(logging.WARNING, logger="careerhq.application.tailor_resume"):
+        async with session_factory() as session:
+            await run_tailoring(
+                session,
+                version_id=version.id,
+                completion=_Rejecting(),  # type: ignore[arg-type]
+                guidelines=StaticGuidelines(),
+            )
+            await session.commit()
+
+    logged = " ".join(f"{r.getMessage()} {getattr(r, 'detail', '')}" for r in caplog.records)
+    assert invented not in logged
+    assert "input_value" not in logged
+    # Still names the field and the constraint.
+    assert "emphasise" in logged
