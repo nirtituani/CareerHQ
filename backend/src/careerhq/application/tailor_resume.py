@@ -26,7 +26,11 @@ from careerhq.application.agents.tailoring import build_tailoring_graph
 from careerhq.application.agents.tailoring.state import TailoringState
 from careerhq.application.finalisation_rules import FINALISATION_RULES_VERSION, finalise
 from careerhq.application.guidelines import GuidelineQuery, GuidelineSource
-from careerhq.application.ports import StructuredCompletion
+from careerhq.application.ports import (
+    StructuredCompletion,
+    UsageRecorder,
+    safe_validation_errors,
+)
 from careerhq.config import get_settings
 from careerhq.domain.models import (
     Application,
@@ -353,6 +357,24 @@ async def _render_master(
     return "\n".join(lines), items
 
 
+def _record_usage(run: TailoringRun, recorder: UsageRecorder) -> None:
+    """Write what the provider billed onto the run. **Both paths call this.**
+
+    Success and failure used to account differently: success summed the graph's
+    return value, and failure recorded nothing at all — because a graph that
+    raises does not return. So a run that made three calls and was billed for
+    all three reported `0 tokens, $0`, which reads as free rather than as
+    unrecorded (FR-035).
+
+    Starts from zero rather than from the run's current cost, so calling it
+    twice — a success that then fails on the flush — cannot double-count.
+    """
+    run.input_tokens = recorder.total_input_tokens
+    run.output_tokens = recorder.total_output_tokens
+    run.cost = recorder.total_cost
+    run.is_fixture = recorder.any_fixture
+
+
 async def run_tailoring(
     session: AsyncSession,
     *,
@@ -374,6 +396,10 @@ async def run_tailoring(
     )
     if run is None:
         return
+
+    # Wraps the seam so every billed call is remembered even when one of them
+    # raises. The graph, the state and the nodes are untouched.
+    recorder = UsageRecorder(completion)
 
     try:
         application = await session.get(Application, version.application_id)
@@ -429,12 +455,11 @@ async def run_tailoring(
         version.status = VersionStatus.REVIEWING
         await session.flush()
 
-        result = await build_tailoring_graph(completion).ainvoke(state)
+        result = await build_tailoring_graph(recorder).ainvoke(state)
 
         # The graph is done. Everything below is this module's job.
         proposed = list(result["items"])
         findings = list(result["findings"])
-        usage = list(result["usage"])
 
         # Principle III, before anything is written.
         finalised = finalise(proposed, findings)
@@ -483,10 +508,7 @@ async def run_tailoring(
         run.plan = result["plan"]
         run.guidelines_used = state.guidelines
         run.attempts = result["attempt"]
-        run.input_tokens = sum(u.input_tokens for u in usage)
-        run.output_tokens = sum(u.output_tokens for u in usage)
-        run.cost = sum((u.cost for u in usage), start=run.cost)
-        run.is_fixture = any(u.is_fixture for u in usage)
+        _record_usage(run, recorder)
         run.status = RunStatus.SUCCEEDED
         run.finished_at = datetime.now(UTC)
 
@@ -511,14 +533,23 @@ async def run_tailoring(
         # undebuggable failure, which is not a trade worth making — and on
         # Railway it must travel in `extra={}` regardless, because the platform
         # blanks the `message` field of parsed JSON logs.
+        # `str(exc)` for most failures — but **never** for a pydantic
+        # `ValidationError`, whose `__str__` embeds `input_value=`, and the
+        # input is model output that may derive from a CV. Found during the
+        # verification of this very fix: the gateway strips input from its own
+        # log while this line was reinstating it one layer up, by a different
+        # route. One extractor now serves both.
+        structured = safe_validation_errors(exc)
         logger.warning(
             "tailoring run failed",
             extra={
                 "version_id": str(version_id),
                 "error": type(exc).__name__,
-                "detail": str(exc),
+                "detail": structured if structured else str(exc),
             },
         )
+        # The calls that ran were paid for whether or not the run finished.
+        _record_usage(run, recorder)
         run.status = RunStatus.FAILED
         run.failure_reason = type(exc).__name__
         run.finished_at = datetime.now(UTC)

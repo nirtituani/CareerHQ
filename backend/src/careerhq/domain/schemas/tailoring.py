@@ -123,11 +123,36 @@ class ReviewFinding(BaseModel):
     """
 
     kind: Literal["ungrounded", "overstated", "uncovered"]
+    #: **The descriptions below carry the validator's rules deliberately.**
+    #:
+    #: `model_validator(mode="after")` does not serialise into JSON Schema, and
+    #: the JSON Schema is the entire contract the gateway sends the model. The
+    #: first real tailoring run failed here: the model was told this field was
+    #: optional with a default of `null`, told separately to "omit anything you
+    #: cannot find", and then rejected in Python for omitting it. A rule the
+    #: model cannot read is not a contract.
+    #:
+    #: `description` is the one part of a field that survives serialisation, so
+    #: it is where the conditional requirement has to live. The validator is
+    #: unchanged — it is what makes the rule true rather than merely stated.
     source_item_id: UUID | None = Field(
-        default=None, description="The item this concerns. Null for draft-level findings."
+        default=None,
+        description=(
+            "REQUIRED for `ungrounded` and `overstated` findings: the `source_item_id` "
+            "of the draft item this concerns, copied exactly from the draft above. "
+            "MUST be null for `uncovered`, which concerns the draft as a whole and has "
+            "no single item to point at."
+        ),
     )
     detail: str = Field(description="What is wrong, in the Reviewer's own words")
-    quoted_text: str | None = Field(default=None, description="The exact words objected to")
+    quoted_text: str | None = Field(
+        default=None,
+        description=(
+            "REQUIRED for `ungrounded` findings: the exact words objected to, quoted "
+            "verbatim from the draft. Strongly preferred for `overstated`. A finding "
+            "that cannot say which words are wrong cannot be checked by a person."
+        ),
+    )
 
     @model_validator(mode="after")
     def _findings_carry_what_their_kind_requires(self) -> Self:
