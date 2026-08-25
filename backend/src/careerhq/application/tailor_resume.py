@@ -18,7 +18,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -159,39 +159,87 @@ async def create_pending_version(session: AsyncSession, application: Application
     """
     analysis, profile, master = await check_preconditions(session, application)
 
-    existing = await session.scalar(
+    in_flight = await session.scalar(
         select(ResumeVersion).where(
             ResumeVersion.application_id == application.id,
             ResumeVersion.status.in_([VersionStatus.TAILORING, VersionStatus.REVIEWING]),
         )
     )
-    if existing is not None:
-        run = await session.scalar(
-            select(TailoringRun).where(TailoringRun.resume_version_id == existing.id)
+    if in_flight is not None:
+        # The version's own pointer, not a query over every run it has ever had.
+        # A reused draft accumulates runs, and an unordered `scalar()` would pick
+        # among them arbitrarily.
+        run = (
+            await session.get(TailoringRun, in_flight.tailoring_run_id)
+            if in_flight.tailoring_run_id
+            else None
         )
         if run is not None and is_abandoned(run):
             # Release it rather than refusing. Slice 004 refused, three times,
             # and each recovery needed SQL by hand.
             run.status = RunStatus.ABANDONED
             run.finished_at = datetime.now(UTC)
-            existing.status = VersionStatus.DRAFT
-            existing.failure_reason = "The previous run stopped without finishing."
+            in_flight.status = VersionStatus.DRAFT
+            in_flight.failure_reason = "The previous run stopped without finishing."
             await session.flush()
         else:
             raise TailoringInFlight("A tailoring run is already in progress for this job.")
 
-    version = ResumeVersion(
-        profile_id=profile.id,
-        application_id=application.id,
-        source_resume_profile_id=master.id,
-        source_profile_updated_at=profile.updated_at,
-        name=f"{application.job_title} — tailored",
-        status=VersionStatus.TAILORING,
-        # Assigned at construction. A lazy load on a freshly added object raises
-        # MissingGreenlet when it is serialised, which slice 004 met as a 500.
-        items=[],
+    # **A retry reuses the draft.** data-model.md says so twice, and it is the
+    # entire reason there is no `failed` version status: "the owner can retry
+    # into the same `draft` rather than accumulating abandoned versions". This
+    # used to create a new version every time, so the absence of a `failed`
+    # status bought nothing — the Versions list filled with identical dead
+    # drafts by another route.
+    #
+    # **Only a `draft` is a retry target.** Tailoring a job again after
+    # approving a version is a new document, not a second attempt at the old
+    # one, and overwriting an approved version would destroy something the owner
+    # explicitly confirmed (Principle IV, FR-029).
+    version = await session.scalar(
+        select(ResumeVersion)
+        .where(
+            ResumeVersion.application_id == application.id,
+            ResumeVersion.status == VersionStatus.DRAFT,
+        )
+        .order_by(ResumeVersion.created_at.desc())
+        .limit(1)
     )
-    session.add(version)
+
+    if version is None:
+        version = ResumeVersion(
+            profile_id=profile.id,
+            application_id=application.id,
+            source_resume_profile_id=master.id,
+            source_profile_updated_at=profile.updated_at,
+            name=f"{application.job_title} — tailored",
+            status=VersionStatus.TAILORING,
+            # Assigned at construction. A lazy load on a freshly added object
+            # raises MissingGreenlet when it is serialised, which slice 004 met
+            # as a 500.
+            items=[],
+        )
+        session.add(version)
+    else:
+        # Rows from an attempt that died after writing items and before
+        # finishing — `run_tailoring` flushes items well before it writes the
+        # run's totals, so that window is real. Rendering them beside this
+        # attempt's proposals would show a diff assembled from two runs with
+        # nothing saying which came from where.
+        await session.execute(
+            delete(ResumeVersionItem).where(ResumeVersionItem.resume_version_id == version.id)
+        )
+        # The lineage is re-snapshotted because this document is being written
+        # now, against the profile the preconditions above just re-checked.
+        version.source_resume_profile_id = master.id
+        version.source_profile_updated_at = profile.updated_at
+        version.status = VersionStatus.TAILORING
+        # The previous attempt's explanation describes a run that is no longer
+        # the current one. Leaving it would caption a live attempt with a dead
+        # one's error.
+        version.failure_reason = None
+        version.confidence_score = None
+
     await session.flush()
 
     settings = get_settings()
@@ -391,8 +439,16 @@ async def run_tailoring(
     version = await session.get(ResumeVersion, version_id)
     if version is None:
         return
-    run = await session.scalar(
-        select(TailoringRun).where(TailoringRun.resume_version_id == version_id)
+    # **The version's own pointer, never a query over its runs.** A reused
+    # draft has one run per attempt, and an unordered `scalar()` returns
+    # whichever the database hands back first — so a successful retry could
+    # write its plan, tokens and cost onto the *failed* run and leave the
+    # current one reading `running` forever. That was harmless only while every
+    # version had exactly one run.
+    run = (
+        await session.get(TailoringRun, version.tailoring_run_id)
+        if version.tailoring_run_id
+        else None
     )
     if run is None:
         return

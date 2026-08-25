@@ -19,16 +19,19 @@ from careerhq.application.finalisation_rules import FINALISATION_RULES_VERSION
 from careerhq.application.guidelines import StaticGuidelines
 from careerhq.application.ports import Usage
 from careerhq.application.tailor_resume import (
+    approve_version,
     create_pending_version,
     decide_item,
     run_tailoring,
 )
 from careerhq.domain.models import (
+    Application,
     ProposalDecision,
     ResumeVersion,
     ResumeVersionItem,
     ReviewerFinding,
     RunStatus,
+    SourceKind,
     TailoringRun,
     VersionStatus,
 )
@@ -936,3 +939,280 @@ async def test_a_failed_run_still_records_what_it_was_billed_for(
         assert run.output_tokens == 1_000 + 800
         assert run.cost == Decimal("0.02") + Decimal("0.14")
         assert run.is_fixture is False
+
+
+# -- retry: into the same draft, not into a pile of them --------------------
+
+
+def _failing_seam() -> ScriptedSeam:
+    """An empty script: the first call raises, as a provider outage does."""
+    return ScriptedSeam(script={})
+
+
+def _clearing_seam(bullet: uuid.UUID) -> ScriptedSeam:
+    return ScriptedSeam(
+        script={
+            "tailor_plan": [_plan()],
+            "tailor_draft": [_draft(bullet)],
+            "tailor_review": [_review(88)],
+        }
+    )
+
+
+async def test_retrying_a_failed_run_reuses_the_draft(
+    db_session: AsyncSession, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    """data-model.md, twice, in its own words.
+
+    *"the owner can retry into the same `draft` rather than accumulating
+    abandoned versions"*, and *"There is no `failed` version status. ... Its
+    absence is what keeps retry simple and stops abandoned versions
+    accumulating."*
+
+    The absence of a `failed` status only buys that if retry actually reuses the
+    draft. Creating a new version each time gives the owner a Versions list
+    filling with identical dead drafts — the exact outcome the missing status
+    was designed to prevent, arrived at by another route.
+    """
+    seeded = await seed_tailorable(db_session, sub="retry-reuse", email="retry-reuse@example.com")
+    version = await create_pending_version(db_session, seeded.application)
+    first_id = version.id
+    await db_session.commit()
+
+    async with session_factory() as session:
+        await run_tailoring(
+            session,
+            version_id=first_id,
+            completion=_failing_seam(),
+            guidelines=StaticGuidelines(),
+        )
+        await session.commit()
+
+    # "Try again" is a second POST, which lands here.
+    async with session_factory() as session:
+        application = await session.get(Application, seeded.application.id)
+        assert application is not None
+        retried = await create_pending_version(session, application)
+        await session.commit()
+        retried_id = retried.id
+
+    assert retried_id == first_id, "a retry must reuse the failed draft"
+
+    async with session_factory() as session:
+        versions = (
+            await session.scalars(
+                select(ResumeVersion).where(ResumeVersion.application_id == seeded.application.id)
+            )
+        ).all()
+        assert len(versions) == 1, f"retry accumulated {len(versions)} versions"
+        assert versions[0].status == VersionStatus.TAILORING
+        # The previous attempt's explanation is gone: it describes a run that is
+        # no longer the current one, and leaving it would caption a live attempt
+        # with a dead one's error.
+        assert versions[0].failure_reason is None
+
+
+async def test_the_retry_gets_a_fresh_run_and_the_version_points_at_it(
+    db_session: AsyncSession, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    """Reuse must not mean reusing the audit record.
+
+    A `TailoringRun` is one execution (Principle V). Overwriting the failed
+    one's columns would erase the evidence of the attempt that failed, which is
+    the thing FR-006 keeps. So the version is reused and the run is not — and
+    `tailoring_run_id` must name the new one, or every later read reports the
+    failure that is no longer current.
+    """
+    seeded = await seed_tailorable(db_session, sub="retry-run", email="retry-run@example.com")
+    version = await create_pending_version(db_session, seeded.application)
+    version_id = version.id
+    first_run_id = version.tailoring_run_id
+    await db_session.commit()
+
+    async with session_factory() as session:
+        await run_tailoring(
+            session,
+            version_id=version_id,
+            completion=_failing_seam(),
+            guidelines=StaticGuidelines(),
+        )
+        await session.commit()
+
+    async with session_factory() as session:
+        application = await session.get(Application, seeded.application.id)
+        assert application is not None
+        await create_pending_version(session, application)
+        await session.commit()
+
+    async with session_factory() as session:
+        reloaded = await session.get(ResumeVersion, version_id)
+        assert reloaded is not None
+        runs = (
+            await session.scalars(
+                select(TailoringRun).where(TailoringRun.resume_version_id == version_id)
+            )
+        ).all()
+
+        assert len(runs) == 2, "each attempt is its own execution record"
+        assert reloaded.tailoring_run_id != first_run_id
+        # The failed attempt survives, with its reason, for inspection.
+        failed = next(r for r in runs if r.id == first_run_id)
+        assert failed.status == RunStatus.FAILED
+        assert failed.failure_reason
+
+
+async def test_the_retry_writes_to_its_own_run_not_an_arbitrary_one(
+    db_session: AsyncSession, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    """The unordered lookup, which reuse turns from harmless into wrong.
+
+    `run_tailoring` found its run with `scalar(select(...).where(version_id))`
+    and no ordering. That was safe only because every version had exactly one
+    run. The moment a retry reuses a draft there are two, and `scalar()` returns
+    whichever the database hands back first — so a successful retry could write
+    its plan, tokens and cost onto the **failed** run, and leave the current one
+    saying `running` forever.
+
+    The version's own `tailoring_run_id` is the authoritative pointer, and it is
+    what the read must follow.
+    """
+    seeded = await seed_tailorable(db_session, sub="retry-ptr", email="retry-ptr@example.com")
+    version = await create_pending_version(db_session, seeded.application)
+    version_id = version.id
+    failed_run_id = version.tailoring_run_id
+    await db_session.commit()
+
+    async with session_factory() as session:
+        await run_tailoring(
+            session,
+            version_id=version_id,
+            completion=_failing_seam(),
+            guidelines=StaticGuidelines(),
+        )
+        await session.commit()
+
+    async with session_factory() as session:
+        application = await session.get(Application, seeded.application.id)
+        assert application is not None
+        retried = await create_pending_version(session, application)
+        await session.commit()
+        current_run_id = retried.tailoring_run_id
+
+    async with session_factory() as session:
+        await run_tailoring(
+            session,
+            version_id=version_id,
+            completion=_clearing_seam(seeded.bullet_ids[0]),
+            guidelines=StaticGuidelines(),
+        )
+        await session.commit()
+
+    async with session_factory() as session:
+        current = await session.get(TailoringRun, current_run_id)
+        failed = await session.get(TailoringRun, failed_run_id)
+        assert current is not None and failed is not None
+
+        # The success landed on the current run.
+        assert current.status == RunStatus.SUCCEEDED
+        assert current.plan is not None
+        assert current.input_tokens > 0
+
+        # And did not overwrite the failed one's record of what happened.
+        assert failed.status == RunStatus.FAILED
+        assert failed.plan is None
+
+        reloaded = await session.get(ResumeVersion, version_id)
+        assert reloaded is not None
+        assert reloaded.status == VersionStatus.AWAITING_APPROVAL
+
+
+async def test_a_reused_draft_starts_without_the_previous_attempt_s_items(
+    db_session: AsyncSession, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    """A retry must not show a diff assembled from two runs.
+
+    Reachable: `run_tailoring` adds item rows and flushes them, and only then
+    writes findings and the run's totals. An exception in that window leaves the
+    version at `draft` with rows already persisted. Retrying into it without
+    clearing would render last attempt's proposals beside this attempt's, with
+    nothing saying which came from where.
+    """
+    seeded = await seed_tailorable(db_session, sub="retry-clean", email="retry-clean@example.com")
+    version = await create_pending_version(db_session, seeded.application)
+    version_id = version.id
+    await db_session.commit()
+
+    # Stand in for that window: a draft carrying rows from an attempt that died.
+    async with session_factory() as session:
+        stale = await session.get(ResumeVersion, version_id)
+        assert stale is not None
+        stale.status = VersionStatus.DRAFT
+        stale.failure_reason = "RuntimeError"
+        session.add(
+            ResumeVersionItem(
+                resume_version_id=version_id,
+                source_kind=SourceKind.EXPERIENCE_BULLET,
+                source_item_id=seeded.bullet_ids[0],
+                position=0,
+                original_text="From the attempt that died.",
+                proposed_text="Stale proposal.",
+                final_text="Stale proposal.",
+                decision=ProposalDecision.PENDING,
+            )
+        )
+        await session.commit()
+
+    async with session_factory() as session:
+        application = await session.get(Application, seeded.application.id)
+        assert application is not None
+        await create_pending_version(session, application)
+        await session.commit()
+
+    async with session_factory() as session:
+        items = (
+            await session.scalars(
+                select(ResumeVersionItem).where(ResumeVersionItem.resume_version_id == version_id)
+            )
+        ).all()
+        assert items == [], "a retry must start from a clean draft"
+
+
+async def test_an_approved_version_is_never_reused(
+    db_session: AsyncSession, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    """Only a `draft` is a retry target.
+
+    Tailoring the same job again after approving one version is a **new
+    document**, not a second attempt at the old one — and overwriting an
+    approved version would destroy something the owner explicitly confirmed
+    (Principle IV, FR-029).
+    """
+    seeded = await seed_tailorable(db_session, sub="retry-ready", email="retry-ready@example.com")
+    version = await create_pending_version(db_session, seeded.application)
+    first_id = version.id
+    await db_session.commit()
+
+    async with session_factory() as session:
+        await run_tailoring(
+            session,
+            version_id=first_id,
+            completion=_clearing_seam(seeded.bullet_ids[0]),
+            guidelines=StaticGuidelines(),
+        )
+        approved = await session.get(ResumeVersion, first_id)
+        assert approved is not None
+        await session.refresh(approved, ["items"])
+        await approve_version(session, version=approved)
+        await session.commit()
+
+    async with session_factory() as session:
+        application = await session.get(Application, seeded.application.id)
+        assert application is not None
+        second = await create_pending_version(session, application)
+        await session.commit()
+        assert second.id != first_id
+
+    async with session_factory() as session:
+        first = await session.get(ResumeVersion, first_id)
+        assert first is not None
+        assert first.status == VersionStatus.READY, "an approved version must survive untouched"

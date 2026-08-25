@@ -91,7 +91,17 @@ def test_the_window_leaves_room_for_the_full_revision_budget() -> None:
 async def test_a_stalled_run_is_released_so_the_owner_can_try_again(
     db_session: AsyncSession, session_factory: async_sessionmaker[AsyncSession]
 ) -> None:
-    """The end-to-end recovery, without database access (SC-008)."""
+    """The end-to-end recovery, without database access (SC-008).
+
+    **Corrected after the retry fix**, and the correction is worth recording:
+    this test's own failure message said *"a retry reuses this draft rather than
+    accumulating versions"* while its assertions required the opposite —
+    `fresh_id != stuck.id`. The message was the design, quoted from
+    `data-model.md`; the assertions were written to match what the code did.
+
+    A test whose prose and whose assertions disagree will always pass, and will
+    always describe something other than what it checks.
+    """
     seeded = await seed_tailorable(db_session, sub="stalled", email="stalled@example.com")
     stuck = await create_pending_version(db_session, seeded.application)
     stuck_run_id = stuck.tailoring_run_id
@@ -116,18 +126,25 @@ async def test_a_stalled_run_is_released_so_the_owner_can_try_again(
         assert released.status == RunStatus.ABANDONED
         assert released.finished_at is not None
 
-        old_version = await session.get(ResumeVersion, stuck.id)
-        assert old_version is not None
-        assert old_version.status == VersionStatus.DRAFT, (
-            "a released version returns to draft — there is no `failed` status, "
-            "and a retry reuses this draft rather than accumulating versions"
-        )
-        assert old_version.failure_reason
+        # Released to `draft` and then reused by the same call — there is no
+        # `failed` status precisely so that a retry lands back in this draft
+        # rather than accumulating abandoned versions (data-model.md).
+        assert fresh_id == stuck.id, "the released draft is the retry target"
 
-        assert fresh_id != stuck.id
-        new_version = await session.get(ResumeVersion, fresh_id)
-        assert new_version is not None
-        assert new_version.status == VersionStatus.TAILORING
+        reused = await session.get(ResumeVersion, stuck.id)
+        assert reused is not None
+        assert reused.status == VersionStatus.TAILORING
+        # Not captioned by the dead run's error.
+        assert reused.failure_reason is None
+        # And pointing at the new attempt, not the abandoned one.
+        assert reused.tailoring_run_id != stuck_run_id
+
+        versions = (
+            await session.scalars(
+                select(ResumeVersion).where(ResumeVersion.application_id == seeded.application.id)
+            )
+        ).all()
+        assert len(versions) == 1, f"recovery accumulated {len(versions)} versions"
 
 
 @pytest.mark.asyncio
