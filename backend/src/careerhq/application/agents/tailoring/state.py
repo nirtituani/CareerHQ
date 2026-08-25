@@ -40,7 +40,14 @@ class TailoringState:
     #: The posting, and the requirements the match analysis already extracted.
     job: dict[str, Any] = field(default_factory=dict)
     #: The profile's facts, rendered once. Every node reads it; none refetch it.
+    #: This is the **grounding** source: a claim is true if it traces to
+    #: something here, including facts no draft touched.
     master: str = ""
+    #: The same facts, structured — `_render_master`'s second return value,
+    #: which the use case already computes to build version rows. Carried here
+    #: so `compose_resume` can show the Reviewer the resume that *results* from
+    #: a draft rather than the draft alone. No new query; nothing refetches.
+    master_items: list[dict[str, Any]] = field(default_factory=list)
     #: The existing match analysis, **read-only** (FR-011). Its verdicts are what
     #: tell the plan which gaps must not be misrepresented.
     match: dict[str, Any] = field(default_factory=dict)

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import uuid
 from decimal import Decimal
+from typing import Any
 
 import pytest
 from sqlalchemy import select
@@ -1216,3 +1217,84 @@ async def test_an_approved_version_is_never_reused(
         first = await session.get(ResumeVersion, first_id)
         assert first is not None
         assert first.status == VersionStatus.READY, "an approved version must survive untouched"
+
+
+async def test_the_reviewer_judged_the_same_resume_that_was_persisted(
+    db_session: AsyncSession, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    """The composed view and the saved version must agree, item for item.
+
+    The Reviewer now judges a resume composed in `compose_resume`; the owner
+    approves rows written by `run_tailoring`. Those are two renderings of one
+    decision, and nothing structural stops them diverging — a different
+    inclusion rule, or `final_text` materialised from a different branch, and
+    the Reviewer would be clearing a document nobody ever sees.
+
+    So this reads the persisted rows back through a fresh session and rebuilds
+    the same view from them, asserting the two match line for line.
+    """
+    seeded = await seed_tailorable(db_session, sub="compose-eq", email="compose-eq@example.com")
+    bullet = seeded.bullet_ids[0]
+    version = await create_pending_version(db_session, seeded.application)
+    await db_session.commit()
+
+    rewritten = "Owned the payments platform end to end for six years."
+    captured: dict[str, str] = {}
+
+    class _CapturesTheReviewPrompt:
+        """Answers the workflow, and keeps the resume the Reviewer was shown."""
+
+        async def complete(self, *, task: str, schema: Any, prompt: str) -> Any:
+            from decimal import Decimal
+
+            from careerhq.application.ports import Completion, Usage
+
+            payload: dict[str, Any]
+            if task == "tailor_plan":
+                payload = _plan()
+            elif task == "tailor_draft":
+                payload = _draft(bullet, rewritten)
+            else:
+                captured["review"] = prompt
+                payload = _review(91)
+            return Completion(
+                value=schema.model_validate(payload),
+                usage=Usage(model="d", input_tokens=1, output_tokens=1, cost=Decimal("0")),
+            )
+
+    async with session_factory() as session:
+        await run_tailoring(
+            session,
+            version_id=version.id,
+            completion=_CapturesTheReviewPrompt(),  # type: ignore[arg-type]
+            guidelines=StaticGuidelines(),
+        )
+        await session.commit()
+
+    assert "review" in captured
+
+    async with session_factory() as session:
+        rows = (
+            await session.scalars(
+                select(ResumeVersionItem).where(ResumeVersionItem.resume_version_id == version.id)
+            )
+        ).all()
+        assert rows
+
+        # **Scoped to the composed section, not the whole prompt.** The master
+        # is also in that prompt and contains every unchanged line, so searching
+        # the whole thing passes whether or not the composition works — which is
+        # this project's recurring "assert an absence against the right scope"
+        # mistake, and it survived the first drill of this very test.
+        shown = captured["review"].split("## The resulting resume")[1].split("## What to report")[0]
+
+        divergent = [row.final_text for row in rows if row.included and row.final_text not in shown]
+        assert not divergent, (
+            f"{len(divergent)} persisted lines were never shown to the Reviewer: {divergent[:2]}"
+        )
+
+        # And specifically the rewritten one, as the proposal rather than the
+        # original — the Reviewer must not have cleared wording that was replaced.
+        changed = next(row for row in rows if row.source_item_id == bullet)
+        assert changed.final_text == rewritten
+        assert changed.original_text not in shown

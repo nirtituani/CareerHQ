@@ -506,6 +506,9 @@ async def run_tailoring(
         )
 
         state = TailoringState(
+            # `master_items` is the same list used below to build version rows,
+            # so what the Reviewer is shown and what is persisted cannot drift.
+            master_items=master_items,
             job={
                 "title": application.job_title,
                 "description": application.job_description,
