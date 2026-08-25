@@ -249,9 +249,72 @@ it can attach them to an item rather than restating which line it means, but not
 that. The run stores totals, not a per-call breakdown, so the question stays open.
 
 **What is still outstanding.** T085 asks for **both** paths measured; this is the first-pass-clear
-path only. The full-revision-budget path — seven calls, three of them Opus reviews — has never run,
-and it is the path SC-006 is most likely to be broken by. Until it is measured, the ceiling has one
-data point beneath it and none above.
+path only. The full-revision-budget path — seven calls, three of them Opus reviews — has never run.
+
+### Measured, 2026-08-25 (c) — a completing run **with one revision**, on a second real job
+
+Run `6356fb4e`, version `c582d938`, a different posting and the same profile as (a) and (b). It took
+one revision, cleared review on the second pass, and finished `awaiting_approval`.
+
+| | Measured | Target | |
+|---|---|---|---|
+| Cost | **$0.464942** | SC-006: $0.30 | **missed**, 1.55× |
+| Elapsed | **4m 20.5s** (260.5s) | SC-001: 90s typical / 3min full budget | **missed**, both |
+| Input tokens | **41,621** | — | |
+| Output tokens | **23,908** | — | |
+| Calls | **5** — plan, draft, review, revise, review | up to 7 | |
+| Revisions | **1** | up to 2 | |
+| Final status | `awaiting_approval`, run `succeeded` | — | |
+| Confidence | **76** | threshold 70 | cleared |
+| Proposals produced | **1**, of 35 master items | — | |
+| Findings recorded | **12** — 4 `overstated`, 8 `uncovered` | — | |
+
+**This is the run above the ceiling that (b) did not have.** One revision cost 57% more than (b)'s
+first-pass-clear run and took 53% longer, on five calls of a possible seven. The worst case — two
+revisions, seven calls, three of them Opus reviews — has still never been measured and is higher
+again.
+
+**Both targets are recorded as missed and neither is changed.** SC-006 stays at $0.30 and SC-001 at
+90s/3min. Two runs now sit either side of the cost ceiling, which is a more useful position than one
+beneath it: the ceiling is doing its job, and what it is telling us is that a single revision breaks
+it. That is a finding about the workflow's cost, not a reason to move the number.
+
+**The id mapping held on a second job.** The one proposal produced carries a `source_item_id` naming
+a real master item, and all four `overstated` findings are attached to real item rows — 0 unplaceable
+ids, 0 proposals without one. This is the objectively checkable part of the fix working outside the
+job it was developed against.
+
+**A caveat on the `attempt` column.** All 12 findings are stamped `attempt = 1`, which is the run's
+final attempt rather than the pass that caught each one — `run_tailoring` writes `result["attempt"]`
+to every row. So this data cannot distinguish a concern raised on the first review from one raised on
+the second. Noted here so the figures above are not over-read; not acted on.
+
+### Manual QA observations from run (c) — one reader, one run, **not measurements**
+
+Notes taken by the author while reading the draft on screen, recorded because a person reading real
+output is the only check FR-017 has and because there is nothing else yet.
+
+**What these are not.** They are not evidence about the quality of the agent's output. Nothing was
+scored against a rubric, there was no second reader, no counterfactual draft was produced, and n = 1.
+A single reader agreeing with a single draft is the weakest evidence this project accepts anywhere
+else, and it is recorded as an observation rather than a conclusion for that reason. Turning notes
+of this kind into a measurement is what slice 007 exists to do.
+
+The reader's observations, as stated:
+
+- **One proposal against 34 items left unchanged.** The counts are measured; whether that is the
+  right amount of change for this posting is the reader's judgement and is not established here.
+- **The reviewer surfaced several `Not addressed` gaps rather than proposing experience to fill
+  them.** That eight `uncovered` findings exist is measured; reading them as the agent declining to
+  invent is the reader's interpretation. AI-008 is enforced by the discard rule and its tests, not
+  by this observation.
+- **The surviving proposal kept the profile's own hedging** around RAG and agentic work — the
+  reader's note is that exploratory language was not upgraded into claims of production experience.
+- **The reviewer flagged wording the reader judged stronger than the profile supports**, around
+  production Python, AWS and AI experience. Four `overstated` findings are measured; that they name
+  the right claims is the reader's assessment.
+
+None of the above changes an implementation, a prompt, a schema or a target.
 
 **One cost is now known and accepted**: rendering `[id: …]` onto every profile line adds ~1,540
 characters (~400 tokens) to the master, which appears in all four prompts — roughly 1,600 input
