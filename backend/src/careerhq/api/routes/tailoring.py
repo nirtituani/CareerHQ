@@ -27,6 +27,7 @@ from sqlalchemy.orm import selectinload
 
 from careerhq.api.deps import CompletionClient, CurrentUser, DbSession
 from careerhq.application.guidelines import StaticGuidelines
+from careerhq.application.plan_adherence import emphasis_adherence
 from careerhq.application.ports import StructuredCompletion
 from careerhq.application.tailor_resume import (
     TailoringInFlight,
@@ -399,6 +400,19 @@ async def get_run(version_id: uuid.UUID, session: DbSession, user: CurrentUser) 
         # whether it hit it.
         "plan": run.plan,
         "attempts": run.attempts,
+        # How much of that plan the draft actually carried out. **A measurement,
+        # not a gate** — two real runs disagreed sharply (eight planned emphases
+        # and four rewrites on one job, six and one on another), and a threshold
+        # chosen from two samples would encode a guess as a rule. Reported here
+        # so a distribution accumulates for slice 007 to judge.
+        "plan_adherence": emphasis_adherence(
+            run.plan,
+            rewritten_ids=[
+                str(item.source_item_id)
+                for item in version.items
+                if item.proposed_text is not None and item.source_item_id is not None
+            ],
+        ),
         "match_analysis_id": str(run.match_analysis_id),
         # Each with its source. Redundant while that source is a static rubric;
         # the only thing that makes slice 006's retrieval measurable once it is

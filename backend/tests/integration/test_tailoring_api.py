@@ -808,3 +808,75 @@ async def test_a_validation_failure_does_not_leak_the_model_output_into_the_log(
     assert "input_value" not in logged
     # Still names the field and the constraint.
     assert "emphasise" in logged
+
+
+async def test_the_run_endpoint_reports_how_much_of_the_plan_was_carried_out(
+    client: httpx.AsyncClient, db_session: AsyncSession, app: Any
+) -> None:
+    """Reported per run so evidence accumulates without anyone re-deriving it.
+
+    **Deliberately not a gate.** Two real runs disagreed sharply — eight planned
+    emphases and four rewrites on one job, six and one on another — and a
+    threshold chosen from two samples would encode a guess as a rule. Slice 007
+    is what turns a distribution into a judgement; this only makes sure there is
+    a distribution to look at.
+    """
+    seeded = await _seeded(db_session, sub="api-adherence", email="api-adherence@example.com")
+    bullet = seeded.bullet_ids[0]
+
+    script = _clean_script(bullet)
+    # A plan naming two facts; the draft rewrites one of them.
+    script["tailor_plan"] = [
+        {
+            "emphasise": [
+                {
+                    "source_item_id": str(bullet),
+                    "what": "Six years owning a payments platform",
+                    "serves_requirement": "5+ years backend services",
+                },
+                {
+                    "source_item_id": str(seeded.skill_ids[0]),
+                    "what": "Python",
+                    "serves_requirement": "Python",
+                },
+            ],
+            "de_emphasise": [],
+            "protected_gaps": [],
+            "strategy": "Lead with platform ownership.",
+        }
+    ]
+    started, _ = await _tailored(client, app, seeded, script)
+
+    body = (await _as(client, seeded.user).get(f"/api/versions/{started['version_id']}/run")).json()
+
+    adherence = body["plan_adherence"]
+    assert adherence["planned"] == 2
+    assert adherence["with_ids"] == 2
+    assert adherence["executed"] == 1
+    assert adherence["adherence"] == 0.5
+    assert adherence["unexecuted_ids"] == [str(seeded.skill_ids[0])]
+
+
+async def test_a_failed_run_reports_adherence_without_a_plan(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """A run that died before planning still has to answer the endpoint."""
+    seeded = await _seeded(db_session, sub="api-noplan", email="api-noplan@example.com")
+    version = await create_pending_version(db_session, seeded.application)
+    await db_session.commit()
+
+    async with session_factory() as session:
+        await run_tailoring(
+            session,
+            version_id=version.id,
+            completion=ScriptedSeam(script={}),
+            guidelines=StaticGuidelines(),
+        )
+        await session.commit()
+
+    body = (await _as(client, seeded.user).get(f"/api/versions/{version.id}/run")).json()
+
+    assert body["plan_adherence"]["planned"] == 0
+    assert body["plan_adherence"]["adherence"] is None
