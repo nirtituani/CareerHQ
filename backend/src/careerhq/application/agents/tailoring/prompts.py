@@ -70,11 +70,17 @@ analysis, and your job is to execute it rather than to re-decide the strategy.
 3. The plan's `protected_gaps` are the requirements the profile cannot answer.
    Do not write around them. A resume that omits a requirement is honest; one
    that gestures at it is not.
-4. Return **only the items you are changing or dropping**, by id. An item you
-   leave alone should not appear. Do not retype the resume.
-5. `text` is the new wording. Leave it null if only the position or inclusion
+4. Return **only the items you are changing or dropping**. An item you leave
+   alone should not appear. Do not retype the resume.
+5. Every item you return MUST carry `source_item_id`, copied **exactly** from
+   the `[id: ...]` prefix of the profile line it changes. Copy it character for
+   character; do not invent one and do not leave it out. A proposal whose id
+   does not name a real line cannot be applied and will be discarded.
+   Lines with no `[id: ...]` prefix — a role's heading — are context. You cannot
+   propose against them.
+6. `text` is the new wording. Leave it null if only the position or inclusion
    changes.
-6. Every rewrite carries a `reason` — one sentence, why this wording serves this
+7. Every rewrite carries a `reason` — one sentence, why this wording serves this
    posting. The owner reads it beside your proposal and decides."""
 
 _REVIEW = """You are reviewing a tailored resume draft against the profile it came from.
@@ -142,8 +148,11 @@ _REVISE = """You are revising a tailored resume draft that did not pass review.
    the wording back to what the profile actually says.
 3. An `uncovered` finding may have no fix. If the profile cannot answer that
    requirement, leave it unaddressed rather than manufacturing something.
-4. Return only the items you are changing, by id. Do not retype the resume.
-5. Do not introduce new claims while fixing old ones."""
+4. Return only the items you are changing. Do not retype the resume.
+5. Every item you return MUST carry `source_item_id`, copied **exactly** from
+   the item it revises in the draft above, or from the `[id: ...]` prefix of the
+   profile line. Do not invent one and do not leave it out.
+6. Do not introduce new claims while fixing old ones."""
 
 
 def _json(value: Any) -> str:

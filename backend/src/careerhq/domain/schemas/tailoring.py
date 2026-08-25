@@ -75,7 +75,25 @@ class DraftedItem(BaseModel):
     proportional to the *diff* rather than to the resume.
     """
 
-    source_item_id: UUID | None = None
+    #: **Self-describing, for the same reason `ReviewFinding` is.** A
+    #: `model_validator` does not serialise into JSON Schema, and the JSON
+    #: Schema is the whole contract the gateway sends — so anything the model
+    #: must do has to be said in a `description`, which does serialise.
+    #:
+    #: Typed optional because `ResumeVersionItem` allows a null source for an
+    #: item assembled from several facts. In practice every line the model is
+    #: shown carries an id, and a proposal without one **maps to nothing** and
+    #: is therefore silently discarded — which is what made the first two paid
+    #: runs produce no changes at all.
+    source_item_id: UUID | None = Field(
+        default=None,
+        description=(
+            "REQUIRED. The id of the profile line this changes, copied exactly from the "
+            "`[id: ...]` prefix of that line in the profile you were given. Do not invent "
+            "one and do not omit it: a proposal whose id does not name a real line cannot "
+            "be applied and will be discarded."
+        ),
+    )
     source_kind: Literal[
         "summary",
         "title",
