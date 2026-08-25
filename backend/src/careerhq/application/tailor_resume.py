@@ -276,7 +276,26 @@ async def _render_master(
 
     Both come from the same walk, so what the model is shown and what can be
     proposed against cannot drift apart.
+
+    **Every proposable line carries its database id**, as `[id: <uuid>]`. That
+    is not decoration: `DraftedItem.source_item_id` is how a proposal maps back
+    to a master row, and for two paid runs this text carried none. The Draft
+    node was instructed to return the items it changed *by id* while being shown
+    2,801 characters of profile and zero ids. It could not comply; it returned
+    nulls; the Reviewer then had nothing to copy either and its findings failed
+    validation.
+
+    The quieter consequence was worse. With no ids, **nothing maps back** — a
+    run that passed review would have persisted a diff with zero proposed
+    changes, which is a tailoring feature that silently does nothing.
+
+    Lines with no `[id: …]` — a role's heading — are context. The prompt says so,
+    and there is nothing for a model to attach a proposal to there.
     """
+
+    def _line(item_id: uuid.UUID, label: str, text: str) -> str:
+        return f"[id: {item_id}] {label}: {text}"
+
     lines: list[str] = []
     items: list[dict[str, Any]] = []
 
@@ -286,7 +305,7 @@ async def _render_master(
         .all()
     )
     for index, summary in enumerate(summaries):
-        lines.append(f"SUMMARY: {summary.text}")
+        lines.append(_line(summary.id, "SUMMARY", summary.text))
         items.append(
             {
                 "source_kind": SourceKind.SUMMARY,
@@ -309,9 +328,10 @@ async def _render_master(
     )
     position = 0
     for experience in experiences:
+        # No id: a role heading is context, not something to propose against.
         lines.append(f"ROLE: {experience.title} at {experience.company} ({experience.start_date})")
         for bullet in experience.bullets:
-            lines.append(f"  - {bullet.text}")
+            lines.append(_line(bullet.id, "BULLET", bullet.text))
             items.append(
                 {
                     "source_kind": SourceKind.EXPERIENCE_BULLET,
@@ -392,7 +412,7 @@ async def _render_master(
         for index, (row_id, text) in enumerate(rows):
             if not text:
                 continue
-            lines.append(f"{kind.value.upper()}: {text}")
+            lines.append(_line(row_id, kind.value.upper(), text))
             items.append(
                 {
                     "source_kind": kind,
@@ -525,6 +545,27 @@ async def run_tailoring(
             for item in finalised.items
             if item.source_item_id is not None
         }
+
+        # A proposal can only be applied to a line it names, so anything naming
+        # nothing real is dropped — no fabricated id can reach a resume. But
+        # dropping it *silently* makes "the model proposed nothing" and "the
+        # model proposed things we could not place" the same observation, and
+        # they need very different responses. That ambiguity is what let two
+        # paid runs look like ordinary empty results.
+        known = {str(item["source_item_id"]) for item in master_items}
+        unplaceable = sorted(set(by_source) - known)
+        missing_id = sum(1 for item in finalised.items if item.source_item_id is None)
+        if unplaceable or missing_id:
+            logger.warning(
+                "proposals could not be placed against the master",
+                extra={
+                    "version_id": str(version_id),
+                    # Counts and ids only — an id is ours, never model prose.
+                    "unplaceable_ids": unplaceable,
+                    "proposals_with_no_id": missing_id,
+                    "proposals_total": len(finalised.items),
+                },
+            )
 
         rows: dict[str, ResumeVersionItem] = {}
         for master_item in master_items:

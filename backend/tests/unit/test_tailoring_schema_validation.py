@@ -166,3 +166,20 @@ def test_a_finding_that_obeys_only_the_json_schema_still_fails_closed() -> None:
                 "findings": [{"kind": "overstated", "detail": "Inflated.", "quoted_text": "Owned"}],
             }
         )
+
+
+def test_the_drafted_item_says_where_its_id_comes_from() -> None:
+    """The same defect as `ReviewFinding`'s, one node upstream.
+
+    `DraftedItem.source_item_id` was `UUID | None = None` with no description at
+    all, so the JSON Schema advertised it as optional and said nothing about
+    where a value would come from. The Draft node is the *origin* of every id in
+    the workflow — the Reviewer only copies what the draft carried — so an
+    omission here empties the whole chain.
+    """
+    described = DraftedItem.model_json_schema()["properties"]["source_item_id"].get(
+        "description", ""
+    )
+    assert "REQUIRED" in described
+    assert "[id:" in described, "it must say where the value is copied from"
+    assert "invent" in described.lower()

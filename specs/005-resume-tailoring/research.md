@@ -161,6 +161,48 @@ identifiers with changed text, never the whole resume re-emitted.** Asking a mod
 it was given cost 52 seconds and a proxy timeout in slice 003. This is a hard requirement of the
 schemas, not an optimisation to apply later.
 
+### Measured, 2026-08-25 — the second real run, which **failed at review**
+
+Run `cd27b092`, version `a8f1e4b7`, against a real posting and the author's real profile.
+
+| | Measured | Target |
+|---|---|---|
+| Input tokens | **30,028** | — |
+| Output tokens | **21,641** | — |
+| Cost | **$0.361819** | SC-006: $0.30 |
+| Elapsed | **3m 28.9s** | SC-001: 90s typical, 3min full budget |
+| Calls | 3 — plan, draft, review | up to 7 |
+| Attempts | **0** — it never revised | up to 2 |
+
+**Read this as a floor, not a result.** It is three calls of a possible seven, with the revision
+budget untouched, and it already exceeds both targets: **1.21× the cost ceiling** and over the
+three-minute allowance that was meant to cover a *full* revision budget. A first-pass-clear run is
+the cheap path, and this is more expensive than the ceiling set for the expensive one.
+
+**Neither number is a valid measurement of a working run**, because this run did not work — it died
+in review on the `source_item_id` defect (see below). It is recorded because it is the only real
+usage data this project has, and because a failed run's cost is still a cost. The clean measurement
+SC-006 and SC-001 actually need is still outstanding: T085 remains open.
+
+**R8's lesson repeated exactly.** Slice 004 projected ~1,500 output tokens and measured 2,811, 87%
+low. `docs/08` projected ~$0.17 for a whole run; three calls of one cost **$0.36**. The estimate was
+low again, in the same direction, by a similar factor.
+
+**21,641 output tokens across three calls is the number to look at first** when cost work begins.
+It is the half of the bill this document already identified as the lever, and it is far larger than
+the diff-shaped output the schemas were designed to produce. Whether that is the draft returning
+more items than expected, or the reviewer writing long findings, is not yet known — the run records
+totals, not a per-call breakdown.
+
+**No target has been changed.** SC-006 stays at $0.30 and SC-001 at 90s/3min until a run that
+actually completes can be measured against them. Recording a miss is what slice 004 did with SC-004,
+and adjusting a number to fit the first measurement would make the target meaningless.
+
+**One cost is now known and accepted**: rendering `[id: …]` onto every profile line adds ~1,540
+characters (~400 tokens) to the master, which appears in all four prompts — roughly 1,600 input
+tokens per run. That is the price of the workflow being able to map a proposal back to the line it
+changes at all, so it is not a candidate for the cost work.
+
 ---
 
 ## R6 — The static rubric, and what it must not become
