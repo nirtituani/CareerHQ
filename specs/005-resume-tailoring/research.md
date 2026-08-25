@@ -161,7 +161,7 @@ identifiers with changed text, never the whole resume re-emitted.** Asking a mod
 it was given cost 52 seconds and a proxy timeout in slice 003. This is a hard requirement of the
 schemas, not an optimisation to apply later.
 
-### Measured, 2026-08-25 — the second real run, which **failed at review**
+### Measured, 2026-08-25 (a) — a run that **failed at review**. Not a valid measurement.
 
 Run `cd27b092`, version `a8f1e4b7`, against a real posting and the author's real profile.
 
@@ -180,9 +180,9 @@ three-minute allowance that was meant to cover a *full* revision budget. A first
 the cheap path, and this is more expensive than the ceiling set for the expensive one.
 
 **Neither number is a valid measurement of a working run**, because this run did not work — it died
-in review on the `source_item_id` defect (see below). It is recorded because it is the only real
-usage data this project has, and because a failed run's cost is still a cost. The clean measurement
-SC-006 and SC-001 actually need is still outstanding: T085 remains open.
+in review on the `source_item_id` defect. It is recorded because a failed run's cost is still a
+cost, and because it is the only figure this project has for what a *failure* costs. It must not be
+compared against SC-006 or SC-001, and the run below is what those targets are measured against.
 
 **R8's lesson repeated exactly.** Slice 004 projected ~1,500 output tokens and measured 2,811, 87%
 low. `docs/08` projected ~$0.17 for a whole run; three calls of one cost **$0.36**. The estimate was
@@ -194,9 +194,64 @@ the diff-shaped output the schemas were designed to produce. Whether that is the
 more items than expected, or the reviewer writing long findings, is not yet known — the run records
 totals, not a per-call breakdown.
 
-**No target has been changed.** SC-006 stays at $0.30 and SC-001 at 90s/3min until a run that
-actually completes can be measured against them. Recording a miss is what slice 004 did with SC-004,
-and adjusting a number to fit the first measurement would make the target meaningless.
+**No target has been changed.** SC-006 stays at $0.30 and SC-001 at 90s/3min. Recording a miss is
+what slice 004 did with SC-004, and adjusting a number to fit its first measurement would make the
+target meaningless.
+
+### Measured, 2026-08-25 (b) — **the first valid measurement**: a run that completed
+
+Run `2615363e`, version `a8f1e4b7` — **the same job and the same profile as (a) above**, so the two
+are directly comparable. It cleared review on the first pass and its output was approved by the
+owner.
+
+| | Measured | Target | |
+|---|---|---|---|
+| Cost | **$0.295450** | SC-006: $0.30 | **met**, by $0.0046 |
+| Elapsed | **2m 49.6s** (169.6s) | SC-001: 90s typical | **missed**, 1.88× |
+| Input tokens | **34,888** | — | |
+| Output tokens | **15,512** | — | |
+| Calls | **3** — plan, draft, review | up to 7 | |
+| Revisions | **0** — first-pass clear | up to 2 | |
+| Proposals produced | **4**, of 35 master items | — | |
+| Confidence | 78 | threshold 70 | cleared |
+| Findings recorded | 7 | — | |
+
+**This is the number SC-006 is measured against, and it passes — narrowly.** $0.0046 of headroom is
+1.5%, on the **cheapest path the workflow has**: three calls of a possible seven, with both
+revisions unused. A single revision adds a draft and an Opus review, and the failed run (a) shows
+what three calls alone can cost when output runs long. **The ceiling should be read as met by this
+run, not as met in general.** SC-006 is left at $0.30 precisely so that the first run to exceed it
+is recorded as exceeding it.
+
+**SC-001's 90-second target is missed and is recorded as missed**, not adjusted. 169.6s is under the
+three-minute allowance, but that allowance was written for a **full revision budget** and this run
+used none of it. The honest reading is that the *typical* case is nearly twice its target, and that
+the three-minute ceiling has about ten seconds of margin for a path that does two more calls than
+this one did.
+
+**Against (a), the failed run, on identical inputs:**
+
+| | (a) failed | (b) succeeded |
+|---|---|---|
+| Cost | $0.361819 | **$0.295450** — 18% less |
+| Output tokens | 21,641 | **15,512** — 28% fewer |
+| Input tokens | 30,028 | 34,888 — 16% more |
+| Elapsed | 3m 28.9s | 2m 49.6s |
+
+The input rose because `[id: …]` was added to every profile line between the two runs — roughly 400
+tokens on a master that appears in every prompt. That was the price of a proposal being able to map
+back to the line it changes at all, and this run is the evidence it was worth paying: (a) produced
+nothing placeable, (b) produced four proposals a person approved.
+
+Output falling by 28% on the same inputs is **not yet explained** and should not be assumed
+repeatable — one run is one sample. It is consistent with the reviewer writing shorter findings when
+it can attach them to an item rather than restating which line it means, but nothing here measures
+that. The run stores totals, not a per-call breakdown, so the question stays open.
+
+**What is still outstanding.** T085 asks for **both** paths measured; this is the first-pass-clear
+path only. The full-revision-budget path — seven calls, three of them Opus reviews — has never run,
+and it is the path SC-006 is most likely to be broken by. Until it is measured, the ceiling has one
+data point beneath it and none above.
 
 **One cost is now known and accepted**: rendering `[id: …]` onto every profile line adds ~1,540
 characters (~400 tokens) to the master, which appears in all four prompts — roughly 1,600 input
