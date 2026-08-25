@@ -23,7 +23,7 @@
  *    ordinary posting produces plenty of unmet requirements.
  */
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   VERDICT_GLYPH,
@@ -31,7 +31,14 @@ import {
   type Verdict,
   bandLabel,
 } from "@/components/applications/match-score";
-import { type MatchAnalysis, type MatchRequirement, type MatchState, runMatch } from "@/lib/api";
+import {
+  type MatchAnalysis,
+  type MatchRequirement,
+  type MatchResult,
+  type MatchState,
+  fetchMatch,
+  runMatch,
+} from "@/lib/api";
 
 /**
  * What each verdict is called, used only where it is *not* the section default.
@@ -331,10 +338,18 @@ function ScoreRing({ score, band }: { score: number; band: string }) {
 
 const SUPPORTED: Verdict[] = ["confirmed", "partial", "transferable"];
 
+//: Scoring is the only state that is still moving. Everything else is an
+//: answer, and asking again would be asking a question already settled.
+const IN_FLIGHT: MatchState = "running";
+
+//: Matches the Tailor tab. Short enough that a 27-second run does not feel
+//: stalled, long enough that a tab left open is not a request every second.
+const POLL_MS = 2_000;
+
 export function MatchTab({
-  state,
-  analysis,
-  stale,
+  state: initialState,
+  analysis: initialAnalysis,
+  stale: initialStale,
   applicationId,
   canScore = false,
 }: {
@@ -347,12 +362,61 @@ export function MatchTab({
    *  reads "nothing to score against" forever because scoring fires on create. */
   canScore?: boolean;
 }) {
+  /**
+   * The page renders this once, server-side, and scoring outlives that request.
+   *
+   * A real run sat reading "Scoring" for over twenty minutes while the analysis
+   * had been `ready` for nineteen of them: `/match` was fetched in the same
+   * second the completion started and never again. So the props are a starting
+   * point, not the truth, and this component keeps its own.
+   */
+  const [live, setLive] = useState<MatchResult>({
+    state: initialState,
+    analysis: initialAnalysis,
+    stale: initialStale,
+  });
+  // The render below reads these names, unchanged.
+  const { state, analysis, stale } = live;
   const [running, setRunning] = useState(false);
+
+  // Guards every `setState` after an await, so a tab closed mid-poll does not
+  // set state on an unmounted component.
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
+  // **Keyed on the state, so the transition itself tears the interval down.**
+  // A check inside the callback would depend on a value the closure captured
+  // when it was created, and would keep polling a finished analysis forever.
+  useEffect(() => {
+    if (!applicationId || state !== IN_FLIGHT) return;
+    const timer = setInterval(() => {
+      fetchMatch(applicationId)
+        .then((next) => {
+          if (mounted.current) setLive(next);
+        })
+        // A dropped request must not strand the screen; the next tick asks
+        // again, and the run is unaffected either way.
+        .catch(() => undefined);
+    }, POLL_MS);
+    return () => clearInterval(timer);
+  }, [applicationId, state]);
 
   async function score() {
     if (!applicationId) return;
     setRunning(true);
     await runMatch(applicationId).catch(() => undefined);
+    // Moved locally rather than from the response: `POST /match` answers
+    // `{state, analysis}` and carries no `stale`, so adopting it wholesale
+    // would quietly drop a flag the interface renders. The poll this starts
+    // fetches the whole truth a moment later — and it runs even when the POST
+    // was refused with a 409, which means a run was already going and is
+    // exactly the case that most needs watching.
+    if (mounted.current) setLive((current) => ({ ...current, state: IN_FLIGHT }));
     setRunning(false);
   }
 

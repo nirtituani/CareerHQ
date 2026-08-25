@@ -162,16 +162,26 @@ export function DetailTabs({
         ))}
       </Tabs.List>
 
+      {/* **Both tabs are keyed on the job.** They hold their own polled state,
+          and React would otherwise keep it across a navigation — same
+          component, same position, different record — so the previous job's
+          score would greet you on the next one. Keying makes the identity of
+          the record the identity of the component, which is what it is. */}
       <Tabs.Content value="tailor" className="outline-none">
         {/* Fetches its own version and polls while a run is in flight, rather
             than being handed data by the page. A tailoring run outlives the
             request that started it, so there is nothing for a server render to
             hand over that would still be true by the time it is read. */}
-        <TailorTab applicationId={application.id} />
+        <TailorTab key={application.id} applicationId={application.id} />
       </Tabs.Content>
 
       <Tabs.Content value="match" className="outline-none">
+        {/* Scoring outlives its request too — the page fetched `/match` in the
+            same second a run began and never again, and the screen read
+            "Scoring" for twenty minutes. These props are the starting point;
+            the tab polls for the rest. */}
         <MatchTab
+          key={application.id}
           state={match.state}
           analysis={match.analysis}
           stale={match.stale}
