@@ -470,8 +470,27 @@ class ResumeVersionItem(Base):
 
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
+    #: The master position a proposal displaced — **NULL when no proposal
+    #: arrived for this item**, which is the only record that the draft named
+    #: it at all.
+    #:
+    #: `position` above holds the proposed value when there is a proposal and
+    #: the master's when there is not, so on its own it destroys the master's
+    #: ordering for exactly the items the draft touched. The master's ordering
+    #: at creation is therefore `COALESCE(displaced_position, position)` for
+    #: every item, which is what FR-030 — "the state of that master at creation
+    #: time" — actually requires.
+    #:
+    #: Nullable and never backfilled. Rows written before this column existed
+    #: keep NULL and are read as *unknown*, never as "no proposal arrived":
+    #: their evidence was not destroyed, it was never recorded, and asserting
+    #: absence from silence is the error this project keeps re-learning.
+    displaced_position: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     original_text: Mapped[str] = mapped_column(Text, nullable=False)
-    #: Null when the agent proposed no change to this item.
+    #: Null when the agent proposed no *text* change. A position-only or
+    #: inclusion-only proposal also leaves this null — `displaced_position`
+    #: below is what records that a proposal arrived at all.
     proposed_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     final_text: Mapped[str] = mapped_column(Text, nullable=False)
 

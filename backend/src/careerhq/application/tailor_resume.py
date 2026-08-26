@@ -630,6 +630,13 @@ async def run_tailoring(
                 source_kind=master_item["source_kind"],
                 source_item_id=master_item["source_item_id"],
                 position=proposal.position if proposal else master_item["position"],
+                # NULL when no proposal arrived — the only record that the
+                # draft named this item, since a position-only or
+                # inclusion-only proposal leaves `proposed_text` null too.
+                # `position` above has already taken the proposed value, so
+                # without this the master's ordering is gone for exactly the
+                # items the draft touched (T095, FR-030).
+                displaced_position=master_item["position"] if proposal else None,
                 original_text=original,
                 proposed_text=proposal.text if proposal else None,
                 # Materialised rather than derived, so no later reader — the PDF

@@ -163,7 +163,12 @@ def test_cellebrite_states() -> None:
     assert result["distinct"] == 7, "the duplicate must be collapsed before counting"
     assert result["states"] == {
         "survived": 3,
-        "no_evidence": 3,
+        # `unknown_position`, not `no_evidence` (T095). This run predates
+        # `displaced_position`, and it demonstrably *did* receive position-only
+        # proposals: its nine bullets hold five distinct positions, and master
+        # ordering is a unique sequence, so duplicates can only come from
+        # proposals. Reading these as "the draft did nothing" was wrong.
+        "unknown_position": 3,
         "label_kind": 1,
     }
     assert sum(result["states"].values()) == 7, "every distinct entry must be classified once"
@@ -179,7 +184,9 @@ def test_harman_states() -> None:
     assert result["states"] == {
         "reverted": 2,
         "discarded": 1,
-        "no_evidence": 2,
+        # Same correction as Cellebrite: Harman's nine bullets hold five
+        # distinct positions, so it reordered too (T095).
+        "unknown_position": 2,
         "label_kind": 2,
     }
     assert result["states"].get("survived", 0) == 0, (
@@ -208,18 +215,28 @@ def test_zipher_states_are_unknown_not_failed() -> None:
 
 def test_draft_compliance_is_identical_across_the_two_clean_runs() -> None:
     """D1 — did the draft act on the plan? Cellebrite and Harman both acted on
-    three of seven distinct emphases. The spread between their D0 figures is
-    not a difference in what the draft did."""
+    three of seven distinct emphases by text. The spread between their D0
+    figures is not a difference in what the draft did.
+
+    Since T095 the *ratio* is withheld for both: they predate
+    `displaced_position`, so the remaining items cannot say whether a proposal
+    arrived, and the position data proves some did."""
     c = _run(cellebrite())
     h = _run(harman())
 
+    # Both still acted on three, and the counts are what remain comparable.
     assert c["d1_draft_compliance"]["acted"] == 3
-    assert c["d1_draft_compliance"]["determinable"] == 7
-    assert c["d1_draft_compliance"]["ratio"] == 0.429
-
     assert h["d1_draft_compliance"]["acted"] == 3
-    assert h["d1_draft_compliance"]["determinable"] == 7
-    assert h["d1_draft_compliance"]["ratio"] == 0.429
+
+    # **The ratios are now withheld** (T095). Both runs predate
+    # `displaced_position`, so for the items with no text evidence it is
+    # unknowable whether a proposal arrived — and both demonstrably reordered.
+    # The 0.429 these once reported treated "no text proposal" as "no
+    # proposal", which the position data disproves.
+    assert c["d1_draft_compliance"]["unknown_position"] == 3
+    assert h["d1_draft_compliance"]["unknown_position"] == 2
+    assert c["d1_draft_compliance"]["ratio"] is None
+    assert h["d1_draft_compliance"]["ratio"] is None
 
 
 def test_plan_effect_excludes_label_kind_targets_from_the_denominator() -> None:

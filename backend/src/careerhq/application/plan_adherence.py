@@ -91,6 +91,13 @@ class ItemFacts:
     original_text: str
     proposed_text: str | None
     final_text: str
+    #: The position the resume uses: proposed when a proposal arrived, the
+    #: master's when none did.
+    position: int = 0
+    #: The master position a proposal displaced. **NULL means no proposal
+    #: arrived** — on a row written after the column existed. On an older row it
+    #: means only that nothing was recorded; see `position_evidence`.
+    displaced_position: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,7 +110,11 @@ class FindingFacts:
 
 
 def _classify(
-    item: ItemFacts | None, findings: Sequence[FindingFacts], *, contaminated: bool
+    item: ItemFacts | None,
+    findings: Sequence[FindingFacts],
+    *,
+    contaminated: bool,
+    position_evidence: bool,
 ) -> str:
     """Which state the persisted evidence supports for one planned emphasis.
 
@@ -144,6 +155,15 @@ def _classify(
         # from a reversion no finding recorded. Attempted is all the data says.
         return "attempted"
 
+    # No text evidence. The position columns are the only remaining witness to
+    # whether the draft named this item at all.
+    if item.displaced_position is not None:
+        # A reorder is an action with a visible effect on the document; a
+        # proposal that left the position alone is an action without one. They
+        # are counted the same by D1 and reported apart, because saying an item
+        # moved when it did not is a claim the data does not support.
+        return "reordered" if item.position != item.displaced_position else "proposed"
+
     if contaminated:
         # Pre-T094 the revision replaced the draft's item set, so an absent
         # proposal may have been erased rather than never made. Absence is not
@@ -152,12 +172,22 @@ def _classify(
         return "unknown"
 
     if item.source_kind in LABEL_KINDS:
+        # Checked before position evidence on purpose: `label_kind` is a
+        # property of the *target*, not of the evidence, and it is the only
+        # state D3 excludes from its denominator. Letting an old row fall
+        # through to `unknown_position` instead would silently move every D3
+        # figure already recorded.
         return "label_kind"
+
+    if not position_evidence:
+        # The row predates `displaced_position`, so its NULL records nothing.
+        # "No proposal arrived" would be asserting absence from silence.
+        return "unknown_position"
 
     return "no_evidence"
 
 
-_ACTED = frozenset({"survived", "reverted", "discarded", "attempted"})
+_ACTED = frozenset({"survived", "reverted", "discarded", "attempted", "reordered", "proposed"})
 
 
 def plan_execution(
@@ -166,6 +196,7 @@ def plan_execution(
     items: Iterable[ItemFacts],
     findings: Iterable[FindingFacts],
     contaminated: bool = False,
+    position_evidence: bool = False,
 ) -> dict[str, Any]:
     """What became of each planned emphasis, as states rather than one ratio.
 
@@ -213,7 +244,10 @@ def plan_execution(
 
     per_item = {
         item_id: _classify(
-            by_id.get(item_id), findings_by_id.get(item_id, ()), contaminated=contaminated
+            by_id.get(item_id),
+            findings_by_id.get(item_id, ()),
+            contaminated=contaminated,
+            position_evidence=position_evidence,
         )
         for item_id in distinct
     }
@@ -223,13 +257,22 @@ def plan_execution(
         states[state] = states.get(state, 0) + 1
 
     unknown = states.get("unknown", 0)
+    unknown_position = states.get("unknown_position", 0)
     acted = sum(1 for state in per_item.values() if state in _ACTED)
     survived = states.get("survived", 0)
-    determinable = len(distinct) - unknown
-    addressable = determinable - states.get("label_kind", 0)
 
-    def ratio(numerator: int, denominator: int) -> float | None:
-        if unknown or denominator <= 0:
+    # D1 asks whether the draft acted, so a row that cannot say leaves its
+    # denominator entirely — counting it would record a failure the data does
+    # not support. The count is returned beside the ratio so a shrunken
+    # denominator is never read without knowing it shrank.
+    determinable = len(distinct) - unknown - unknown_position
+    # D3 asks whether text survived, which is knowable however little is known
+    # about ordering. Its denominator therefore excludes only `label_kind`, and
+    # subtracting `unknown_position` here would move figures already recorded.
+    addressable = len(distinct) - unknown - states.get("label_kind", 0)
+
+    def ratio(numerator: int, denominator: int, *, blocked: int) -> float | None:
+        if blocked or denominator <= 0:
             return None
         return round(numerator / denominator, 3)
 
@@ -239,17 +282,19 @@ def plan_execution(
         "distinct": len(distinct),
         "duplicates_collapsed": len(wanted) - len(distinct),
         "contaminated": contaminated,
+        "position_evidence": position_evidence,
         "states": states,
         "per_item": per_item,
         "d1_draft_compliance": {
             "acted": acted,
             "determinable": determinable,
-            "ratio": ratio(acted, determinable),
+            "unknown_position": unknown_position,
+            "ratio": ratio(acted, determinable, blocked=unknown + unknown_position),
         },
         "d3_plan_effect": {
             "survived": survived,
             "addressable": addressable,
-            "ratio": ratio(survived, addressable),
+            "ratio": ratio(survived, addressable, blocked=unknown),
         },
     }
 
