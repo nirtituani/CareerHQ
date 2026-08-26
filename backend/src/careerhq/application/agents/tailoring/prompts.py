@@ -250,7 +250,10 @@ def build_review_prompt(state: TailoringState) -> str:
 
 def build_revise_prompt(state: TailoringState) -> str:
     return _REVISE.format(
-        findings=_json([f.model_dump(mode="json") for f in state.findings]),
+        # Unwrapped from `RaisedFinding`: the model sees exactly the findings
+        # JSON it saw before the pass label existed. The label is state
+        # bookkeeping for persistence, never prompt content.
+        findings=_json([raised.finding.model_dump(mode="json") for raised in state.findings]),
         plan=_json(state.plan),
         master=state.master,
         resume=compose_resume(state),
