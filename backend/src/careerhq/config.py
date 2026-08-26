@@ -139,6 +139,36 @@ class Settings(BaseSettings):
     #: whether or not it is ever opened. A hundred applications is the
     #: difference between $2.20 and $6.50, bought silently.
     llm_model_match_analysis: str = "anthropic/claude-sonnet-5"
+    # -- Slice 005: the tailoring workflow, one entry per node ---------------
+    #
+    # docs/08 §3.2.3 fixes the model per node, and `model_for_task` is what
+    # makes that configuration rather than a branch in workflow code. All five
+    # are defaulted here for the reason the three above are: the fallback is
+    # `llm_provider_model`, which is Opus, so a missing entry runs at roughly
+    # 2.5x the price for no gain and says nothing while doing it. That has
+    # already caught CV extraction once in this project.
+    #
+    # Worst case for one run is seven calls — plan, draft, review, revise,
+    # review, revise, review — of which three are Opus reviews of a full draft.
+    # The reviews dominate the bill (research.md R5).
+    #: Sonnet. Deciding what to emphasise is judgement, but it is judgement
+    #: against a fit assessment that already exists rather than from scratch.
+    llm_model_tailor_plan: str = "anthropic/claude-sonnet-5"
+    #: Sonnet, per docs/08 §3.2.3's assignment of *draft*: rewriting existing
+    #: facts against a retrieved rubric.
+    llm_model_tailor_draft: str = "anthropic/claude-sonnet-5"
+    #: **Opus.** The hardest judgement in the system and the one whose failure
+    #: is a release blocker — it decides whether a claim is grounded in the
+    #: profile at all (Principle III, AI-008).
+    llm_model_tailor_review: str = "anthropic/claude-opus-5"
+    #: Sonnet for the first revision: usually mechanical.
+    llm_model_tailor_revise: str = "anthropic/claude-sonnet-5"
+    #: **Opus** for the second. A Sonnet revision that has already failed to
+    #: clear an Opus reviewer once is unlikely to clear it on a retry with the
+    #: same model, and that loop would burn attempts without converging. This
+    #: is a separate task NAME rather than a branch on attempt count, which is
+    #: what keeps the escalation in configuration (contracts O4).
+    llm_model_tailor_revise_escalated: str = "anthropic/claude-opus-5"
     # Local by default so the stack runs with no API key. Anthropic has no
     # embeddings endpoint, which is why this is not an Anthropic model.
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"

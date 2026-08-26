@@ -402,7 +402,11 @@ describe("the match tab", () => {
     render(<MatchTab state="nothing_to_score" analysis={null} stale={false} />);
 
     expect(screen.queryByRole("alert")).toBeNull();
-    expect(screen.getByText(/nothing to score against/i)).toBeInTheDocument();
+    // The copy changed when a job with no posting content became a distinct
+    // case — it now names the action rather than the absence. The claim this
+    // test was written for is unchanged: this state must never read as an
+    // error, because it is the state of every job before it is scored.
+    expect(screen.getByText(/add the posting to score this job/i)).toBeInTheDocument();
   });
 
   it("marks a real failure as one, and says the job is still usable", () => {

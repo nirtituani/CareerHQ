@@ -82,8 +82,27 @@ def test_the_application_layer_imports_no_provider_sdk() -> None:
     A single import here would make Principle V a matter of discipline again,
     since the layer that owns the use case would be able to reach the provider
     directly.
+
+    **Widened in slice 005, in the same commit as the LangGraph dependency.**
+    Until then this listed `litellm` alone, which was enough while every AI call
+    was one `complete()` from a use case. LangGraph changes that: it pulls in
+    `langchain-core`, so `langchain_anthropic` becomes one install away from
+    working, and the idiomatic LangGraph example everyone copies binds a model
+    *inside the node*. The dependency is what creates the hole, which is why the
+    guard could not land after it (research.md R2).
+
+    `langchain_core` is deliberately permitted — LangGraph's own types come from
+    it, and forbidding it would forbid the orchestrator. The provider bindings
+    are the boundary, not the abstraction.
     """
-    forbidden = ("litellm",)
+    forbidden = (
+        "litellm",
+        "anthropic",
+        "openai",
+        "langchain_anthropic",
+        "langchain_openai",
+        "langchain_community",
+    )
     offenders: dict[str, list[str]] = {}
 
     for path in (SRC / "application").rglob("*.py"):

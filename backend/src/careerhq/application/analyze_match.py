@@ -32,6 +32,7 @@ from careerhq.application.match_criteria import (
     score_from,
 )
 from careerhq.application.ports import StructuredCompletion
+from careerhq.application.scoreability import scoreable_posting
 from careerhq.domain.models import (
     Application,
     Certification,
@@ -260,6 +261,12 @@ async def create_pending_analysis(
     * `requirements == []` — the posting was read and stated none. An analysis
       against an empty requirement list returns a number with nothing behind it.
     """
+    # **Two different questions, and conflating them broke FR-006.**
+    #
+    # The first is a product rule: a job whose posting was read and yielded no
+    # requirements is "nothing to score against", not a zero (FR-006, and the
+    # spec's own edge case). That is true even when a description exists, and it
+    # predates this change.
     if not application.requirements:
         logger.info(
             "match analysis declined",
@@ -267,6 +274,17 @@ async def create_pending_analysis(
                 "application_id": str(application.id),
                 "reason": "legacy_row" if application.requirements is None else "no_requirements",
             },
+        )
+        return None
+
+    # The second is technical: is there anything for the prompt to send? This
+    # used to be answered by a *different* field from the one above, so a job
+    # with requirements and no description passed the guard and was then sent an
+    # empty posting. Now both this and `run_analysis` ask the same function.
+    if scoreable_posting(application) is None:
+        logger.info(
+            "match analysis declined",
+            extra={"application_id": str(application.id), "reason": "no_posting_content"},
         )
         return None
 
@@ -322,7 +340,22 @@ async def run_analysis(
         return
 
     try:
-        posting = (application.job_description or "").strip()
+        # Re-checked rather than assumed: the row is reserved when a job is
+        # saved and scored moments later, so the posting can be emptied in
+        # between. Trusting `create_pending_analysis` would spend a completion
+        # on whatever is left.
+        posting = scoreable_posting(application)
+        if posting is None:
+            logger.info(
+                "match analysis abandoned before calling the provider",
+                extra={"analysis_id": str(analysis_id), "reason": "no_posting_content"},
+            )
+            analysis.status = MatchStatus.FAILED
+            analysis.error = "This job has no posting content to score against."
+            analysis.completed_at = datetime.now(UTC)
+            await session.flush()
+            return
+
         if len(posting) > MAX_POSTING_CHARS:
             posting = posting[:MAX_POSTING_CHARS] + _TRUNCATED
 

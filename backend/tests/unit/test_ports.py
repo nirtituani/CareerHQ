@@ -8,11 +8,17 @@ while it has exactly one caller and is still cheap to change.
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import Any
 
 import pytest
 from pydantic import BaseModel
 
-from careerhq.application.ports import Completion, StructuredCompletion, Usage
+from careerhq.application.ports import (
+    Completion,
+    StructuredCompletion,
+    Usage,
+    UsageRecorder,
+)
 
 
 class _Person(BaseModel):
@@ -109,3 +115,111 @@ def test_usage_rejects_negative_token_counts() -> None:
     """An audit record that can hold nonsense is not an audit record."""
     with pytest.raises(ValueError):
         Usage(model="m", input_tokens=-1, output_tokens=0, cost=Decimal("0"))
+
+
+# -- usage must survive a call that failed validation ------------------------
+
+
+class _Boom(RuntimeError):
+    """Stands in for `ExtractionFailedError`, which the application layer must
+    not import — the recorder duck-types on `.usage` for exactly that reason."""
+
+    def __init__(self, usage: Usage | None) -> None:
+        super().__init__("nope")
+        self.usage = usage
+
+
+def _usage(tokens: int) -> Usage:
+    return Usage(
+        model="anthropic/claude-sonnet-5",
+        input_tokens=tokens,
+        output_tokens=tokens // 2,
+        cost=Decimal("0.01"),
+    )
+
+
+class _Seam:
+    """Answers `n` times, then raises with the usage it was billed for."""
+
+    def __init__(self, succeed: int, failure: Exception) -> None:
+        self.succeed = succeed
+        self.failure = failure
+        self.calls = 0
+
+    async def complete(self, *, task: str, schema: Any, prompt: str) -> Any:
+        self.calls += 1
+        if self.calls > self.succeed:
+            raise self.failure
+        return Completion(value=None, usage=_usage(1_000))  # type: ignore[arg-type]
+
+
+async def test_the_recorder_keeps_usage_from_calls_that_succeeded() -> None:
+    recorder = UsageRecorder(_Seam(succeed=3, failure=_Boom(None)))
+
+    for _ in range(3):
+        await recorder.complete(task="t", schema=object, prompt="p")  # type: ignore[arg-type]
+
+    assert [u.input_tokens for u in recorder.calls] == [1_000, 1_000, 1_000]
+
+
+async def test_the_recorder_keeps_usage_from_the_call_that_failed() -> None:
+    """The exact loss the first real run took.
+
+    Two calls succeeded and were billed, a third was billed and failed
+    validation, and the run recorded `0 tokens, $0` for all three — because
+    usage was only summed from the graph's return value, and the graph did not
+    return. A run that reports zero cost reads as free rather than as
+    unrecorded, which is the worse of the two errors.
+    """
+    recorder = UsageRecorder(_Seam(succeed=2, failure=_Boom(_usage(4_000))))
+
+    for _ in range(2):
+        await recorder.complete(task="t", schema=object, prompt="p")  # type: ignore[arg-type]
+    with pytest.raises(_Boom):
+        await recorder.complete(task="t", schema=object, prompt="p")  # type: ignore[arg-type]
+
+    assert [u.input_tokens for u in recorder.calls] == [1_000, 1_000, 4_000]
+    assert recorder.total_cost == Decimal("0.03")
+
+
+async def test_the_recorder_re_raises_rather_than_swallowing() -> None:
+    """Recording is not recovering. The run must still fail."""
+    recorder = UsageRecorder(_Seam(succeed=0, failure=_Boom(_usage(500))))
+
+    with pytest.raises(_Boom):
+        await recorder.complete(task="t", schema=object, prompt="p")  # type: ignore[arg-type]
+
+
+async def test_the_recorder_labels_every_call_with_the_task_that_made_it() -> None:
+    """T092 — per-call persistence needs each entry to say *which* call it was.
+
+    The adapter cannot supply the label: it knows only that it was called. The
+    recorder is the one party holding both the task name and the bill, so it
+    stamps the label — on the billed failure too, because run cd27b092's $0.36
+    included exactly such a call and the record could not say which node spent
+    it.
+    """
+    recorder = UsageRecorder(_Seam(succeed=2, failure=_Boom(_usage(4_000))))
+
+    await recorder.complete(task="tailor_plan", schema=object, prompt="p")  # type: ignore[arg-type]
+    await recorder.complete(task="tailor_draft", schema=object, prompt="p")  # type: ignore[arg-type]
+    with pytest.raises(_Boom):
+        await recorder.complete(task="tailor_review", schema=object, prompt="p")  # type: ignore[arg-type]
+
+    assert [u.task for u in recorder.calls] == [
+        "tailor_plan",
+        "tailor_draft",
+        "tailor_review",
+    ], "every recorded call, the billed failure included, must carry its task name"
+
+
+async def test_a_failure_carrying_no_usage_records_nothing_and_still_raises() -> None:
+    """A transport failure never reached the provider's accounting. Inventing a
+    zero-token entry for it would make the call count wrong in the other
+    direction."""
+    recorder = UsageRecorder(_Seam(succeed=0, failure=_Boom(None)))
+
+    with pytest.raises(_Boom):
+        await recorder.complete(task="t", schema=object, prompt="p")  # type: ignore[arg-type]
+
+    assert recorder.calls == []

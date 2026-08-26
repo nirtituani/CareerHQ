@@ -21,7 +21,7 @@ from typing import Any
 import litellm
 from pydantic import BaseModel
 
-from careerhq.application.ports import Completion, Usage
+from careerhq.application.ports import Completion, Usage, safe_validation_errors
 from careerhq.config import get_settings
 
 logger = logging.getLogger("careerhq.ai")
@@ -40,7 +40,18 @@ class ExtractionFailedError(RuntimeError):
 
     The message never includes the provider's raw output: it can contain the
     contents of a CV, and this exception travels into logs.
+
+    **It carries the usage it was billed for.** The provider ran the completion
+    and charged for it; whether the result validated is our problem, not the
+    accountant's. Before this, a run that failed validation recorded `0 tokens,
+    $0` — which reads as a free run rather than an unrecorded one, and Principle
+    V asks for the opposite. `UsageRecorder` in `application/ports.py` reads this
+    attribute by duck-typing, so nothing above the seam imports this module.
     """
+
+    def __init__(self, message: str, *, usage: Usage | None = None) -> None:
+        super().__init__(message)
+        self.usage = usage
 
 
 # -- provider-shaped seams, substituted in tests ----------------------------
@@ -68,6 +79,23 @@ def _completion_cost(response: Any) -> Decimal:
     except Exception as exc:  # pragma: no cover - provider accounting varies
         logger.warning("could not price completion", extra={"error": str(exc)})
         return Decimal("0")
+
+
+def _usage_of(response: Any, model: str) -> Usage:
+    """What this call cost, read from the provider's own accounting.
+
+    Extracted so the success path and the validation-failure path report the
+    same call the same way. They used to differ by one reporting nothing at all.
+    """
+    usage = response.get("usage") or {}
+    return Usage(
+        # The model that actually ran, which a provider may substitute.
+        model=str(response.get("model") or model),
+        input_tokens=int(usage.get("prompt_tokens", 0)),
+        output_tokens=int(usage.get("completion_tokens", 0)),
+        cost=_completion_cost(response),
+        is_fixture=False,
+    )
 
 
 def _parse_json(raw: str) -> Any:
@@ -101,15 +129,31 @@ class LiteLLMGateway:
                     "content": (
                         "Reply with a single JSON object conforming to this JSON Schema. "
                         "Reply with JSON only — no prose, no code fences.\n\n"
-                        "Every `confidence` is a NUMBER between 0 and 1, never a word.\n"
+                        # This said "between 0 and 1" until the first real
+                        # tailoring run. That was written for slice 003's
+                        # extraction schemas, where confidence is a fraction —
+                        # but it is sent with *every* task, and `ReviewResult`
+                        # types confidence as an integer 0-100. One sentence
+                        # cannot serve both, and the schema already carries the
+                        # range per field, so it no longer tries.
+                        "Every `confidence` is a NUMBER, never a word — in the range the "
+                        "schema gives for that field.\n"
                         "Use exactly the field names in the schema.\n"
-                        "Omit anything you cannot find rather than inventing a value.\n\n"
+                        # Qualified for the same reason. Unconditional, this
+                        # invited omitting a field the schema's own description
+                        # marks as conditionally required.
+                        "Omit anything you cannot find rather than inventing a value, unless "
+                        "the field's description says it is required.\n\n"
                         f"{json.dumps(schema.model_json_schema())}"
                     ),
                 },
                 {"role": "user", "content": prompt},
             ],
         )
+
+        # Read once, before validation, so the success and failure paths report
+        # the same billed call rather than two implementations of one sum.
+        billed = _usage_of(response, model)
 
         content = response["choices"][0]["message"]["content"]
         try:
@@ -121,24 +165,20 @@ class LiteLLMGateway:
             # understanding.
             logger.info(
                 "extraction output did not satisfy the schema",
-                extra={"task": task, "model": model, "error": exc.__class__.__name__},
+                extra={
+                    "task": task,
+                    "model": model,
+                    "error": exc.__class__.__name__,
+                    # Which field, and why. Never the value — see `_schema_errors`.
+                    "schema_errors": safe_validation_errors(exc),
+                },
             )
             raise ExtractionFailedError(
-                "The model's response did not match the expected structure."
+                "The model's response did not match the expected structure.",
+                usage=billed,
             ) from exc
 
-        usage = response.get("usage") or {}
-        return Completion(
-            value=value,
-            usage=Usage(
-                # The model that actually ran, which a provider may substitute.
-                model=str(response.get("model") or model),
-                input_tokens=int(usage.get("prompt_tokens", 0)),
-                output_tokens=int(usage.get("completion_tokens", 0)),
-                cost=_completion_cost(response),
-                is_fixture=False,
-            ),
-        )
+        return Completion(value=value, usage=billed)
 
 
 __all__ = ["ExtractionFailedError", "LiteLLMGateway"]
