@@ -195,6 +195,12 @@ there and marked owner-authored.
 
 ---
 
+## Phase 7: Observability follow-ups from the real-run evidence
+
+- [X] T093 Persist per-pass review observability. **Acceptance**: each reviewer finding carries the review attempt/pass that raised it, attached where the graph appends to `state.findings` — not in the model-facing schema, which the provider fills; each review pass's confidence is preserved rather than overwritten; **no inference or reconstruction of historical pass data** — the four existing runs stay exactly as persisted, recorded as unanswerable in HANDOFF §2a; no provider calls. **Implemented as**: `RaisedFinding` in `state.py` pairs each finding with `state.attempt` at append time in the review node; `state.confidences` accumulates with `operator.add`; `run_tailoring` stamps `ReviewerFinding.attempt` from the pair and persists the per-pass list to `tailoring_runs.review_confidences` (JSONB, nullable — NULL on pre-existing runs means unknowable, migration `0013_review_passes` chained on 0011, no backfill). Migration up/down against a real database deferred to the merge phase
+
+---
+
 ## Dependencies
 
 ```
