@@ -308,6 +308,14 @@ version contains the hand-written text marked as the owner's own.
 - **SC-001**: A person who asks for a tailored resume is shown a draft to approve within **90
   seconds** when the draft passes review on the first attempt, and within **3 minutes** when the
   full revision budget is spent — or is told the run failed. At no point is the state unreported.
+  **Not met as measured — missed by all four completed runs, on both clauses** (T085/T086). The
+  fastest was **2m50s** against a 90-second first-attempt target; two runs exceeded the three-minute
+  full-budget ceiling, and one of those two used **none** of the revision budget: Cellebrite 2m50s
+  (first-pass clear), Voyantis 3m43s (first-pass clear), Zipher 4m20s (one revision), Harman 4m01s
+  (full budget). The target is left unchanged. Output is the slow half of a completion and the Draft
+  call alone accounts for 58-76% of a run's output tokens; the numbers are in research.md R5 →
+  *T085*. The "or is told the run failed" clause **is** met — the Voyantis provider outage surfaced
+  as a failed run with the version readable and nothing partially saved.
 - **SC-002**: **100%** of statements in an approved version can be traced to content that existed
   in the Professional Profile before the run started.
 - **SC-003**: A person can decide on a single proposed change in under **15 seconds**, having been
@@ -318,6 +326,13 @@ version contains the hand-written text marked as the owner's own.
   resume, with no error.
 - **SC-006**: A tailoring run costs no more than **$0.30**, measured on a real job rather than
   estimated.
+  **Not met as measured — met by one run of four** (T085/T086). Cellebrite came in at **$0.295450**,
+  $0.0046 under; Voyantis at **$0.307106** (1.02x), Zipher at **$0.464942** (1.55x), and the
+  full-revision-budget path — seven calls, three Opus reviews, the escalation firing — at
+  **$0.547891** (1.83x). Both runs either side of the ceiling were *first-pass clear*, which is the
+  cheapest path the workflow has, so the ceiling is at the limit of the best case rather than the
+  worst. The target is left unchanged rather than adjusted to fit, as SC-004 was in slice 004. The
+  per-call breakdown, which T092 made possible, is in research.md R5 → *T085*.
 - **SC-007**: Every saved version can state which criteria produced it and which profile state it
   came from, so two versions are never silently incomparable.
 - **SC-008**: A run that stops without finishing is recoverable by the owner within **one hour**
