@@ -382,6 +382,56 @@ and two uncontaminated runs agreeing on one measure is a coincidence worth notic
 distribution. Judging a distribution is slice 007's job. Nothing here sets a threshold or gates
 anything, and no prompt, schema or model configuration was changed to produce it.
 
+### Measured, 2026-08-26 — a run lost to provider overload. **Cost and reliability evidence only.**
+
+Run `508f4c2c`, version `f3ba40ca`, against the **Voyantis** posting. Owner-triggered from the
+interface, and the first failure since the Phase 7 instrumentation landed.
+
+**Recorded here as operational and cost evidence. It is _not_ a tailoring-quality sample** — no
+review ever completed, so there is no draft the Reviewer judged, no confidence, no findings and no
+plan persisted. It must not be counted in any adherence, grounding or quality figure. **Voyantis
+remains a wanted candidate for a future successful sample**; nothing about this failure disqualifies
+the posting, and the run says nothing about how well the agent would tailor it.
+
+| | Measured |
+|---|---|
+| Status | `failed` · `failure_reason = InternalServerError` · version returned to `draft` |
+| Elapsed | 131.7s (12:04:33 → 12:06:45 UTC) |
+| Cost | **$0.145002** · 12,736 in / 11,953 out |
+| Calls | **2 billed of a possible 7** · attempts 0 |
+| Persisted | 0 items · 0 findings · plan **not** persisted · 2 per-call rows |
+
+**Where it stopped, and what each call cost — the first failed run this project can see inside:**
+
+| Seq | Task | Model | In | Out | Cost | Outcome |
+|---|---|---|---|---|---|---|
+| 0 | `tailor_plan` | sonnet-5 | 5,905 | 2,847 | $0.040280 | succeeded |
+| 1 | `tailor_draft` | sonnet-5 | 6,831 | **9,106** | $0.104722 | succeeded |
+| — | `tailor_review` | opus-5 | — | — | — | **failed, never billed** |
+
+**The cause is the provider, measured not inferred.** The exception detail, from the log where T090
+routes it: `litellm.InternalServerError: AnthropicError - {"type":"error","error":{"type":
+"overloaded_error","message":"Overloaded"},"request_id":"req_011CeRLBMGtDYG3qRFYacEEb"}`. An
+`overloaded_error` is a capacity rejection carrying Anthropic's own request id. It arrived ~2
+seconds after the review call was issued — a fast rejection, not a timeout — and **no retry was
+attempted at any layer**, which matches the recorded non-goal that a failed node ends the run.
+
+**What this establishes, and only this:**
+
+- **A transient provider outage costs the full price of everything already done.** $0.145 bought a
+  plan and a draft that were discarded. That is the concrete price of the no-retry non-goal, which
+  until now had never been paid.
+- **T092 works on the path it was built for.** Run `cd27b092` billed $0.36 and persisted only
+  totals, leaving "which node spent it" unanswerable; here the same class of failure is itemised to
+  the call. Nothing else in this section would be knowable without it.
+- **The failure path is clean**: nothing partial persisted, the version is reusable by a retry, the
+  owner saw the exception's kind while the provider detail went only to the log.
+
+**What it does not establish.** It revises no conclusion in R5 or in the §5B investigation. The
+Draft call's 9,106 output tokens are consistent with the finding that Draft output dominates a run's
+output, but one call on a posting that has requirements and no stored description is an observation,
+not a measurement of that hypothesis.
+
 ---
 
 ## R6 — The static rubric, and what it must not become

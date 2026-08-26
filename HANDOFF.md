@@ -98,7 +98,7 @@ the port deliberately has no `top_k`, no scores and no embedding parameters.
 **`specs/005-resume-tailoring/research.md` R5 is authoritative** for the tailoring numbers and
 labels which parts are measured and which are one reader's interpretation. This is the summary.
 
-**Tailoring runs — four real ones, two successful:**
+**Tailoring runs — six real ones, three successful:**
 
 | Job | Run | Status | Rev | In | Out | Cost | Elapsed | Proposals | Findings |
 |---|---|---|---|---|---|---|---|---|---|
@@ -106,6 +106,20 @@ labels which parts are measured and which are one reader's interpretation. This 
 | Cellebrite | `cd27b092` | failed | 0 | 30,028 | 21,641 | $0.361819 | 3m29s | — | — |
 | Cellebrite | `2615363e` | **succeeded** | 0 | 34,888 | 15,512 | **$0.295450** | 2m50s | **4** | 7 |
 | Zipher | `6356fb4e` | **succeeded** | **1** | 41,621 | 23,908 | **$0.464942** | 4m20s | **1** | 12 |
+| Harman | `60263226` | **succeeded** | **2** | 64,493 | 21,855 | **$0.547891** | 4m01s | **4** | 15 |
+| Voyantis | `508f4c2c` | **failed** | 0 | 12,736 | 11,953 | **$0.145002** | 2m12s | — | — |
+
+**Total tailoring spend $1.815104** — $1.308283 on the three that succeeded, **$0.506821 lost to
+the three that failed**.
+
+**Harman `60263226` is the full-revision-budget path** (seven calls, the Opus escalation firing,
+three review passes). **T085/T086 remain open**: its cost and latency are *not* yet recorded in
+`research.md`, and both SC targets were missed — SC-006 at 1.83×, SC-001 over the 3-minute ceiling.
+
+**Voyantis `508f4c2c` is cost and reliability evidence only, never a quality sample.** Anthropic
+returned `overloaded_error` on the first review call; the plan and draft had already been billed.
+Recorded in `research.md` R5. **Voyantis remains a wanted candidate for a future successful
+sample** — the posting is not disqualified by this.
 
 The two failures were the `source_item_id` defects; the first predates usage accounting, which is
 why it records `$0` for calls it made.
