@@ -190,6 +190,29 @@ async def test_the_recorder_re_raises_rather_than_swallowing() -> None:
         await recorder.complete(task="t", schema=object, prompt="p")  # type: ignore[arg-type]
 
 
+async def test_the_recorder_labels_every_call_with_the_task_that_made_it() -> None:
+    """T092 — per-call persistence needs each entry to say *which* call it was.
+
+    The adapter cannot supply the label: it knows only that it was called. The
+    recorder is the one party holding both the task name and the bill, so it
+    stamps the label — on the billed failure too, because run cd27b092's $0.36
+    included exactly such a call and the record could not say which node spent
+    it.
+    """
+    recorder = UsageRecorder(_Seam(succeed=2, failure=_Boom(_usage(4_000))))
+
+    await recorder.complete(task="tailor_plan", schema=object, prompt="p")  # type: ignore[arg-type]
+    await recorder.complete(task="tailor_draft", schema=object, prompt="p")  # type: ignore[arg-type]
+    with pytest.raises(_Boom):
+        await recorder.complete(task="tailor_review", schema=object, prompt="p")  # type: ignore[arg-type]
+
+    assert [u.task for u in recorder.calls] == [
+        "tailor_plan",
+        "tailor_draft",
+        "tailor_review",
+    ], "every recorded call, the billed failure included, must carry its task name"
+
+
 async def test_a_failure_carrying_no_usage_records_nothing_and_still_raises() -> None:
     """A transport failure never reached the provider's accounting. Inventing a
     zero-token entry for it would make the call count wrong in the other

@@ -61,6 +61,7 @@ from careerhq.domain.models.tailoring import (
     RunStatus,
     SourceKind,
     TailoringRun,
+    TailoringRunCall,
     VersionStatus,
 )
 
@@ -102,6 +103,7 @@ __all__ = [
     "SourceKind",
     "SummaryBlock",
     "TailoringRun",
+    "TailoringRunCall",
     "User",
     "VersionStatus",
     "VolunteerExperience",
