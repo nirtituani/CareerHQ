@@ -1,6 +1,6 @@
 # HANDOFF
 
-**Last updated:** 2026-08-26 · **Commit:** `db89a26` · **Branch:** `005-resume-tailoring`, clean
+**Last updated:** 2026-08-26 (§5B investigation recorded) · **Commit:** `e8075b3` · **Branch:** `005-resume-tailoring` (this file's update uncommitted)
 
 > **Slice 005 — Resume Tailoring is 92 of 97, and the whole flow works end to end on real data.**
 > Two real jobs have been tailored and approved, and a third real job scored **84/100 Strong**.
@@ -10,6 +10,11 @@
 > **The next phase is deliberately not more prompt work.** Plan-to-draft adherence measured 0.5 and
 > 0.167 across the only two successful runs, and two samples cannot justify tuning a prompt. §5B is
 > a parallel-agent investigation of tailoring quality *before* any further agent change.
+>
+> **§5B ran on 2026-08-26.** Four parallel read-only investigators; findings recorded in §2a.
+> Headlines: one **confirmed defect** — a revision silently erases the draft's decisions (§2
+> concern 7) — and a prime suspect for the output-token overrun: adaptive thinking on
+> unparameterised gateway calls. The proposed next phase is in §5 B: instrument, fix, then measure.
 >
 > Measured this session: **468 backend tests** (83.86% coverage), **162 frontend**, ruff, mypy,
 > oxlint, tsc and `next build` all clean.
@@ -140,6 +145,103 @@ Zipher 71 · **Voyantis 0 then 84 Strong**. Total match spend **$0.309312**.
    commit is at the end, so the interface shows "Writing" for the entire run and
    "Checking its own work" is never reached. FR-040's distinction exists in code and tests but is
    not delivered by the system.
+7. **CONFIRMED DEFECT (found by §5B, 2026-08-26) — a revision erases the draft's decisions.**
+   `TailoringState.items` has no reducer (`state.py:57`), so the Revise node's returned list
+   *replaces* the draft's (`graph.py:94-97`) — while `_REVISE` rule 4 instructs "Return only the
+   items you are changing". A delta contract, executed as a replacement. Measured: Zipher's final
+   version has 1 proposal, **0 drops, 35/35 included**, while one of its own findings praises a
+   "Big Data Concepts" drop that exists nowhere in the persisted version; Cellebrite (no revision)
+   dropped 12. Found independently by two of the four investigators. **Still in current code.**
+   Consequence: any drop or reorder the Reviser does not re-emit is silently lost — so Zipher's
+   "9 planned de-emphases → 0 dropped" and its 0.167 adherence measure the post-revision wreckage,
+   not the Draft node. Fix proposed in §5 B, not yet approved or implemented.
+
+### 2a. What the §5B investigation established — 2026-08-26
+
+Four parallel read-only investigators (Claude Code Agent tool, no worktrees needed — read-only),
+one per open concern: plan-to-draft adherence, output-token anatomy, Review/Revise dynamics,
+instrumentation gaps for slice 007. Constraints held and verified: no provider calls, SELECT-only
+SQL, no file writes — `git status` clean at `e8075b3` afterwards. Every number below was measured
+by an investigator this session (SQL against the local database, file:line reads, or re-running
+`emphasis_adherence()` as a pure function). Full verbatim reports live in the session transcript;
+this section is the durable record.
+
+**Adherence (concern 1) — the numbers are right, the samples are not comparable.**
+
+- The plan **does** reach the Draft model in executable form: every emphasis in both persisted
+  plans carries a `source_item_id`, serialised into the prompt, with matching `[id: …]` anchors in
+  the master (`prompts.py:238-244`, `tailor_resume.py:312-313`). Non-execution is not id plumbing.
+- `emphasis_adherence()` re-run on the persisted plans reproduces 0.5 and 0.167 exactly — but the
+  metric counts only *text rewrites of the exact planned item id*. Drops, reorders, and content
+  absorbed into another item do not count. Cellebrite's 4/8 **double-counts a duplicate directive**
+  (two emphases share id `cd5f3821`): distinct-item execution is 3/7 ≈ 0.43.
+- **Both drafts absorbed unexecuted emphasis content into the summary rewrite** — Zipher's single
+  proposal contains near-verbatim content of all five unexecuted emphases; Cellebrite's absorbs 3
+  of 4. Exactly one emphasis in either run was ignored outright (Cellebrite's "C++ and Python as
+  OOP languages", `13fc719c`).
+- **Both runs predate `f1f5c7b`** (the diff-only-review fix) — Zipher finished 26 minutes before
+  it was committed. Combined with concern 7, the 0.5-vs-0.167 comparison sets runs produced under
+  different effective conditions against each other. **No post-fix run exists anywhere.**
+
+**Output tokens (concern 2) — 86-88% of billed output is unaccounted for; prime suspect named.**
+
+- Persisted model text ≈ 2,132 of 15,512 tokens (Cellebrite) and ≈ 2,804 of 23,908 (Zipher),
+  chars÷4 estimate. Reconstructing full JSON with generous structural overhead still leaves a
+  4-6× gap. The failed run `cd27b092` billed 21,641 output tokens and persisted **zero** model text.
+- The gateway sends bare completions — no `max_tokens`, no `thinking`, no `effort`
+  (`litellm_gateway.py`). Current API documentation: omitting `thinking` runs **adaptive thinking
+  at default high effort, billed inside output tokens, never returned in content**.
+- A cost-feasibility decomposition (Sonnet provably billed below list rate; solving the price
+  constraint) localises ~12-14K of Cellebrite's 15.5K output on the **Sonnet plan/draft calls**.
+- **Interpretation, medium-high confidence:** the unaccounted output is adaptive-thinking tokens,
+  mostly on Sonnet. **Cannot be confirmed from persisted data** — no per-call usage survives
+  (`UsageRecorder.calls` is summed and discarded, `tailor_resume.py:444-459`), and a ScriptedSeam
+  replay cannot settle it. The T085 full-budget run can, if per-call usage is persisted first.
+- Also billed and discarded: every `DraftedItem.reason` (schema-required, no column stores it),
+  Zipher's entire draft output (concern 7), and all of a failed run's output.
+
+**Review/Revise (concerns 4, and the revision's real story).**
+
+- Zipher's 8 `uncovered` findings, cross-referenced item-by-item against the persisted 35 rows:
+  **3 outright artifacts** of the diff-only bug (they name bullets "omitted entirely" that sat
+  untouched in the resume), **4 genuine profile gaps** (Kubernetes/Spark/MLOps/FinOps/IDF — no
+  master row supports them), **1 mixed**. Roughly half the uncovered volume was legitimate signal.
+- The revision fired on **first-pass confidence < 70**, not on `ungrounded` — zero `ungrounded`
+  rows exist in the entire table, and only ungrounded-or-confidence blocks (`finalisation_rules.py`).
+  The first-pass confidence value is **permanently unrecoverable**: `state.confidence` has no
+  reducer, only the final 76 persisted, and the backend container was recreated after the runs.
+- The revision **did** its wording job: all three overstated claims it was told to fix were
+  softened exactly as directed (verified quote-by-quote against the final text).
+- Pass attribution: `reviewer_findings` has **no timestamp column**; ids are random; ctid preserves
+  insertion order but not the pass boundary. Content constraints prove findings 1-3 are pass-1;
+  placing findings 8-11 is **undeterminable** — including the case that all 12 came from pass 1.
+
+**Instrumentation gaps (slice 007 readiness), the short map:**
+
+- **Per-call usage:** capture-side complete (`UsageRecorder.calls` holds per-call model/tokens/
+  cost), storage-side absent — summed then discarded. `Usage` also has no task label, so even
+  persisting it as-is could not name the node except by model inference.
+- **Per-pass findings and confidence:** destroyed *upstream* of persistence — the state schema has
+  no attempt field and `confidence` is overwritten per pass. A write-time fix alone cannot work.
+- **Observability:** `run_tailoring` contains zero commits; the only commits are in the API layer
+  before and after the run. `REVIEWING` is never observable (concern 6 confirmed at file level);
+  Plan/Draft/Revise phases are not in the status vocabulary at all.
+- **Prompts are entirely unversioned and unpersisted** — zero version constants in `prompts.py`;
+  no run column stores a template version. The biggest regression-attribution gap for slice 007:
+  after any prompt edit, historical runs are indistinguishable from current-prompt runs. Contrast
+  the exercised precedents: `match_analyses.criteria_version` (data shows `v2-importance` →
+  `v3-earned`) and `finalisation_rules_version` per run.
+- **Metric readiness:** grounding accuracy best-served (structural `source_item_id` traceability +
+  per-item text snapshots); requirement coverage computable only by judgement, not join (every
+  requirement↔content link is free text); calibration has no human-rating store and n≈1 approval
+  data; **regression delta most blocked** (prompt identity, per-call models, and run-time input
+  snapshots all missing — posting and profile are read live and mutable).
+- Smaller absences, recorded: job-URL extraction usage persisted nowhere; retry deletes the prior
+  attempt's item rows; failed runs persist only totals plus an exception class name.
+
+**Permanently unanswerable for the existing four runs** (information destroyed in state before
+persistence): Zipher's first-pass confidence, the pass attribution of its findings beyond 1-3, and
+what its Draft node actually returned.
 
 ### What is NOT built
 
@@ -304,6 +406,11 @@ order is the cheapest way to understand why the id plumbing looks the way it doe
   which async SQLAlchemy answers with `MissingGreenlet`. Use an awaited `session.refresh(obj)`.
 - **`json.load` in strict mode against the GitHub Actions API.** Control characters in commit
   messages break it. `strict=False`.
+- **A delta contract executed as a replacement** (found by §5B, 2026-08-26). `_REVISE` instructs
+  "Return only the items you are changing"; `state.items` has no reducer, so the Reviser's partial
+  return *replaced* the draft's list and silently erased its drops — see §2 concern 7. The same
+  reducer lesson as `usage` above, missed on a second key: any LangGraph state key a later node
+  returns *partially* must either carry a merge reducer or be proven whole.
 
 ### Slice 005 — the routes and the interface
 
@@ -448,19 +555,39 @@ tailored resume as a person and ask whether it claims anything the owner did not
 T088/T089 deploy and verify on Railway. The `PGHOST=localhost PGPORT=5432` override is **not
 optional** — see CLAUDE.md.
 
-### B — Investigate tailoring quality with parallel agents · **the intended next phase**
+### B — §5B investigation **done 2026-08-26**. Proposed next phase: instrument, fix, then measure
 
-**Before any further prompt or agent change.** Plan-to-draft adherence is 0.5 and 0.167 across two
-runs, and §2's *Known quality concerns* lists what is open. The decision already recorded is that
-**two samples cannot justify tuning a prompt** — so the next step is investigation and evidence, not
-edits.
+The investigation ran as four parallel read-only agents; findings are §2a, and the Revise
+overwrite is now §2 concern 7 — a confirmed defect. **The proposed phase below is recorded, not
+approved; nothing has been implemented.**
 
-What is already in place to build on: `plan_adherence` on `GET /versions/{id}/run`, the four
-persisted runs, `research.md` R5's separation of measured fact from interpretation, and
-`ScriptedSeam` for driving the workflow without a provider.
+The order is load-bearing: instrumentation lands first so the already-required T085 run doubles as
+the confirmation experiment for the thinking-token hypothesis, instead of needing a second paid run.
 
-**Do not start by changing `_PLAN` or `_DRAFT`.** That was declined deliberately; see CLAUDE.md
-→ *Deliberate non-goals*.
+1. **Persist per-call usage with a task label.** `UsageRecorder.calls` already holds per-call
+   model/tokens/cost and is summed then discarded (`tailor_resume.py:444-459`); `Usage` needs a
+   task-name label or the node cannot be identified. Additive migration. Unblocks concern 2 and
+   slice 007's regression cost attribution.
+2. **Stamp findings with the pass that raised them, and keep each pass's confidence.** Attach at
+   the graph node when appending to `state.findings` — not in the model-facing schema, which the
+   provider fills. Closes concern 4 and the first-pass-confidence loss for all future runs (the
+   existing runs stay unanswerable — §2a).
+3. **Fix the Revise overwrite (concern 7).** Failing test first: a revision must preserve draft
+   decisions for items the Reviser did not re-return. The only *behaviour* change in the phase.
+4. **Then run T085's full-revision-budget measurement** with 1–3 in place. One run settles the
+   thinking-token question (per-call output vs persisted text, per node), yields the first clean
+   post-`f1f5c7b` adherence sample, and completes the half-done T085.
+5. T086–T089 as already written in §5A.
+
+**Deliberately still excluded from this phase:**
+
+- **Any change to `_PLAN`/`_DRAFT` wording.** The two adherence samples are now known to be
+  non-comparable (§2a), so there is *less* justification for prompt tuning than before, not more.
+- **Any gateway `thinking`/`effort` parameter.** Changing it before step 4's data exists would
+  destroy the measurement that decides whether it should change.
+
+If approved, steps 1–3 enter `specs/005-resume-tailoring/tasks.md` as new tasks (T092+) through
+the normal specify/analyze flow before any code is written.
 
 ### C — Slice 003 User Story 3 · **still blocked on the author** · 11 tasks
 

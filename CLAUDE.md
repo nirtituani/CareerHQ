@@ -675,6 +675,11 @@ Every one of these passed a green suite or a clean-looking log.
 - **Local component state survives a route change.** Giving a tab polled state means React keeps it
   across a navigation — same component, same position, different record. Both detail tabs are keyed
   on `application.id`.
+- **Any LangGraph state key that a later node returns partially must have an explicit merge
+  reducer, or the node must be proven to return the complete value.** Proved twice: `usage`
+  without a reducer kept one record of seven, and `items` without one let a Revise delta *replace*
+  the draft's list — silently erasing its drops (HANDOFF §2 concern 7). A "return only what you
+  changed" prompt creates exactly such a partial return.
 
 ## Deliberate non-goals for now
 
