@@ -256,6 +256,7 @@ describe("moving between jobs", () => {
         location: null,
         job_description: null,
         requirements: [],
+        is_scoreable: true,
         job_url: null,
         job_description_url: null,
         status: "Applied",
