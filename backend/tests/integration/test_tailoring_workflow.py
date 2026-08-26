@@ -175,6 +175,90 @@ async def test_one_revision_then_clears_and_the_second_draft_is_what_persists(
         assert run.attempts == 1
 
 
+async def test_a_draft_drop_survives_a_revise_that_does_not_mention_it(
+    db_session: AsyncSession, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    """T094 — the confirmed Zipher-style failure, at the persistence layer.
+
+    `_REVISE` rule 4 instructs "Return only the items you are changing", so a
+    Reviser that touches one rewrite never re-emits the Draft's drops. Run
+    `6356fb4e` persisted 35/35 items included while one of its own findings
+    praised a drop that existed nowhere in the version. The drop — and every
+    Draft decision the Reviser does not mention — must survive to the rows.
+    """
+    seeded = await seed_tailorable(db_session)
+    rewritten, dropped = seeded.bullet_ids
+    version = await create_pending_version(db_session, seeded.application)
+    await db_session.commit()
+
+    drop_item = {
+        "source_item_id": str(dropped),
+        "source_kind": "experience_bullet",
+        "position": 1,
+        "included": False,
+    }
+    draft = _draft(rewritten, "Owned the payments platform end to end.")
+    draft["items"].append(drop_item)
+
+    seam = ScriptedSeam(
+        script={
+            "tailor_plan": [_plan()],
+            "tailor_draft": [draft],
+            "tailor_revise": [_draft(rewritten, "Led the payments platform for six years.")],
+            "tailor_review": [
+                _review(
+                    40,
+                    [
+                        {
+                            "kind": "overstated",
+                            "source_item_id": str(rewritten),
+                            "detail": "'Owned' where the profile says 'led'.",
+                            "quoted_text": "Owned the payments platform end to end.",
+                        }
+                    ],
+                ),
+                _review(88),
+            ],
+        }
+    )
+
+    async with session_factory() as session:
+        await run_tailoring(
+            session, version_id=version.id, completion=seam, guidelines=StaticGuidelines()
+        )
+        await session.commit()
+
+    async with session_factory() as session:
+        rows = (
+            (
+                await session.execute(
+                    select(ResumeVersionItem).where(
+                        ResumeVersionItem.resume_version_id == version.id
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert rows, "the run must have persisted version rows to examine"
+
+        identities = [(row.source_kind, row.source_item_id) for row in rows]
+        assert len(identities) == len(set(identities)), (
+            "the merge must never produce two rows for one (kind, source id)"
+        )
+
+        dropped_row = next(r for r in rows if r.source_item_id == dropped)
+        assert dropped_row.included is False, (
+            "the Draft dropped this bullet and the Reviser never mentioned it; "
+            "an included row here means the Revise output replaced the Draft "
+            "instead of merging over it"
+        )
+
+        revised_row = next(r for r in rows if r.source_item_id == rewritten)
+        assert revised_row.proposed_text == "Led the payments platform for six years."
+        assert revised_row.final_text == "Led the payments platform for six years."
+
+
 async def test_the_full_revision_budget_escalates_and_still_finalises(
     db_session: AsyncSession, session_factory: async_sessionmaker[AsyncSession]
 ) -> None:

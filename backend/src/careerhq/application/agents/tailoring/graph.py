@@ -102,6 +102,10 @@ def build_tailoring_graph(completion: StructuredCompletion) -> Any:
             task=task, schema=TailoredDraft, prompt=build_revise_prompt(state)
         )
         return {
+            # A **delta**, by the prompt's own rule 4: only the items being
+            # changed. `state.items` carries `merge_drafted_items` as its
+            # reducer, which folds this over the standing draft — without it,
+            # every draft decision not re-emitted here was silently lost.
             "items": list(result.value.items),
             "attempt": state.attempt + 1,
             "usage": [result.usage],
