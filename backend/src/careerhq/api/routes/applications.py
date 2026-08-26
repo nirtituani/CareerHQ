@@ -315,11 +315,43 @@ def _state_of(record: Application, analysis: MatchAnalysis | None) -> str:
 
 
 async def _latest_analysis(session: DbSession, record: Application) -> MatchAnalysis | None:
-    """The current analysis if one is displayable, else the most recent run.
+    """What to report about this job's scoring, in order of what matters.
 
-    The pointer is preferred because it only ever names a `ready` row, so a
-    re-run in flight keeps showing the last good score (FR-015).
+    **A run in flight comes first.** `run_analysis` writes
+    `current_match_analysis_id` only on success and last of all — deliberately,
+    so a failed run leaves the previous score standing (FR-015). But preferring
+    that pointer *unconditionally* meant that for the whole duration of a re-run
+    the endpoint reported the previous analysis, and the previous analysis is
+    never `running`. The interface polls only while the state is `running`, so it
+    stopped on its first poll and the result arrived unobserved.
+
+    Measured on a real run: a click at 07:03:52 started a completion that
+    finished at 07:04:16 with 84/strong. Two polls, at 07:03:54 and 07:04:03,
+    both read the old row; nothing was watching thirteen seconds later. This was
+    never specific to any one job — every re-run of an already-scored job had it,
+    showing a stale score instead of a stale "not scored".
+
+    **Only while it is plausibly in flight.** A run that stops without finishing
+    stays `pending` until the reaper marks it failed on the next scoring request.
+    Returning it here would replace a good score with `failed` for a run nobody
+    will finish, which is the FR-015 guarantee lost by another route — so an
+    abandoned row falls through to the pointer like a failed one.
+
+    Then the pointer, which only ever names a `ready` row, then the newest row
+    for a job that has never had one.
     """
+    in_flight = await session.scalar(
+        select(MatchAnalysis)
+        .where(
+            MatchAnalysis.application_id == record.id,
+            MatchAnalysis.status == MatchStatus.PENDING,
+        )
+        .order_by(MatchAnalysis.created_at.desc())
+        .limit(1)
+    )
+    if in_flight is not None and not is_abandoned(in_flight):
+        return in_flight
+
     if record.current_match_analysis_id is not None:
         current: MatchAnalysis | None = await session.get(
             MatchAnalysis, record.current_match_analysis_id

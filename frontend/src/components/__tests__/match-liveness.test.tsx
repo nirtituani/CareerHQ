@@ -286,3 +286,45 @@ describe("moving between jobs", () => {
     expect(screen.queryByText("Moderate")).toBeNull();
   });
 });
+
+describe("re-scoring a job that already has a score", () => {
+  it("keeps polling until the new result arrives", async () => {
+    // The sequence that failed in the browser. The backend used to answer the
+    // *previous* analysis for the whole duration of a re-run, so the first poll
+    // saw a terminal state and the interval was torn down — two seconds in, on a
+    // run that took twenty-six. The result landed with nothing watching.
+    //
+    // No frontend change was needed for this: the tab already stops on a
+    // terminal state and continues on `running`. It was being told the wrong
+    // thing. This test exists to prove that, and to fail if the backend ever
+    // starts reporting a re-run as finished again.
+    mocked.fetchMatch
+      .mockResolvedValueOnce(result("running"))
+      .mockResolvedValueOnce(result("running"))
+      .mockResolvedValue(result("ready"));
+
+    render(
+      <MatchTab
+        state="running"
+        analysis={null}
+        stale={false}
+        applicationId="app-1"
+        canScore
+      />,
+    );
+
+    await tick(2_000);
+    expect(screen.getByText("Scoring")).toBeInTheDocument();
+
+    await tick(2_000);
+    expect(screen.getByText("Scoring")).toBeInTheDocument();
+
+    await tick(2_000);
+    expect(screen.getByText("Moderate")).toBeInTheDocument();
+    expect(mocked.fetchMatch.mock.calls.length).toBe(3);
+
+    // And stops, now that it is genuinely finished.
+    await tick(10_000);
+    expect(mocked.fetchMatch.mock.calls.length).toBe(3);
+  });
+});
