@@ -27,6 +27,30 @@ from careerhq.application.ports import Usage
 from careerhq.domain.schemas.tailoring import DraftedItem, ReviewFinding
 
 
+@dataclass(frozen=True, slots=True)
+class RaisedFinding:
+    """One Reviewer finding, paired with the pass that raised it.
+
+    The pairing happens **here, in state, at append time** — the review node is
+    the one place that knows which pass is running. It deliberately does not
+    live in the model-facing `ReviewFinding` schema: the provider fills that
+    schema, and the model has no honest basis to say which attempt it is. A
+    field it would have to be told the answer to is a field it can get wrong.
+
+    Without this, every persisted finding was stamped with the run's *final*
+    attempt, and a fabrication caught on the first review and fixed on the
+    second was indistinguishable from one raised at the end. The information
+    was destroyed in state, upstream of persistence — which is why a write-time
+    fix alone could not work (T093).
+    """
+
+    finding: ReviewFinding
+    #: The state's `attempt` at the moment of review: 0 for the first pass,
+    #: 1 after one revision, 2 after the escalated one. The same 0-2 scale as
+    #: `TailoringRun.attempts`, so the two read together.
+    attempt: int
+
+
 @dataclass
 class TailoringState:
     """One run's working state.
@@ -55,6 +79,9 @@ class TailoringState:
     # -- produced by the nodes --------------------------------------------
     plan: dict[str, Any] | None = None
     items: list[DraftedItem] = field(default_factory=list)
+    #: The **latest** review's confidence — deliberately overwritten per pass,
+    #: because the conditional edge and the version's final score both mean
+    #: "the current draft's judgement". The per-pass history is `confidences`.
     confidence: int = 0
 
     #: Which revision this is: 0 before any, 1 after the first, 2 after the
@@ -71,8 +98,15 @@ class TailoringState:
     usage: Annotated[list[Usage], operator.add] = field(default_factory=list)
     #: Findings from **every** review pass, not only the last. A fabrication
     #: caught on attempt one and fixed on attempt two still happened, and the
-    #: record of it is the evidence the guardrail ran.
-    findings: Annotated[list[ReviewFinding], operator.add] = field(default_factory=list)
+    #: record of it is the evidence the guardrail ran. Each entry carries the
+    #: pass that raised it — see `RaisedFinding` for why the pairing is made
+    #: here rather than in the model-facing schema.
+    findings: Annotated[list[RaisedFinding], operator.add] = field(default_factory=list)
+    #: Every review pass's confidence, in pass order. `confidence` above keeps
+    #: only the latest value by design; without this accumulator the first
+    #: pass's judgement of a revised run is destroyed before anything can
+    #: persist it (T093).
+    confidences: Annotated[list[int], operator.add] = field(default_factory=list)
 
 
-__all__ = ["TailoringState"]
+__all__ = ["RaisedFinding", "TailoringState"]

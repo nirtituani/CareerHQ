@@ -35,7 +35,7 @@ from careerhq.application.agents.tailoring.prompts import (
     build_review_prompt,
     build_revise_prompt,
 )
-from careerhq.application.agents.tailoring.state import TailoringState
+from careerhq.application.agents.tailoring.state import RaisedFinding, TailoringState
 from careerhq.application.finalisation_rules import should_revise, task_for_revision
 from careerhq.application.ports import StructuredCompletion
 from careerhq.domain.schemas.tailoring import ReviewResult, TailoredDraft, TailoringPlan
@@ -76,10 +76,20 @@ def build_tailoring_graph(completion: StructuredCompletion) -> Any:
         )
         return {
             "confidence": result.value.confidence,
+            # Also appended to the per-pass record: `confidence` keeps only the
+            # latest value — the edge and the final score both mean "the
+            # current draft" — so without this accumulator the first pass's
+            # judgement of a revised run is destroyed before persistence.
+            "confidences": [result.value.confidence],
             # Appended, not replaced: an objection raised on attempt one and
             # fixed on attempt two still happened, and is the evidence the
-            # guardrail ran.
-            "findings": list(result.value.findings),
+            # guardrail ran. Each finding is paired **here** with the pass that
+            # raised it — this node is the one place that knows which attempt
+            # is running, and the model-facing schema must not carry a field
+            # the model has no honest basis to fill.
+            "findings": [
+                RaisedFinding(finding=f, attempt=state.attempt) for f in result.value.findings
+            ],
             "usage": [result.usage],
         }
 
@@ -105,7 +115,11 @@ def build_tailoring_graph(completion: StructuredCompletion) -> Any:
         budget returns `END` — a **normal exit**, not an error.
         """
         if should_revise(
-            confidence=state.confidence, findings=state.findings, attempt=state.attempt
+            confidence=state.confidence,
+            # Unwrapped here: the rules judge the Reviewer's findings, and the
+            # pass label is state bookkeeping they have no business reading.
+            findings=[raised.finding for raised in state.findings],
+            attempt=state.attempt,
         ):
             return "revise"
         return END

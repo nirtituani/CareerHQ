@@ -583,10 +583,15 @@ async def run_tailoring(
 
         # The graph is done. Everything below is this module's job.
         proposed = list(result["items"])
-        findings = list(result["findings"])
+        # Each entry pairs the Reviewer's finding with the pass that raised it
+        # (`RaisedFinding`). The pairing was made in the review node — the one
+        # place that knows which attempt is running — because stamping at
+        # write time can only ever stamp the run's *final* attempt, which is
+        # the defect T093 removes.
+        raised = list(result["findings"])
 
         # Principle III, before anything is written.
-        finalised = finalise(proposed, findings)
+        finalised = finalise(proposed, [entry.finding for entry in raised])
 
         by_source = {
             str(item.source_item_id): item
@@ -637,7 +642,12 @@ async def run_tailoring(
             rows[source_id] = row
         await session.flush()
 
-        for finding in finalised.findings:
+        # Iterated as `raised` rather than `finalised.findings` because each
+        # row needs the pass that raised it, and `finalise` echoes every
+        # finding back unchanged — its docstring says so, and the guardrail
+        # record surviving the discard is the point of that rule.
+        for entry in raised:
+            finding = entry.finding
             key = str(finding.source_item_id) if finding.source_item_id else None
             session.add(
                 ReviewerFinding(
@@ -646,13 +656,21 @@ async def run_tailoring(
                     kind=finding.kind,
                     detail=finding.detail,
                     quoted_text=finding.quoted_text,
-                    attempt=result["attempt"],
+                    # The pass that raised this finding, not the run's final
+                    # attempt — the run-level total is `run.attempts` below.
+                    attempt=entry.attempt,
                 )
             )
 
         run.plan = result["plan"]
         run.guidelines_used = state.guidelines
         run.attempts = result["attempt"]
+        # Every review pass's confidence, in pass order. The final element is
+        # what `confidence_score` below records; the earlier ones are what a
+        # revised run's first judgement looked like — observability slice 007
+        # measures against. Null on runs that predate the column: that history
+        # was destroyed before persistence and is never reconstructed.
+        run.review_confidences = [int(value) for value in result["confidences"]]
         await _record_usage(session, run, recorder)
         run.status = RunStatus.SUCCEEDED
         run.finished_at = datetime.now(UTC)

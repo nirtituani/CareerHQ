@@ -305,6 +305,20 @@ class TailoringRun(Base):
 
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
+    #: Every review pass's confidence, in pass order — `[40, 88]` is a draft
+    #: that failed at 40 and cleared at 88 after revision. The final element is
+    #: what `resume_versions.confidence_score` records; the earlier ones are
+    #: otherwise destroyed, because the graph state keeps only the latest
+    #: value. JSONB rather than a per-pass table for the reason the usage
+    #: totals are summed above: at most three small integers, and a table
+    #: nothing reads would be cost without a reader.
+    #:
+    #: **Null means unknowable, never zero.** Runs that predate migration 0013
+    #: keep NULL: their per-pass values were overwritten in state before
+    #: anything persisted them, and backfilling from `confidence_score` would
+    #: present inference as record (HANDOFF §2a).
+    review_confidences: Mapped[list[int] | None] = mapped_column(JSONB, nullable=True)
+
     #: Which named version of the severity rules finalised this run. Changing a
     #: threshold is a **new version, never an edit** — otherwise every
     #: historical run is silently reinterpreted.
