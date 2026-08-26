@@ -321,6 +321,67 @@ characters (~400 tokens) to the master, which appears in all four prompts — ro
 tokens per run. That is the price of the workflow being able to map a proposal back to the line it
 changes at all, so it is not a candidate for the cost work.
 
+### Measured, 2026-08-26 — plan execution, and the correction of the adherence figures
+
+**This subsection supersedes the plan-adherence figures previously carried in `HANDOFF.md` §2 and
+in `plan_adherence.py`'s module docstring** — Cellebrite 0.5 and Zipher 0.167, reported as though
+they were comparable measurements of the same thing. Those numbers are **not withdrawn**: D0 is
+preserved below and still computed, so nothing already recorded becomes unreadable. What changes is
+what they are understood to measure.
+
+A third run exists as of 2026-08-26 — **Harman**, run `60263226`, version `d3700cb8`, the
+full-revision-budget path (seven calls, two revisions). Its cost and latency belong to T085/T086 and
+are **not** recorded here; only its plan-execution figures are.
+
+**Why one number was not enough.** D0 counts a planned emphasis as executed when the version holds a
+proposal row for it. That definition sits between two different questions and answers neither: it
+**counts** a proposal reverted to the owner's wording, because the row survives with `proposed_text`
+set, while **excluding** one discarded as ungrounded, whose proposal is nulled. Three further
+defects follow from the same definition — a duplicated planned id is counted twice, an emphasis on a
+label-kind item (the skill line `C++`) has no prose to rewrite yet sits in the denominator, and a
+run whose revision erased the draft's decisions has outcomes that are *unknowable*, not failed.
+
+**The three measures now recorded per run:**
+
+- **D0** — the existing metric. Preserved unchanged for historical comparison.
+- **D1, Draft compliance** — did the Draft act on the planned emphasis? A reverted proposal **is**
+  compliance: the Draft executed the plan and a later step corrected it.
+- **D3, Plan effect** — did the planned emphasis survive as a change to the document? A reverted or
+  discarded proposal is not an effect. Label-kind targets leave the denominator.
+
+**The state vector**, reported per distinct planned emphasis: `survived` · `reverted` · `discarded`
+· `no_evidence` · `unknown` · `label_kind`.
+
+| Run | D0 | D1 — Draft compliance | D3 — Plan effect | State vector |
+|---|---|---|---|---|
+| Cellebrite `2615363e` | **0.500** | **3/7 = 0.429** | **3/6 = 0.500** | 3 survived · 3 no_evidence · 1 label_kind |
+| Harman `60263226` | **0.286** | **3/7 = 0.429** | **0/5 = 0.000** | 2 reverted · 1 discarded · 2 no_evidence · 2 label_kind |
+| Zipher `6356fb4e` | 0.167 *(historical)* | **not scalar-computable** | **not scalar-computable** | 1 survived · **5 unknown** |
+
+Cellebrite's D0 of 0.500 counts a duplicated planned id twice; eight planned entries are seven
+distinct ones. Harman's two D0 executions are **exactly** the two proposals reverted to the owner's
+wording — its document changed at no planned emphasis at all.
+
+**Zipher is contaminated and its ratios are withheld rather than computed.** It ran under the
+pre-T094 code, where a revision *replaced* the draft's item set, so for five of its six emphases the
+absence of a proposal is not evidence of absence of an attempt. The honest state is **1 determinable
+of 6, 5 unknown**. A ratio over the single determinable entry computes to 1.0, which would read as
+perfect plan execution of a run whose other five outcomes were destroyed before anything could
+record them — so no ratio is reported. The same defect erased all nine of its drops (nine planned
+de-emphases, zero items dropped, against Cellebrite's ten→twelve and Harman's ten→nine).
+
+**The conclusion that matters, and its limits.** The D0 comparison suggested the Draft behaved
+differently between Cellebrite and Zipher/Harman. **Under D1 the two uncontaminated runs are
+identical — 3/7 each** — so the previous spread should **not** be read as evidence of different
+Draft behaviour. The difference between those two runs lies in what happened *after* the Draft:
+Cellebrite cleared review on the first pass and kept two flagged overstatements, while Harman
+revised twice and corrected everything it attempted.
+
+**This is not a claim about model behaviour in general.** n = 3, one of the three is contaminated,
+and two uncontaminated runs agreeing on one measure is a coincidence worth noticing, not a
+distribution. Judging a distribution is slice 007's job. Nothing here sets a threshold or gates
+anything, and no prompt, schema or model configuration was changed to produce it.
+
 ---
 
 ## R6 — The static rubric, and what it must not become
