@@ -195,6 +195,29 @@ there and marked owner-authored.
 
 ---
 
+## Phase 7: Observability & the Revise defect — added 2026-08-26, from the §5B investigation
+
+**Origin**: the parallel-agent investigation recorded in `HANDOFF.md` §2a. Purpose: improve
+observability and correct the one confirmed workflow defect (HANDOFF §2 concern 7) **before the
+next paid tailoring measurement**. Standing constraints for the whole phase: no prompt changes, no
+`thinking`/`effort` parameter changes, no Plan/Draft adherence tuning, no adherence threshold, no
+provider calls during implementation, no changes to `research.md` or `spec.md`, and no
+modification of existing evaluation data.
+
+- [ ] T092 Persist per-call usage instrumentation. **Acceptance**: every `complete()` call a tailoring run makes is persisted as its own record carrying task/node identity plus input tokens, output tokens, cost and relevant usage metadata (model, `is_fixture`); works on **both** the success and failure paths — a run that raises must still persist the calls it was billed for (today `cd27b092`'s $0.36 persisted only totals); implemented against the fixture gateway / `ScriptedSeam` only, no provider calls; model, thinking and effort configuration untouched
+- [ ] T093 Persist per-pass review observability. **Acceptance**: each reviewer finding carries the review attempt/pass that raised it, attached where the graph appends to `state.findings` — not in the model-facing schema, which the provider fills; each review pass's confidence is preserved rather than overwritten; **no inference or reconstruction of historical pass data** — the four existing runs stay exactly as persisted, recorded as unanswerable in HANDOFF §2a; no provider calls
+- [X] T094 Fix the Revise delta merge. **Test-first**: Revise output is treated as a delta over the Draft, never a replacement of the entire item set; Draft decisions/items the Reviser does not modify are preserved; regression coverage reproduces the confirmed Zipher-style failure — a Draft **drop** must survive a Revise that does not mention it — and is **watched failing** against current code before the fix; prompts and model configuration unchanged unless strictly required to preserve the existing output contract. **Done as a merge reducer**: `merge_drafted_items` on `state.items` (an `Annotated` reducer, the same mechanism `usage` and `findings` already use), keyed on `(source_kind, source_item_id)` — a revised item replaces its draft counterpart, unmentioned draft decisions (drops included) are preserved, an item matching nothing standing is appended, and the output is duplicate-free per identity. Regression watched failing at both the graph level (1 item where 2 were decided) and the persistence level (`included=True` on the dropped row); re-broken after the fix to confirm the test names the violation, then restored. No prompt or model-configuration change was required
+
+**Ordering — recorded intent**: **T092 → T093 → T094 → the paid T085 measurement.** T092 and T093
+are logically independent (usage-side vs findings-side; no shared column, no shared behaviour) and
+may be implemented in either order or in parallel if the task analysis at implementation time
+confirms it — note they touch the same files (`state.py`, `tailor_resume.py`'s persistence block,
+and possibly a shared migration), so parallel work merges textually, not logically. **T094 must be
+complete before any paid tailoring run, including T085's full-revision-budget path** — otherwise
+the measurement repeats the Zipher confound instead of resolving it.
+
+---
+
 ## Dependencies
 
 ```
@@ -209,6 +232,8 @@ Phase 4 / US2 (T064–T073)  needs US1's version and diff surface
 Phase 5 / US3 (T074–T079)  needs US1's PATCH route
         ↓
 Phase 6 (T080–T091)
+        ↓
+Phase 7 (T092–T094)  ── T092/T093 logically independent; T094 gates the paid T085 run
 ```
 
 **US2 and US3 are independent of each other** and may be built in either order once US1 lands.
