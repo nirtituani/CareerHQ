@@ -54,3 +54,9 @@ blob-report/
 # `git add -A` is one keystroke away from publishing them permanently.
 testing files/
 *.cv.pdf
+
+# Agent worktrees. The harness creates a full checkout per parallel agent here,
+# so `git add -A` would commit three copies of the repository into itself. They
+# are disposable: the branch holds the work, and the worktree is removed once it
+# is merged.
+.claude/worktrees/

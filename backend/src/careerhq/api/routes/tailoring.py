@@ -27,7 +27,12 @@ from sqlalchemy.orm import selectinload
 
 from careerhq.api.deps import CompletionClient, CurrentUser, DbSession
 from careerhq.application.guidelines import StaticGuidelines
-from careerhq.application.plan_adherence import emphasis_adherence
+from careerhq.application.plan_adherence import (
+    FindingFacts,
+    ItemFacts,
+    emphasis_adherence,
+    plan_execution,
+)
 from careerhq.application.ports import StructuredCompletion
 from careerhq.application.tailor_resume import (
     TailoringInFlight,
@@ -412,6 +417,40 @@ async def get_run(version_id: uuid.UUID, session: DbSession, user: CurrentUser) 
                 for item in version.items
                 if item.proposed_text is not None and item.source_item_id is not None
             ],
+        ),
+        # The same question asked in states rather than one ratio, because D0
+        # above conflates a proposal that was reverted with one that changed the
+        # document, and reports a contaminated run's unknowable outcomes as
+        # failures. Both are reported side by side while a distribution
+        # accumulates; neither gates anything.
+        "plan_execution": plan_execution(
+            run.plan,
+            items=[
+                ItemFacts(
+                    source_item_id=str(item.source_item_id),
+                    source_kind=item.source_kind,
+                    original_text=item.original_text,
+                    proposed_text=item.proposed_text,
+                    final_text=item.final_text,
+                )
+                for item in version.items
+                if item.source_item_id is not None
+            ],
+            findings=[
+                FindingFacts(
+                    source_item_id=str(item.source_item_id),
+                    kind=finding.kind,
+                    quoted_text=finding.quoted_text,
+                )
+                for item in version.items
+                if item.source_item_id is not None
+                for finding in item.findings
+            ],
+            # Pre-T094 a revision replaced the draft's item set. `review_confidences`
+            # is null exactly on runs persisted before that fix shipped — it and the
+            # merge landed in one deployment — so a null on a run that revised dates
+            # it to the code that could erase decisions.
+            contaminated=run.review_confidences is None and run.attempts > 0,
         ),
         "match_analysis_id": str(run.match_analysis_id),
         # Each with its source. Redundant while that source is a static rubric;

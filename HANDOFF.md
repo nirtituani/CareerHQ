@@ -16,6 +16,9 @@
 > concern 7) — and a prime suspect for the output-token overrun: adaptive thinking on
 > unparameterised gateway calls. The proposed next phase is in §5 B: instrument, fix, then measure.
 >
+> **Phase 7 (T092-T094) is merged; T085 ran; the corrected plan-execution measurement is built and
+> UNCOMMITTED.** See §5 F for the exact next decision. No paid run is pending.
+>
 > Measured this session: **468 backend tests** (83.86% coverage), **162 frontend**, ruff, mypy,
 > oxlint, tsc and `next build` all clean.
 >
@@ -113,12 +116,25 @@ why it records `$0` for calls it made.
   seven); **missed** by Zipher at $0.4649 — **1.55×** — with a single revision.
 - **SC-001 (90s typical / 3min full budget)**: **missed by both.** 2m50s and 4m20s.
 
-**Plan adherence** (`GET /versions/{id}/run` → `plan_adherence`, computed from persisted data):
+**Plan execution — corrected 2026-08-26. `research.md` R5's newest subsection is authoritative;
+the figures below are its summary.** The old single ratio (D0) counted a proposal *reverted* to the
+owner's wording as executed, double-counted a duplicated planned id, scored label-kind targets it
+could not measure, and reported a contaminated run's unknowable outcomes as failures. D0 is
+preserved for comparison, not withdrawn.
 
-| Job | Emphases executed | De-emphases planned → dropped |
-|---|---|---|
-| Cellebrite | 4 / 8 = **0.5** | 10 → 12 |
-| Zipher | 1 / 6 = **0.167** | 9 → **0** |
+| Job | D0 | D1 — Draft compliance | D3 — Plan effect | State vector |
+|---|---|---|---|---|
+| Cellebrite | 0.500 | **3/7 = 0.429** | **3/6 = 0.500** | 3 survived · 3 no_evidence · 1 label_kind |
+| Harman | 0.286 | **3/7 = 0.429** | **0/5 = 0.000** | 2 reverted · 1 discarded · 2 no_evidence · 2 label_kind |
+| Zipher | 0.167 *(historical)* | **not computable** | **not computable** | 1 survived · **5 unknown** |
+
+**The two uncontaminated runs have identical Draft compliance.** The old 0.5-vs-0.167 spread must
+**not** be read as evidence that the Draft behaved differently — the difference lies in what
+happened after it. Zipher is contaminated by the pre-T094 Revise replacement defect: 1 determinable
+of 6. **n = 3 and one is contaminated; this is not a claim about model behaviour in general.**
+
+De-emphases planned → items dropped: Cellebrite 10 → 12 · Zipher 9 → **0** (the T094 defect) ·
+Harman 10 → 9.
 
 **Match analyses — 8, all `ready`:** Cognita 54 then 70 · Harman 85 · DriveNets 91 · Cellebrite 69 ·
 Zipher 71 · **Voyantis 0 then 84 Strong**. Total match spend **$0.309312**.
@@ -557,6 +573,9 @@ optional** — see CLAUDE.md.
 
 ### B — §5B investigation **done 2026-08-26**. Proposed next phase: instrument, fix, then measure
 
+> **Delivered.** Steps 1-3 (T092-T094) are merged and step 4 (T085) has run. **See §5 F** for
+> current state and the live decision; this section is kept as the record of what was proposed.
+
 The investigation ran as four parallel read-only agents; findings are §2a, and the Revise
 overwrite is now §2 concern 7 — a confirmed defect. **The proposed phase below is recorded, not
 approved; nothing has been implemented.**
@@ -615,6 +634,43 @@ Then the PR: `https://github.com/nirtituani/CareerHQ/pull/new/005-resume-tailori
   tailoring may rewrite? **Worth settling before slice 006.**
 
 ---
+
+### F — Commit the measurement work, then decide on the Plan contract · **the live decision**
+
+**State as of 2026-08-26, in order of what happened:**
+
+1. **Phase 7 (T092, T093, T094) is merged** into `005-resume-tailoring` — three merge commits over
+   the agents' own commits, migrations `0012`/`0013` chained linear, upgrade/downgrade drilled
+   against a scratch database. HEAD was `bf1e638`.
+2. **T085 ran** — Harman, run `60263226`, the first full-revision-budget path: seven calls, the
+   Opus escalation firing, three review passes, **$0.547891 / 4m01s**. Both SC targets missed and
+   recorded as missed. **T085/T086 are still open**: those figures are *not* yet in `research.md`,
+   and T087's human review has been produced but not recorded.
+3. **The corrected plan-execution measurement is built and passing** — `plan_execution` beside the
+   preserved `emphasis_adherence`, exposed on `GET /versions/{id}/run`, 9 new tests, all four D0
+   defects drilled. **It is UNCOMMITTED.**
+
+**What is uncommitted right now** (`git status`): `backend/src/careerhq/application/plan_adherence.py`,
+`backend/src/careerhq/api/routes/tailoring.py`, the new `backend/tests/unit/test_plan_execution.py`,
+and `.gitignore`.
+
+**Nothing about the agent has been changed to produce any of this.** No prompt, no schema, no model
+or thinking/effort configuration, no threshold, no gate, no new instrumentation beyond what T092/
+T093 already added, and no provider call since the single T085 run.
+
+**The next decision, and it is the author's:**
+
+- **First**, commit the measurement work and tick a Phase 7 task for it — a measurement that only
+  exists in a working tree is one nobody else can reproduce.
+- **Then**, and separately, decide whether **the Plan contract itself** warrants investigation. The
+  §5B evidence is that `EmphasisDirective` is the only model-facing schema in the system that makes
+  claims about the profile with **no quote requirement and no validator**, and that the Harman
+  fabrication originated in the Plan rather than the Draft. That is a *contract* question, and
+  changing it would touch a model-facing schema and the Plan prompt — which every step so far has
+  deliberately refused to do. **It has not been decided, and no evidence yet says it must be.**
+
+**The measurement code is not deployed.** The container runs the baked image; deploying it is a
+separate step nobody has asked for.
 
 ## 5A. Real data that must not be deleted or modified
 
