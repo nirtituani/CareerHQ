@@ -33,6 +33,7 @@ from careerhq.application.record_application import (
     apply_changes,
     record_application,
 )
+from careerhq.application.scoreability import scoreable_posting
 from careerhq.domain.models import (
     Application,
     MatchAnalysis,
@@ -69,6 +70,11 @@ def _application_out(record: Application) -> dict[str, Any]:
         # `[]` means the posting was read and stated none. Collapsing them here
         # loses the only thing telling them apart (research.md R1).
         "requirements": record.requirements,
+        # Whether there is posting content the analysis would actually read.
+        # Computed here so the rule has one implementation: deriving it in the
+        # browser would put a copy of `scoreable_posting` where nobody would
+        # think to keep it in step.
+        "is_scoreable": scoreable_posting(record) is not None,
         "job_url": record.job_url,
         "job_description_url": record.job_description_url,
         # Both, always: the label is what the user calls it, the normalized
@@ -288,6 +294,16 @@ def _state_of(record: Application, analysis: MatchAnalysis | None) -> str:
     if analysis is None:
         return "nothing_to_score"
     if analysis.status == MatchStatus.READY:
+        # **A zero with nothing behind it is not a score.** The spec's own edge
+        # case says a posting that yielded no requirements is "nothing to score
+        # against, not a failure and not a zero", and that was never
+        # implemented — so an analysis run against an empty posting rendered as
+        # `0/100 · low_probability`, which reads as a verdict about the person.
+        #
+        # Deciding it here rather than in the interface also covers rows written
+        # before the guard existed, without editing any of them.
+        if not analysis.requirements:
+            return "nothing_to_score"
         return "ready"
     if analysis.status == MatchStatus.FAILED:
         return "failed"

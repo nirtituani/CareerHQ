@@ -32,6 +32,7 @@ function application(overrides: Partial<Application> = {}): Application {
     // `null` is the legacy default deliberately: every application recorded
     // before slice 004 has no captured posting (research.md R1).
     requirements: null,
+    is_scoreable: true,
     job_url: "https://example.com/posting",
     job_description_url: null,
     status: "Applied",

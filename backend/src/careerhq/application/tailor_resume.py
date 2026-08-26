@@ -31,6 +31,7 @@ from careerhq.application.ports import (
     UsageRecorder,
     safe_validation_errors,
 )
+from careerhq.application.scoreability import scoreable_posting
 from careerhq.config import get_settings
 from careerhq.domain.models import (
     Application,
@@ -117,6 +118,21 @@ async def check_preconditions(
     established: a stored flag is a second source of truth that goes wrong the
     moment a profile is edited without every dependent row being visited.
     """
+    # **Checked first, and it is the most fundamental of the four.** Tailoring
+    # had no content check at all: its precondition was a `ready` analysis, and
+    # an empty-posting `0/100` is `ready`. So a five-call run at $0.30-$0.46
+    # could plan and draft against `description: null` and no requirements.
+    #
+    # It comes before the analysis check because "add the posting" is the action
+    # a person can actually take; "run a match analysis" on a job with nothing
+    # to analyse sends them round a loop.
+    if scoreable_posting(application) is None:
+        raise TailoringRefused(
+            "no_posting",
+            "This job has no posting content yet. Add the job description or its "
+            "requirements, run a match analysis, and then tailor.",
+        )
+
     analysis = await _current_analysis(session, application)
     if analysis is None or analysis.status != MatchStatus.READY:
         raise TailoringRefused(

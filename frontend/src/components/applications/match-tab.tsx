@@ -443,10 +443,20 @@ export function MatchTab({
   if (state === "nothing_to_score" || analysis === null) {
     return (
       <div className="py-8">
-        <p className="text-sm" style={{ color: "var(--muted)" }}>
+        {/* **Two different situations, and they need different sentences.**
+            A job with content that has simply not been scored yet offers the
+            action. A job with no posting content cannot be scored at all, and
+            offering the action there spends a completion on an empty posting —
+            which is what produced a `0/100 · low_probability` that read as a
+            judgement about the person rather than a missing field. */}
+        <p
+          data-testid={canScore ? undefined : "needs-posting"}
+          className="max-w-prose text-sm"
+          style={{ color: "var(--muted)" }}
+        >
           {canScore
             ? "This job has requirements but has not been scored yet."
-            : "There is nothing to score against yet. Add the job posting and its requirements, and this job will be scored against your profile."}
+            : "Add the posting to score this job. Paste the job description or its requirements into this application, and it will be scored against your profile."}
         </p>
         {canScore && applicationId && (
           <button

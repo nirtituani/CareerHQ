@@ -172,6 +172,15 @@ export type Application = {
    * posting, so collapsing these loses the thing that tells them apart.
    */
   requirements: string[] | null;
+  /**
+   * Whether there is posting content the analysis would actually read.
+   *
+   * **Computed server-side, by `scoreable_posting`.** Deriving it here would be
+   * a second implementation of a rule that already disagreed with itself once —
+   * the guard tested `requirements` while the prompt sent `job_description`, so
+   * a job with requirements and no description was scored against nothing.
+   */
+  is_scoreable: boolean;
   /** Computed against the profile. Never `imported_match_rating`, which is the
    *  person's own 1–5 judgement and a separate fact (FR-013). */
   match?: MatchSummary;
