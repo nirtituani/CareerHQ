@@ -258,11 +258,14 @@ class ResumeVersion(Base):
 class TailoringRun(Base):
     """One execution of the workflow. The audit record Principle V requires.
 
-    Usage is summed across steps rather than stored per step. The three totals
-    plus `model_config_used` answer the obligation — inputs, model
-    configuration, token usage, cost — and a per-step table nothing reads would
-    be cost without a reader. Slice 007 is what might want the breakdown; it can
-    add it when it does.
+    Usage is stored twice, deliberately: summed onto this row, and itemised in
+    `tailoring_run_calls` (T092). The totals alone once looked sufficient —
+    "a per-step table nothing reads would be cost without a reader" — until a
+    real failed run gave the breakdown a reader: run `cd27b092` was billed
+    $0.36 across several calls and the record could not say which node spent
+    it, whether the escalation ran, or what the call that failed had already
+    cost. The totals stay because two endpoints read them; the rows are the
+    itemised bill behind them.
     """
 
     __tablename__ = "tailoring_runs"
@@ -333,6 +336,76 @@ class TailoringRun(Base):
     findings: Mapped[list[ReviewerFinding]] = relationship(
         back_populates="run", cascade="all, delete-orphan"
     )
+    calls: Mapped[list[TailoringRunCall]] = relationship(
+        back_populates="run",
+        cascade="all, delete-orphan",
+        order_by="TailoringRunCall.sequence",
+    )
+
+
+class TailoringRunCall(Base):
+    """One `complete()` call a run made — the itemised line behind the totals.
+
+    Written by `_record_usage` on **both** paths: the calls a failed run made
+    were billed whether or not the run finished, and a failure that persists
+    only totals cannot say which node spent what (run `cd27b092`, $0.36).
+
+    Two invariants live in the schema rather than in prose:
+
+    * **(run, sequence) is unique**, so re-recording — a success that then
+      fails on the flush re-enters through the failure path — cannot silently
+      double the bill. `_record_usage` deletes before it inserts; this index is
+      what catches the day that rule is broken.
+    * **Every row names its task.** A label-less row answers nothing the totals
+      do not already answer, so the schema refuses it.
+    """
+
+    __tablename__ = "tailoring_run_calls"
+
+    __table_args__ = (
+        Index(
+            "uq_tailoring_run_calls_run_sequence",
+            "tailoring_run_id",
+            "sequence",
+            unique=True,
+        ),
+        CheckConstraint("length(task) > 0", name="ck_tailoring_run_calls_task_named"),
+        CheckConstraint(
+            "input_tokens >= 0 AND output_tokens >= 0",
+            name="ck_tailoring_run_calls_tokens_non_negative",
+        ),
+        CheckConstraint("cost >= 0", name="ck_tailoring_run_calls_cost_non_negative"),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    tailoring_run_id: Mapped[uuid.UUID] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("tailoring_runs.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    #: Zero-based position in the run's call order. The ordering column, since
+    #: a timestamp cannot serve: `func.now()` is transaction-scoped, so every
+    #: row written in one transaction would carry the same instant.
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    #: The task name the node passed to `complete()` — `tailor_plan`,
+    #: `tailor_review`, `tailor_revise_escalated`. Task, not node: the
+    #: escalation *is* a task name (docs/08 §3.2.3), and this column is where
+    #: "did the escalation run and what did it cost" becomes answerable.
+    task: Mapped[str] = mapped_column(String(64), nullable=False)
+
+    model: Mapped[str] = mapped_column(String(128), nullable=False)
+    input_tokens: Mapped[int] = mapped_column(Integer, nullable=False)
+    output_tokens: Mapped[int] = mapped_column(Integer, nullable=False)
+    #: Decimal, never float. An audit value, not a display value.
+    cost: Mapped[Decimal] = mapped_column(Numeric(12, 6), nullable=False)
+
+    #: Per call, not smeared across the run: `tailoring_runs.is_fixture` is
+    #: "any call was canned", this is "*this* call was".
+    is_fixture: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+
+    run: Mapped[TailoringRun] = relationship(back_populates="calls")
 
 
 class ResumeVersionItem(Base):
