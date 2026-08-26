@@ -52,6 +52,7 @@ from careerhq.domain.models import (
     SourceKind,
     SummaryBlock,
     TailoringRun,
+    TailoringRunCall,
     VersionStatus,
     WorkExperience,
 )
@@ -441,7 +442,7 @@ async def _render_master(
     return "\n".join(lines), items
 
 
-def _record_usage(run: TailoringRun, recorder: UsageRecorder) -> None:
+async def _record_usage(session: AsyncSession, run: TailoringRun, recorder: UsageRecorder) -> None:
     """Write what the provider billed onto the run. **Both paths call this.**
 
     Success and failure used to account differently: success summed the graph's
@@ -450,13 +451,41 @@ def _record_usage(run: TailoringRun, recorder: UsageRecorder) -> None:
     all three reported `0 tokens, $0`, which reads as free rather than as
     unrecorded (FR-035).
 
-    Starts from zero rather than from the run's current cost, so calling it
-    twice — a success that then fails on the flush — cannot double-count.
+    The totals answer "what did this run cost"; the `tailoring_run_calls` rows
+    answer the question run `cd27b092` could not — *which call* spent it
+    (T092). Both are written here, from the same recorder, so they cannot
+    drift; and both survive a failure, because the calls a failed run made
+    were billed whether or not the run finished.
+
+    Starts from zero rather than from the run's current cost, and the rows are
+    delete-then-insert for the same reason: calling this twice — a success
+    that then fails on the flush re-enters through the failure path — must not
+    double-count. The unique (run, sequence) index is the schema's own guard
+    for the day this rule is broken.
     """
     run.input_tokens = recorder.total_input_tokens
     run.output_tokens = recorder.total_output_tokens
     run.cost = recorder.total_cost
     run.is_fixture = recorder.any_fixture
+
+    await session.execute(
+        delete(TailoringRunCall).where(TailoringRunCall.tailoring_run_id == run.id)
+    )
+    for sequence, call in enumerate(recorder.calls):
+        session.add(
+            TailoringRunCall(
+                tailoring_run_id=run.id,
+                sequence=sequence,
+                # Always stamped by the recorder; a `None` slipping through is
+                # caught by the column's NOT NULL rather than papered over.
+                task=call.task,
+                model=call.model,
+                input_tokens=call.input_tokens,
+                output_tokens=call.output_tokens,
+                cost=call.cost,
+                is_fixture=call.is_fixture,
+            )
+        )
 
 
 async def run_tailoring(
@@ -624,7 +653,7 @@ async def run_tailoring(
         run.plan = result["plan"]
         run.guidelines_used = state.guidelines
         run.attempts = result["attempt"]
-        _record_usage(run, recorder)
+        await _record_usage(session, run, recorder)
         run.status = RunStatus.SUCCEEDED
         run.finished_at = datetime.now(UTC)
 
@@ -665,7 +694,7 @@ async def run_tailoring(
             },
         )
         # The calls that ran were paid for whether or not the run finished.
-        _record_usage(run, recorder)
+        await _record_usage(session, run, recorder)
         run.status = RunStatus.FAILED
         run.failure_reason = type(exc).__name__
         run.finished_at = datetime.now(UTC)

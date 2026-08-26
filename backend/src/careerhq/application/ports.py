@@ -48,6 +48,15 @@ class Usage(BaseModel):
     #: extraction would mean approving invented history into a real profile.
     is_fixture: bool = False
 
+    #: Which task asked for this completion — `tailor_plan`, `tailor_review`,
+    #: the escalated revision, and so on. `None` as an adapter returns it: the
+    #: adapter knows only that it was called, so `UsageRecorder` stamps the
+    #: label, being the one party holding both the task name and the bill.
+    #: Per-call audit rows read it (T092); a totals-only record could not say
+    #: which node spent what, which is exactly what run `cd27b092`'s $0.36
+    #: could not answer.
+    task: str | None = None
+
 
 @dataclass(frozen=True, slots=True)
 class Completion[T: BaseModel]:
@@ -190,14 +199,19 @@ class UsageRecorder:
     async def complete[T: BaseModel](
         self, *, task: str, schema: type[T], prompt: str
     ) -> Completion[T]:
+        # Each entry is stamped with the task that made the call — the adapter
+        # cannot do it, knowing only that it was called, and without the label
+        # the per-call audit rows (T092) could not say which node spent what.
+        # The stamped copy lives only in `calls`; the caller's `result.usage`
+        # travels on unchanged.
         try:
             result = await self.inner.complete(task=task, schema=schema, prompt=prompt)
         except Exception as exc:
             billed = getattr(exc, "usage", None)
             if isinstance(billed, Usage):
-                self.calls.append(billed)
+                self.calls.append(billed.model_copy(update={"task": task}))
             raise
-        self.calls.append(result.usage)
+        self.calls.append(result.usage.model_copy(update={"task": task}))
         return result
 
     @property
