@@ -432,6 +432,8 @@ async def get_run(version_id: uuid.UUID, session: DbSession, user: CurrentUser) 
                     original_text=item.original_text,
                     proposed_text=item.proposed_text,
                     final_text=item.final_text,
+                    position=item.position,
+                    displaced_position=item.displaced_position,
                 )
                 for item in version.items
                 if item.source_item_id is not None
@@ -451,6 +453,15 @@ async def get_run(version_id: uuid.UUID, session: DbSession, user: CurrentUser) 
             # merge landed in one deployment — so a null on a run that revised dates
             # it to the code that could erase decisions.
             contaminated=run.review_confidences is None and run.attempts > 0,
+            # Whether this version's rows can say "no proposal arrived" at all.
+            # A run persisted before `displaced_position` existed has NULL
+            # everywhere, and reading that as "the draft did nothing" is the
+            # error T095 removes. Derived from the rows rather than a date so
+            # nothing depends on when a migration happened to run; a run whose
+            # draft proposed *nothing* would be read as unrecorded rather than
+            # as inactive, which errs toward "unknown" and is the safe way to
+            # be wrong.
+            position_evidence=any(item.displaced_position is not None for item in version.items),
         ),
         "match_analysis_id": str(run.match_analysis_id),
         # Each with its source. Redundant while that source is a static rubric;
