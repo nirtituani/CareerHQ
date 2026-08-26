@@ -27,10 +27,32 @@ export class ApiError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    /**
+     * The `detail` the API sent, unflattened.
+     *
+     * Usually a string, and then this says nothing `message` does not. But a
+     * refusal that needs the caller to *act* differently carries a structured
+     * detail — `{ reason, message }` — because a client that has to
+     * pattern-match on a sentence gets it wrong the first time the sentence is
+     * reworded. Tailoring's two 422s are the case: "run a match analysis" and
+     * "re-run it, your profile changed" are the same status code and different
+     * next steps.
+     */
+    readonly detail?: unknown,
   ) {
     super(message);
     this.name = "ApiError";
   }
+}
+
+/** The human-readable half of a `detail`, whatever shape it arrived in. */
+function messageOf(detail: unknown): string | undefined {
+  if (typeof detail === "string") return detail;
+  if (detail && typeof detail === "object" && "message" in detail) {
+    const message = (detail as { message?: unknown }).message;
+    if (typeof message === "string") return message;
+  }
+  return undefined;
 }
 
 /** The API could not be reached at all — distinct from it rejecting us. */
@@ -66,9 +88,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (!response.ok) {
     const detail = await response
       .json()
-      .then((body: { detail?: string }) => body.detail)
+      .then((body: { detail?: unknown }) => body.detail)
       .catch(() => undefined);
-    throw new ApiError(response.status, detail ?? response.statusText);
+    throw new ApiError(response.status, messageOf(detail) ?? response.statusText, detail);
   }
 
   return (await response.json()) as T;
@@ -150,6 +172,15 @@ export type Application = {
    * posting, so collapsing these loses the thing that tells them apart.
    */
   requirements: string[] | null;
+  /**
+   * Whether there is posting content the analysis would actually read.
+   *
+   * **Computed server-side, by `scoreable_posting`.** Deriving it here would be
+   * a second implementation of a rule that already disagreed with itself once —
+   * the guard tested `requirements` while the prompt sent `job_description`, so
+   * a job with requirements and no description was scored against nothing.
+   */
+  is_scoreable: boolean;
   /** Computed against the profile. Never `imported_match_rating`, which is the
    *  person's own 1–5 judgement and a separate fact (FR-013). */
   match?: MatchSummary;
@@ -362,4 +393,207 @@ export function unrejectApplication(id: string): Promise<Application> {
 
 export function deleteApplication(id: string): Promise<void> {
   return request<void>(`/api/applications/${id}`, { method: "DELETE" });
+}
+
+// ---------------------------------------------------------------------------
+// Resume tailoring
+// ---------------------------------------------------------------------------
+
+/**
+ * Where one tailored resume has got to.
+ *
+ * **There is no `failed`**, deliberately, and the absence is load-bearing on
+ * this side too: a run that fails returns the version to `draft` and records
+ * why on the run. So "it broke" is `draft` plus a `failure_reason`, not a sixth
+ * state — and a client that invented one would render a dead end for something
+ * the owner can simply try again.
+ *
+ * `reviewing` and `awaiting_approval` are two states rather than one because
+ * they mean *the agent is criticising its own draft* and *it has finished and
+ * it is your turn* — a machine working for tens of seconds against a human
+ * queue that may last days (FR-040).
+ */
+export type VersionStatus = "draft" | "tailoring" | "reviewing" | "awaiting_approval" | "ready";
+
+/** What the owner did with one proposal. `pending` is the initial state, not a
+ *  choice, and there is no way back to it. */
+export type ProposalDecision = "pending" | "accepted" | "rejected" | "edited";
+
+/**
+ * What the Reviewer objected to.
+ *
+ * `ungrounded` never arrives beside a surviving `proposed_text` — the claim was
+ * discarded before it was ever saved (FR-018). The finding is here as the
+ * evidence that the guardrail ran, which is a different thing from a choice.
+ */
+export type FindingKind = "ungrounded" | "overstated" | "uncovered";
+
+export type SourceKind =
+  | "summary"
+  | "title"
+  | "experience_bullet"
+  | "skill"
+  | "project"
+  | "education"
+  | "certification"
+  | "language";
+
+export type ReviewerFinding = {
+  kind: FindingKind;
+  detail: string;
+  /** The exact words objected to. Always present on `ungrounded`. */
+  quoted_text: string | null;
+  /** Which review pass caught it — 0 is the first draft. */
+  attempt: number;
+};
+
+export type VersionItem = {
+  id: string;
+  source_kind: SourceKind;
+  source_item_id: string | null;
+  position: number;
+  included: boolean;
+  /** The master's wording, copied rather than referenced, so an approved diff
+   *  cannot change underneath the person who approved it. */
+  original_text: string;
+  /** Null when the agent proposed no change to this item. */
+  proposed_text: string | null;
+  /** Materialised by the server, never derived here. Slice 006's PDF export
+   *  reads the same column, and two implementations of one rule is one too
+   *  many when a wrong answer becomes a document sent to an employer. */
+  final_text: string;
+  decision: ProposalDecision;
+  /** Nested under the item they concern (FR-042). */
+  findings: ReviewerFinding[];
+};
+
+export type ResumeVersion = {
+  id: string;
+  application_id: string;
+  name: string;
+  professional_title: string | null;
+  status: VersionStatus;
+  /**
+   * How sure the Reviewer was, 0-100.
+   *
+   * **Not the match score, and never shown as one** (FR-043). The match score
+   * says how well you fit the job; this says how well the draft is grounded in
+   * your profile. Same shape of number, entirely different question.
+   */
+  confidence_score: number | null;
+  /** Set when a run failed. The version is back at `draft` and can be retried. */
+  failure_reason: string | null;
+  /** The model that wrote these words. The full per-task configuration is on
+   *  the run. */
+  model: string | null;
+  is_fixture: boolean;
+  /** A string, because a Decimal audit value must not become a float. */
+  cost: string | null;
+  source_profile_updated_at: string;
+  created_at: string;
+  /** Empty while the run is in flight — the interface renders progress from
+   *  that, because an empty diff reads as "nothing was proposed" (FR-039). */
+  items: VersionItem[];
+  /** Findings with no item: `uncovered`, which concerns the draft as a whole. */
+  draft_findings: ReviewerFinding[];
+};
+
+export type VersionSummary = {
+  id: string;
+  name: string;
+  status: VersionStatus;
+  confidence_score: number | null;
+  created_at: string;
+};
+
+export type TailoringRun = {
+  id: string;
+  version_id: string;
+  status: "running" | "succeeded" | "failed" | "abandoned";
+  failure_reason: string | null;
+  plan: {
+    emphasise: { what: string; serves_requirement: string }[];
+    de_emphasise: string[];
+    protected_gaps: { requirement: string; why_protected: string }[];
+    strategy: string;
+  } | null;
+  attempts: number;
+  match_analysis_id: string;
+  guidelines_used: { text: string; source: string }[];
+  /** Task name to model, as resolved when the run happened — not what the
+   *  configuration says now. */
+  models: Record<string, string>;
+  finalisation_rules_version: string;
+  input_tokens: number;
+  output_tokens: number;
+  cost: string;
+  is_fixture: boolean;
+  started_at: string;
+  finished_at: string | null;
+};
+
+export type TailoringStarted = {
+  version_id: string;
+  status: VersionStatus;
+  run_id: string | null;
+};
+
+/** Why the server refused to start a run, when it did. */
+export type RefusalReason = "no_analysis" | "stale_analysis" | "no_profile" | "no_master";
+
+/**
+ * The refusal reason carried by a 422, or null for any other failure.
+ *
+ * Reading the `reason` rather than the sentence is the whole point of the
+ * server sending one: "score this job first" and "re-score it, your profile
+ * changed" are different actions, and the interface must offer the right one.
+ */
+export function refusalReason(error: unknown): RefusalReason | null {
+  if (!(error instanceof ApiError) || error.status !== 422) return null;
+  const detail = error.detail;
+  if (detail && typeof detail === "object" && "reason" in detail) {
+    return (detail as { reason: RefusalReason }).reason;
+  }
+  return null;
+}
+
+/** Start a run. **No body** — a model or budget from the browser would put
+ *  cost under the client's control. */
+export function startTailoring(applicationId: string): Promise<TailoringStarted> {
+  return request<TailoringStarted>(`/api/applications/${applicationId}/tailor`, {
+    method: "POST",
+  });
+}
+
+export function getVersion(versionId: string): Promise<ResumeVersion> {
+  return request<ResumeVersion>(`/api/versions/${versionId}`);
+}
+
+export function listVersions(applicationId: string): Promise<{ versions: VersionSummary[] }> {
+  return request<{ versions: VersionSummary[] }>(`/api/applications/${applicationId}/versions`);
+}
+
+/** Record a decision on one proposal. Rejecting starts no AI work (FR-026). */
+export function decideItem(
+  versionId: string,
+  itemId: string,
+  decision: Exclude<ProposalDecision, "pending">,
+  text?: string,
+): Promise<VersionItem> {
+  return request<VersionItem>(`/api/versions/${versionId}/items/${itemId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(text === undefined ? { decision } : { decision, text }),
+  });
+}
+
+/** Confirm the draft. Everything still pending counts as accepted (FR-025),
+ *  and nothing further is started (FR-028). */
+export function approveVersion(versionId: string): Promise<ResumeVersion> {
+  return request<ResumeVersion>(`/api/versions/${versionId}/approve`, { method: "POST" });
+}
+
+/** The audit record — plan, models, tokens, cost, timings (FR-034). */
+export function getTailoringRun(versionId: string): Promise<TailoringRun> {
+  return request<TailoringRun>(`/api/versions/${versionId}/run`);
 }

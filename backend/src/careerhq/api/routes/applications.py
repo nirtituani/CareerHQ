@@ -33,6 +33,7 @@ from careerhq.application.record_application import (
     apply_changes,
     record_application,
 )
+from careerhq.application.scoreability import scoreable_posting
 from careerhq.domain.models import (
     Application,
     MatchAnalysis,
@@ -69,6 +70,11 @@ def _application_out(record: Application) -> dict[str, Any]:
         # `[]` means the posting was read and stated none. Collapsing them here
         # loses the only thing telling them apart (research.md R1).
         "requirements": record.requirements,
+        # Whether there is posting content the analysis would actually read.
+        # Computed here so the rule has one implementation: deriving it in the
+        # browser would put a copy of `scoreable_posting` where nobody would
+        # think to keep it in step.
+        "is_scoreable": scoreable_posting(record) is not None,
         "job_url": record.job_url,
         "job_description_url": record.job_description_url,
         # Both, always: the label is what the user calls it, the normalized
@@ -288,6 +294,16 @@ def _state_of(record: Application, analysis: MatchAnalysis | None) -> str:
     if analysis is None:
         return "nothing_to_score"
     if analysis.status == MatchStatus.READY:
+        # **A zero with nothing behind it is not a score.** The spec's own edge
+        # case says a posting that yielded no requirements is "nothing to score
+        # against, not a failure and not a zero", and that was never
+        # implemented — so an analysis run against an empty posting rendered as
+        # `0/100 · low_probability`, which reads as a verdict about the person.
+        #
+        # Deciding it here rather than in the interface also covers rows written
+        # before the guard existed, without editing any of them.
+        if not analysis.requirements:
+            return "nothing_to_score"
         return "ready"
     if analysis.status == MatchStatus.FAILED:
         return "failed"
@@ -299,11 +315,43 @@ def _state_of(record: Application, analysis: MatchAnalysis | None) -> str:
 
 
 async def _latest_analysis(session: DbSession, record: Application) -> MatchAnalysis | None:
-    """The current analysis if one is displayable, else the most recent run.
+    """What to report about this job's scoring, in order of what matters.
 
-    The pointer is preferred because it only ever names a `ready` row, so a
-    re-run in flight keeps showing the last good score (FR-015).
+    **A run in flight comes first.** `run_analysis` writes
+    `current_match_analysis_id` only on success and last of all — deliberately,
+    so a failed run leaves the previous score standing (FR-015). But preferring
+    that pointer *unconditionally* meant that for the whole duration of a re-run
+    the endpoint reported the previous analysis, and the previous analysis is
+    never `running`. The interface polls only while the state is `running`, so it
+    stopped on its first poll and the result arrived unobserved.
+
+    Measured on a real run: a click at 07:03:52 started a completion that
+    finished at 07:04:16 with 84/strong. Two polls, at 07:03:54 and 07:04:03,
+    both read the old row; nothing was watching thirteen seconds later. This was
+    never specific to any one job — every re-run of an already-scored job had it,
+    showing a stale score instead of a stale "not scored".
+
+    **Only while it is plausibly in flight.** A run that stops without finishing
+    stays `pending` until the reaper marks it failed on the next scoring request.
+    Returning it here would replace a good score with `failed` for a run nobody
+    will finish, which is the FR-015 guarantee lost by another route — so an
+    abandoned row falls through to the pointer like a failed one.
+
+    Then the pointer, which only ever names a `ready` row, then the newest row
+    for a job that has never had one.
     """
+    in_flight = await session.scalar(
+        select(MatchAnalysis)
+        .where(
+            MatchAnalysis.application_id == record.id,
+            MatchAnalysis.status == MatchStatus.PENDING,
+        )
+        .order_by(MatchAnalysis.created_at.desc())
+        .limit(1)
+    )
+    if in_flight is not None and not is_abandoned(in_flight):
+        return in_flight
+
     if record.current_match_analysis_id is not None:
         current: MatchAnalysis | None = await session.get(
             MatchAnalysis, record.current_match_analysis_id

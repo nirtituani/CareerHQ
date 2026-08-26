@@ -65,13 +65,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         max_age=600,  # the sign-in round trip, not the user's session
     )
 
-    from careerhq.api.routes import applications, auth, health, imports, profile
+    from careerhq.api.routes import applications, auth, health, imports, profile, tailoring
 
     app.include_router(health.router, prefix="/api")
     app.include_router(auth.router, prefix="/api")
     app.include_router(profile.router, prefix="/api")
     app.include_router(imports.router, prefix="/api")
     app.include_router(applications.router, prefix="/api")
+    # No prefix of its own: it serves both `/api/applications/{id}/tailor` and
+    # `/api/versions/{id}`, which are two resources rather than one subtree.
+    app.include_router(tailoring.router, prefix="/api")
 
     return app
 

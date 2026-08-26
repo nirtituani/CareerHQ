@@ -106,7 +106,7 @@ Takes a job description and adapts the CV to it.
 | **Memory** | Reads the Professional Profile; writes nothing without approval |
 | **Workflow** | `Analyze → Retrieve → Draft → Self-Critique → Revise → Human Approval` |
 | **Evaluated by** | Grounding accuracy, requirement coverage, Match Score calibration, LLM-as-judge against a rubric |
-| **Slice** | 004 |
+| **Slice** | 005 (workflow, Reviewer, versions, approval), 006 (RAG, PDF) |
 
 **The rule it must never break:** it may reorder, re-emphasize, and rewrite existing facts. It may
 never invent experience, skills, or qualifications the profile does not contain (AI-008).
@@ -125,7 +125,7 @@ than merely generative.
 | **Output** | Confidence Score, a list of findings, and a revision request when the score is below threshold |
 | **Workflow** | Self-critique loop — it can send work back to the Optimizer without asking the user |
 | **Evaluated by** | Agreement with human judgement on a labelled sample; does the judge catch what a person would? |
-| **Slice** | 004 (the loop), 005 (the metrics) |
+| **Slice** | 005 (the loop), 007 (the metrics) |
 
 This is the component that demonstrates self-critique, guardrails, quality control, and
 evaluation — four things production agentic systems are judged on.
@@ -142,7 +142,7 @@ evaluation — four things production agentic systems are judged on.
 | **Tools** | **Web search MCP** |
 | **Memory** | Snapshots accumulate per company; historical research is never overwritten |
 | **Evaluated by** | Citation accuracy — does each claim trace to a real source? |
-| **Slice** | 006 |
+| **Slice** | 008 |
 
 Snapshots are immutable and timestamped because company facts go stale. Research from three months
 ago is still useful, but it must be visibly three months old rather than silently wrong.
@@ -161,7 +161,7 @@ single prompt.
 | **Output** | Quantified gaps and a learning roadmap — *"Python appeared in 14 of 20 roles, Kubernetes in 9, Java in 4"* |
 | **Memory** | Reads everything the platform has accumulated; this capability is meaningless without it |
 | **Evaluated by** | Do identified gaps match the job descriptions on inspection? Do they narrow over time? |
-| **Slice** | 007 |
+| **Slice** | 009 |
 
 The output is **quantitative on purpose**. "You should learn Kubernetes" is an opinion; "Kubernetes
 appeared in 9 of your last 20 applications and in 6 you were rejected after the technical round" is
@@ -215,12 +215,12 @@ Mapping capabilities to the project requirements.
 | Requirement | Demonstrated by |
 |---|---|
 | Multi-agent | Optimizer, Research, Advisor, and Reviewer coordinated by the workflow engine |
-| RAG | Guideline retrieval over pgvector in the Optimizer |
+| RAG | Guideline retrieval over pgvector in the Optimizer (slice 006) |
 | Tools / MCP | Knowledge retrieval, diff, PDF export; **web search MCP** in Research |
 | Memory | The Core is the memory; the Advisor is what proves it is being used |
 | Self-critique | The Reviewer's revision loop |
 | Human-in-the-loop | Item-level approval before any resume version is created |
-| Evaluation and metrics | Slice 005, measuring the Optimizer and Reviewer |
+| Evaluation and metrics | Slice 007, measuring the Optimizer and Reviewer |
 | Backend + frontend | FastAPI + Next.js throughout |
 | Deployed with Docker | Slice 002, then continuously |
 
