@@ -506,6 +506,112 @@ not a measurement of that hypothesis.
 
 ---
 
+### Measured, 2026-08-26 (T085) — **both paths, finally**. And the targets are missed.
+
+T085 asked for the first-pass-clear path *and* the full revision budget. Both now exist on real
+postings, with the per-call breakdown T092 makes possible. **No target has been adjusted; the
+misses are recorded as misses** (T086), which is what slice 004 did with SC-004.
+
+**The full-revision-budget path — Harman, run `60263226`, version `d3700cb8`.** Seven calls, two
+revisions, three review passes, **the Sonnet→Opus escalation firing for the first time measured**.
+
+| Seq | Task | Model | In | Out | Cost |
+|---|---|---|---|---|---|
+| 0 | `tailor_plan` | sonnet-5 | 9,613 | 2,501 | $0.044236 |
+| 1 | `tailor_draft` | sonnet-5 | 9,629 | **12,690** | **$0.146158** |
+| 2 | `tailor_review` | **opus-5** | 9,571 | 2,401 | $0.107880 |
+| 3 | `tailor_revise` | sonnet-5 | 7,981 | 761 | $0.023572 |
+| 4 | `tailor_review` | **opus-5** | 9,524 | 1,241 | $0.078645 |
+| 5 | `tailor_revise_escalated` | **opus-5** | 8,652 | 897 | $0.065685 |
+| 6 | `tailor_review` | **opus-5** | 9,523 | 1,364 | $0.081715 |
+| | **7 calls** | | **64,493** | **21,855** | **$0.547891** |
+
+Elapsed **241.3s (4m01s)**. Confidences `[72, 86, 88]`, final 88. Four proposals, nine drops,
+fifteen findings — including **the first `ungrounded` finding this project has recorded**, whose
+proposal was discarded and the owner's wording restored.
+
+**A second first-pass-clear path — Voyantis, run `ff0e310c`, version `f3ba40ca`.** Three calls,
+no revision, confidence 82.
+
+| Seq | Task | Model | In | Out | Cost |
+|---|---|---|---|---|---|
+| 0 | `tailor_plan` | sonnet-5 | 5,905 | 2,806 | $0.039870 |
+| 1 | `tailor_draft` | sonnet-5 | 6,793 | **16,586** | **$0.179446** |
+| 2 | `tailor_review` | **opus-5** | 6,008 | 2,310 | $0.087790 |
+| | **3 calls** | | **18,706** | **21,702** | **$0.307106** |
+
+Elapsed **223.2s (3m43s)**. Four proposals, twelve drops, six findings, zero `ungrounded`.
+
+**Against the targets — four real completed runs:**
+
+| Run | Path | Cost vs SC-006 ($0.30) | Elapsed vs SC-001 (90s / 3min) |
+|---|---|---|---|
+| Cellebrite `2615363e` | first-pass clear | $0.295450 — **met**, by $0.0046 | 2m50s — 90s **missed** |
+| Voyantis `ff0e310c` | first-pass clear | $0.307106 — **missed**, 1.02× | 3m43s — both **missed** |
+| Zipher `6356fb4e` | one revision | $0.464942 — **missed**, 1.55× | 4m20s — both **missed** |
+| Harman `60263226` | **full budget** | $0.547891 — **missed**, 1.83× | 4m01s — both **missed** |
+
+**SC-006 is met by exactly one run of four, and that one had $0.0046 of headroom.** Two
+first-pass-clear runs now sit either side of the ceiling, which is the sharpest statement available:
+the *cheapest path the workflow has* is at the limit, and everything else is over it. The worst case
+is now measured rather than projected — **1.83×**.
+
+**SC-001 is missed by every run, on both clauses.** No run reached 90 seconds; the fastest was
+2m50s. Two of four exceeded the three-minute ceiling that was written to cover a *full* revision
+budget, and one of those two used none of it.
+
+**Where the cost is, now that it is answerable.** The Draft call is the largest single item in both
+runs — **12,690 output tokens (58% of the run's output) on Harman and 16,586 (76%) on Voyantis** —
+and in both cases its visible artifact is four proposals. Plan+Draft together are 69.5% of Harman's
+output. The three Opus reviews total 5,006 tokens against the Draft's 12,690. **This is a
+measurement of where the tokens are, not a diagnosis of why**; the reasoning in §5B's investigation
+(adaptive thinking on unparameterised calls) remains a hypothesis that persisted data cannot
+confirm.
+
+**No target changed, nothing tuned.** SC-006 stays at $0.30 and SC-001 at 90s/3min, marked missed in
+`spec.md`. The cost and latency problem is real, now bounded by measurement rather than estimate,
+and is deliberately left for a separate piece of work.
+
+### Read as a person, 2026-08-26 (T087) — one reader, one resume, **not a measurement**
+
+FR-017 asks whether a tailored resume claims anything its owner did not do. No test answers that,
+so a person read the Harman output beside the profile. **One reader, one run, no rubric, no second
+opinion** — recorded as an observation for the same reason run (c)'s notes were, and carrying the
+same weight.
+
+**The verdict: nothing in the final document claims anything the profile does not support.** What
+makes this the strongest evidence the project has for Principle III is *how* that came to be true,
+which is measurable rather than a reading:
+
+- The Draft wrote *"quickly ramp up productivity … across complex, **unfamiliar** enterprise
+  codebases."* The Reviewer quoted it and objected that nothing in the profile says the codebases
+  were unfamiliar or that the candidate ramped up quickly — *"that framing appears to be
+  reverse-engineered from the posting."* The proposal was **discarded** and `final_text` is
+  character-identical to `original_text`.
+- Two further claims were flagged `overstated` and **reverted** to the profile's own wording during
+  revision: an invented lifecycle breakdown for the AI tools, and "concurrency handling" where the
+  profile says "overall system performance".
+- Three grounding problems arose; three were corrected. Confidence moved 72 → 86 → 88.
+
+**What the reader judged, and it is judgement, not data.** The rewritten summary is a genuine
+improvement — it leads with "mission-critical, high-scale distributed" and names the AI tools a top
+requirement asks for. The nine skill drops are right for the posting. But **no experience bullet was
+reordered or dropped**, so a recruiter still reads the financial-platform bullets before the AI
+ones, despite the plan's own strategy saying to lead with the latter. The touch is light for $0.55.
+
+**The most useful output may not be the resume.** Four requirements went unaddressed across all
+three passes — Linux, automated testing, AI-output validation, embedded/Rust — because the profile
+genuinely lacks them, and three of the four are things the agent *correctly refused to invent*. The
+85 "stretch" match score was right, and the reviewer's gap list says plainly that no rewriting closes
+an SDV role wanting Linux and Rust.
+
+**One observation recorded without action.** Pass 1 scored 86 with zero grounding findings, and the
+run still spent an escalated Opus revision and a third Opus review — roughly $0.147 — to reach 88,
+changing nothing of substance. Whether the loop should stop once grounding is clean is a threshold
+question, and one run cannot justify moving a threshold.
+
+---
+
 ## R6 — The static rubric, and what it must not become
 
 Slice 006 replaces the guideline source with retrieval. Until then it is a constant.
