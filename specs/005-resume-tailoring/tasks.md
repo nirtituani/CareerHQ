@@ -195,6 +195,12 @@ there and marked owner-authored.
 
 ---
 
+## Phase 7: Hardening after the first real runs
+
+- [X] T092 Persist per-call usage instrumentation. **Acceptance**: every `complete()` call a tailoring run makes is persisted as its own record carrying task/node identity plus input tokens, output tokens, cost and relevant usage metadata (model, `is_fixture`); works on **both** the success and failure paths — a run that raises must still persist the calls it was billed for (today `cd27b092`'s $0.36 persisted only totals); implemented against the fixture gateway / `ScriptedSeam` only, no provider calls; model, thinking and effort configuration untouched. **Built as**: `tailoring_run_calls` (migration 0012), one row per call ordered by `sequence`, unique per (run, sequence); the task label is stamped onto `Usage` by `UsageRecorder`, which is the one party holding both the task name and the bill; `_record_usage` writes rows and totals from the same recorder on both paths, delete-then-insert so a double record cannot double-count. Migration up/down against a real database deferred to the merge phase
+
+---
+
 ## Dependencies
 
 ```
