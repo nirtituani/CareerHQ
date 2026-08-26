@@ -323,6 +323,12 @@ changes at all, so it is not a candidate for the cost work.
 
 ### Measured, 2026-08-26 — plan execution, and the correction of the adherence figures
 
+> **The D1 column of the table below was itself superseded on 2026-08-26 by T095.** Its ratios
+> were computed by treating "no text proposal" as "no proposal", which the position data
+> disproves. The numbers are left standing as the historical measurement they were; read the
+> subsection *"the D1 ratios are withdrawn"* further down before using them. **D0 and D3 are
+> unaffected and remain current.**
+
 **This subsection supersedes the plan-adherence figures previously carried in `HANDOFF.md` §2 and
 in `plan_adherence.py`'s module docstring** — Cellebrite 0.5 and Zipher 0.167, reported as though
 they were comparable measurements of the same thing. Those numbers are **not withdrawn**: D0 is
@@ -381,6 +387,72 @@ revised twice and corrected everything it attempted.
 and two uncontaminated runs agreeing on one measure is a coincidence worth noticing, not a
 distribution. Judging a distribution is slice 007's job. Nothing here sets a threshold or gates
 anything, and no prompt, schema or model configuration was changed to produce it.
+
+### Measured, 2026-08-26 (T095) — the D1 ratios are withdrawn, and cannot be recovered
+
+**What was wrong.** Every D1 ratio above rests on reading "this item has no text proposal" as "the
+Draft did not act on this item". The Draft has always had three ways to act — rewrite, reorder,
+drop — and only the first leaves a trace in `proposed_text`. A reorder was therefore counted as
+inaction.
+
+**The evidence, and it is not marginal.** Master ordering is a globally unique sequence
+(`_render_master` increments one counter across the whole walk), so a version holding **duplicate**
+positions can only have got them from proposals. Measured across the nine experience bullets of
+each version:
+
+| Version | Distinct positions among 9 bullets | Position proposals arrived? |
+|---|---|---|
+| Cellebrite `a8f1e4b7` | **5** | **yes — proven** |
+| Harman `d3700cb8` | **5** | **yes — proven** |
+| Zipher `c582d938` | 9 | not provable either way |
+| Voyantis `f3ba40ca` | 9 | separately proven — every bullet moved against the master |
+
+So the two runs whose D1 ratios were reported as **identical at 3/7 = 0.429** both reordered, and
+in both cases some of the four entries counted as `no_evidence` were items the Draft had named.
+
+**What is preserved, and what is withdrawn.** The **`acted` counts of 3 each survive** — three
+emphases carried text evidence in each run, and that evidence is intact. What is withdrawn is the
+**denominator of 7** and therefore the **ratio 0.429**, because four entries per run cannot say
+whether a proposal arrived. The observation that the two runs' text-based action counts are equal
+also survives, weakened: it is now a floor on each, not a measurement of both.
+
+**The new state, recorded rather than computed.** Under T095, `resume_version_items` carries
+`displaced_position` — the master position a proposal displaced, NULL when none arrived. Every row
+written before that column existed keeps NULL, which records nothing, so those entries classify as
+**`unknown_position`**. `unknown_position` **leaves D1's denominator** and its count is reported
+beside the measure; **the D1 ratio is withheld entirely while any remain**, for the reason Zipher's
+is withheld — a numerator over a shrunken denominator cannot be compared with one over a full
+denominator. In practice this means **D1 reports no ratio for any run in this document**, and
+counts only.
+
+**D3 is unaffected and every D3 figure above stands.** Whether text survived is knowable however
+little is known about ordering, so D3's denominator still excludes only `label_kind`, and a reorder
+is an action rather than a surviving text change. `label_kind` is classified *before* position
+evidence precisely so that no recorded D3 value could move.
+
+**Why the old ratios cannot be recovered retrospectively.** Two different things are missing, and
+only one of them is derivable:
+
+- **Whether a proposal arrived was never persisted.** `position` was overwritten by the proposed
+  value with no record that it had been, and no column ever said "the model named this item". This
+  is not destroyed data being reconstructed — it was never written. It is therefore **permanently
+  unrecoverable** for these four versions.
+- **Whether the position changed** *is* derivable today, because the profile has not been edited
+  since before any run (`source_profile_updated_at` matches the live profile on all four versions),
+  so `_render_master` reproduces the master ordering. That is how the table above was produced. It
+  is **derivation, not record**, and it stops working the moment the profile changes.
+
+**Nothing is backfilled.** The historical rows keep NULL. Writing a derived master position into
+the column would present inference as record, and it would still not answer the half that matters
+for D1 — whether the model named the item at all. **No replacement D1 ratios are offered here**:
+the honest output for these runs is counts plus `unknown_position`, and a fabricated ratio would be
+worse than none.
+
+**What this changes about the conclusions above.** The reading that "the two uncontaminated runs
+are identical under D1" must now be stated as *both acted on at least three planned emphases by
+text evidence, and neither can say how many more it acted on by reordering*. The broader point
+survives untouched: the D0 spread is still not evidence of different Draft behaviour, and it is
+still not a claim about model behaviour in general.
 
 ### Measured, 2026-08-26 — a run lost to provider overload. **Cost and reliability evidence only.**
 

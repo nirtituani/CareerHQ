@@ -16,8 +16,9 @@
 > concern 7) — and a prime suspect for the output-token overrun: adaptive thinking on
 > unparameterised gateway calls. The proposed next phase is in §5 B: instrument, fix, then measure.
 >
-> **Phase 7 (T092-T094) is merged; T085 ran; the corrected plan-execution measurement is built and
-> UNCOMMITTED.** See §5 F for the exact next decision. No paid run is pending.
+> **Phase 7 is merged through T095 and committed.** T085 ran; the plan-execution measurement and
+> its T095 position-evidence correction are in. **D1's historical ratios are withdrawn and
+> unrecoverable** — see §2 and `research.md` R5. Nothing is deployed; no paid run is pending.
 >
 > Measured this session: **468 backend tests** (83.86% coverage), **162 frontend**, ruff, mypy,
 > oxlint, tsc and `next build` all clean.
@@ -136,15 +137,29 @@ owner's wording as executed, double-counted a duplicated planned id, scored labe
 could not measure, and reported a contaminated run's unknowable outcomes as failures. D0 is
 preserved for comparison, not withdrawn.
 
-| Job | D0 | D1 — Draft compliance | D3 — Plan effect | State vector |
+| Job | D0 | D1 — Draft compliance | D3 — Plan effect | State vector (corrected) |
 |---|---|---|---|---|
-| Cellebrite | 0.500 | **3/7 = 0.429** | **3/6 = 0.500** | 3 survived · 3 no_evidence · 1 label_kind |
-| Harman | 0.286 | **3/7 = 0.429** | **0/5 = 0.000** | 2 reverted · 1 discarded · 2 no_evidence · 2 label_kind |
+| Cellebrite | 0.500 | acted **3**, ratio **withheld** | **3/6 = 0.500** | 3 survived · **3 unknown_position** · 1 label_kind |
+| Harman | 0.286 | acted **3**, ratio **withheld** | **0/5 = 0.000** | 2 reverted · 1 discarded · **2 unknown_position** · 2 label_kind |
 | Zipher | 0.167 *(historical)* | **not computable** | **not computable** | 1 survived · **5 unknown** |
 
-**The two uncontaminated runs have identical Draft compliance.** The old 0.5-vs-0.167 spread must
-**not** be read as evidence that the Draft behaved differently — the difference lies in what
-happened after it. Zipher is contaminated by the pre-T094 Revise replacement defect: 1 determinable
+**D1's ratios were withdrawn by T095 and cannot be recovered.** They were computed by reading "no
+text proposal" as "no proposal", and the position data disproves that: Cellebrite and Harman each
+hold only **5 distinct positions across 9 bullets**, and master ordering is a unique sequence, so
+both demonstrably reordered. The `acted` counts of 3 survive as floors; the denominator of 7 and the
+0.429 ratio do not. **Whether a proposal arrived was never persisted for these runs** — not
+destroyed, never written — so it is permanently unrecoverable, and **no replacement ratios are
+offered**. Rows predating `displaced_position` classify as `unknown_position`, which leaves D1's
+denominator and withholds its ratio while any remain. **No backfill.** Full account in
+`research.md` R5 → *"the D1 ratios are withdrawn"*.
+
+**D3 is unaffected and every D3 figure above stands** — whether text survived is knowable however
+little is known about ordering.
+
+**The surviving conclusion**, restated honestly: both uncontaminated runs acted on at least three
+planned emphases by text evidence, and neither can say how many more it acted on by reordering. The
+old 0.5-vs-0.167 D0 spread still must **not** be read as evidence that the Draft behaved
+differently. Zipher remains contaminated by the pre-T094 Revise replacement defect: 1 determinable
 of 6. **n = 3 and one is contaminated; this is not a claim about model behaviour in general.**
 
 De-emphases planned → items dropped: Cellebrite 10 → 12 · Zipher 9 → **0** (the T094 defect) ·
@@ -660,13 +675,27 @@ Then the PR: `https://github.com/nirtituani/CareerHQ/pull/new/005-resume-tailori
    Opus escalation firing, three review passes, **$0.547891 / 4m01s**. Both SC targets missed and
    recorded as missed. **T085/T086 are still open**: those figures are *not* yet in `research.md`,
    and T087's human review has been produced but not recorded.
-3. **The corrected plan-execution measurement is built and passing** — `plan_execution` beside the
-   preserved `emphasis_adherence`, exposed on `GET /versions/{id}/run`, 9 new tests, all four D0
-   defects drilled. **It is UNCOMMITTED.**
+3. **The corrected plan-execution measurement is built, passing and committed** (`db48b8a`) —
+   `plan_execution` beside the preserved `emphasis_adherence`, exposed on
+   `GET /versions/{id}/run`, 9 tests, all four D0 defects drilled.
+4. **A second successful Voyantis run** (`ff0e310c`) — first-pass clear, 3 calls, **$0.307106 /
+   3m43s**, confidence 82, 4 proposals, 12 drops, zero `ungrounded`. Its Draft call alone emitted
+   **16,586 output tokens — 76% of the run's output**. Two `overstated` findings survive into the
+   persisted proposals, because a run that clears on the first pass never revises and only
+   `ungrounded` forces a revision. An earlier attempt (`508f4c2c`) died on an Anthropic
+   `overloaded_error` and is cost evidence only.
+5. **T095 is implemented and committed** (`9859f4ee`) — `resume_version_items.displaced_position`
+   (migration `0014`, up/down drilled on a scratch database), recording the master position a
+   proposal displaced and NULL when none arrived, so the master's ordering at creation is
+   `COALESCE(displaced_position, position)` — the **FR-030** obligation that 13 of 140 rows had
+   lost. `plan_execution` gained `proposed`, `reordered` and `unknown_position`; D1 counts the
+   first two as acted; **D3 is untouched by design and every recorded D3 figure is unchanged**.
+   **The measurement documentation was corrected in the same pass** — see §2 and `research.md` R5:
+   D1's historical ratios are withdrawn, preserved as historical measurements, and permanently
+   unrecoverable because proposal arrival was never persisted. **No backfill.**
 
-**What is uncommitted right now** (`git status`): `backend/src/careerhq/application/plan_adherence.py`,
-`backend/src/careerhq/api/routes/tailoring.py`, the new `backend/tests/unit/test_plan_execution.py`,
-and `.gitignore`.
+**Nothing is uncommitted.** The working tree is clean; the branch is 28 commits ahead of origin
+and unpushed.
 
 **Nothing about the agent has been changed to produce any of this.** No prompt, no schema, no model
 or thinking/effort configuration, no threshold, no gate, no new instrumentation beyond what T092/
@@ -674,8 +703,9 @@ T093 already added, and no provider call since the single T085 run.
 
 **The next decision, and it is the author's:**
 
-- **First**, commit the measurement work and tick a Phase 7 task for it — a measurement that only
-  exists in a working tree is one nobody else can reproduce.
+- **Deploying the measurement** is still outstanding — the container runs the baked image, so
+  `displaced_position` records nothing until it is rebuilt. Until then every future run also
+  classifies `unknown_position`, and T095 buys nothing.
 - **Then**, and separately, decide whether **the Plan contract itself** warrants investigation. The
   §5B evidence is that `EmphasisDirective` is the only model-facing schema in the system that makes
   claims about the profile with **no quote requirement and no validator**, and that the Harman
