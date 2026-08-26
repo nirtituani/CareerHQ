@@ -1,21 +1,20 @@
 # HANDOFF
 
-**Last updated:** 2026-08-24 · **Commit:** `798dc25` · **Branch:** `005-resume-tailoring`, 5 commits ahead of origin
+**Last updated:** 2026-08-26 · **Commit:** `db89a26` · **Branch:** `005-resume-tailoring`, clean
 
-> **Slice 005 — Resume Tailoring is 91 of 97.** All three user stories are built, tested and
-> **reachable in a browser**. The six routes, the Tailor tab, the diff, per-item approval and the
-> audit view all work against real data on the local stack.
+> **Slice 005 — Resume Tailoring is 92 of 97, and the whole flow works end to end on real data.**
+> Two real jobs have been tailored and approved, and a third real job scored **84/100 Strong**.
 >
-> **The six open tasks are one thing: nothing has ever called a real provider.** T085–T089 measure
-> SC-001 (90s/3min) and SC-006 ($0.30) and deploy. **The author has explicitly deferred the real
-> Anthropic run** pending their own review of the completed flow — see §5A. Do not spend it without
-> asking.
+> **The five open tasks are all deployment and measurement** (T085–T089), not features. See §5A.
 >
-> Measured this session: **400 backend tests** (82.98% coverage), **147 frontend** (10 files), ruff,
-> mypy, oxlint, tsc and `next build` all clean.
+> **The next phase is deliberately not more prompt work.** Plan-to-draft adherence measured 0.5 and
+> 0.167 across the only two successful runs, and two samples cannot justify tuning a prompt. §5B is
+> a parallel-agent investigation of tailoring quality *before* any further agent change.
 >
-> **Seven commits still sit unpushed on local `main`.** Contained in this branch, so nothing is at
-> risk. See §5C.
+> Measured this session: **468 backend tests** (83.86% coverage), **162 frontend**, ruff, mypy,
+> oxlint, tsc and `next build` all clean.
+>
+> **17 commits unpushed on this branch; 7 on local `main`.** Nothing is at risk — see §5D.
 
 This file is the volatile half of the project's memory: what is true *right now* and what to do
 next. `CLAUDE.md` is the durable half — conventions, gotchas, and how the project works. When those
@@ -42,7 +41,7 @@ Build order now matches slice numbers.
 
 | | Slice | State |
 |---|---|---|
-| 005 | **Resume Tailoring** | **91/97 — built, unmeasured, undeployed** |
+| 005 | **Resume Tailoring** | **92/97 — built and exercised on real jobs; undeployed** |
 | 006 | Document & Retrieval — RAG over guidelines, PDF export, submit-and-lock | Not started |
 | 007 | Evaluation & Benchmark | Not started. **Graded** |
 | 008 | Company Research | Droppable (`docs/08` §11) |
@@ -61,12 +60,12 @@ the port deliberately has no `top_k`, no scores and no embedding parameters.
 
 ## 2. Current implementation status
 
-**Measured 2026-08-24, not copied:**
+**Measured 2026-08-26, not copied:**
 
 | Gate | Result |
 |---|---|
-| Backend suite | **400 passed**, 82.98% coverage (gate 80%) |
-| Frontend suite | **147 passed** (10 files) |
+| Backend suite | **468 passed**, 83.86% coverage (gate 80%) |
+| Frontend suite | **162 passed** (12 files) |
 | ruff format / check | clean |
 | mypy strict | clean, 60 source files |
 | oxlint / tsc / next build | clean |
@@ -77,55 +76,86 @@ the port deliberately has no `top_k`, no scores and no embedding parameters.
 | 002 — Deployment | 52 / 52 | Complete |
 | 003 — Data Foundation | 98 / 109 | US1, US2 done. **US3 blocked on a JobTracker CSV** |
 | 004 — Match Analysis | 89 / 89 | Complete, verified in production |
-| **005 — Resume Tailoring** | **91 / 97** | **Built. See §5A** |
+| **005 — Resume Tailoring** | **92 / 97** | **Built and working on real data. See §5A** |
 
 ### Live system
 
-**https://frontend-production-02ac.up.railway.app** — `/` answers 307, readiness reads
+**https://frontend-production-02ac.up.railway.app** — readiness reads
 `database ok · cache not_configured · object_storage ok · ai_provider ok`.
 
 **Nothing from slice 005 is deployed.** It lives on this branch.
 
-Local database, checked this session: **8 applications, 0 resume_versions**. The zero is correct —
-two versions were seeded by hand during the browser walkthroughs and deleted afterwards, because
-they were fabricated and had no business in a real record.
+### Real evaluation evidence — measured 2026-08-26
 
-### What slice 005 built
+**`specs/005-resume-tailoring/research.md` R5 is authoritative** for the tailoring numbers and
+labels which parts are measured and which are one reader's interpretation. This is the summary.
 
-**The agent runs.** Four nodes — plan, draft, review, revise — orchestrated by LangGraph, each
-calling the existing `complete()` seam. Bounded at two revisions, escalating Sonnet → Opus on the
-second by **task name**, which keeps `docs/08` §3.2.3 configuration rather than a branch.
+**Tailoring runs — four real ones, two successful:**
 
-**LangGraph orchestrates and owns nothing.** Persistence, business state, audit, ownership and
-finalisation stay in `tailor_resume.py`. The test of that boundary: deleting every LangGraph import
-and rewriting the graph as a loop would require no schema change and no change to any use case.
+| Job | Run | Status | Rev | In | Out | Cost | Elapsed | Proposals | Findings |
+|---|---|---|---|---|---|---|---|---|---|
+| Cellebrite | `a76bd349` | failed | 0 | 0 | 0 | $0 | 4m00s | — | — |
+| Cellebrite | `cd27b092` | failed | 0 | 30,028 | 21,641 | $0.361819 | 3m29s | — | — |
+| Cellebrite | `2615363e` | **succeeded** | 0 | 34,888 | 15,512 | **$0.295450** | 2m50s | **4** | 7 |
+| Zipher | `6356fb4e` | **succeeded** | **1** | 41,621 | 23,908 | **$0.464942** | 4m20s | **1** | 12 |
 
-**The severity split runs in the use case, before any row is written.** An `ungrounded` finding
-discards its proposal and restores the owner's wording, so a fabricated claim has no persisted
-representation and can never reach an approve button.
+The two failures were the `source_item_id` defects; the first predates usage accounting, which is
+why it records `$0` for calls it made.
 
-**Six routes, all owner-scoped.** `POST /applications/{id}/tailor`, `GET /versions/{id}`,
-`PATCH /versions/{id}/items/{item_id}`, `POST /versions/{id}/approve`, `GET /versions/{id}/run`,
-`GET /applications/{id}/versions`. Another owner's resource is 404, never 403.
+**Against the targets — recorded, not adjusted:**
 
-**The Tailor tab.** Five states rendered distinctly, per-item accept/reject/edit, findings nested
-under the proposals they concern, the confidence score labelled so it cannot be read as the match
-score, and an audit disclosure showing the plan, the protected gaps, per-task models, tokens and
-cost.
+- **SC-006 ($0.30)**: met by Cellebrite at $0.2955 (1.5% headroom, on three calls of a possible
+  seven); **missed** by Zipher at $0.4649 — **1.55×** — with a single revision.
+- **SC-001 (90s typical / 3min full budget)**: **missed by both.** 2m50s and 4m20s.
+
+**Plan adherence** (`GET /versions/{id}/run` → `plan_adherence`, computed from persisted data):
+
+| Job | Emphases executed | De-emphases planned → dropped |
+|---|---|---|
+| Cellebrite | 4 / 8 = **0.5** | 10 → 12 |
+| Zipher | 1 / 6 = **0.167** | 9 → **0** |
+
+**Match analyses — 8, all `ready`:** Cognita 54 then 70 · Harman 85 · DriveNets 91 · Cellebrite 69 ·
+Zipher 71 · **Voyantis 0 then 84 Strong**. Total match spend **$0.309312**.
+
+### Known quality concerns — open, and deliberately not acted on
+
+1. **Plan-to-draft execution is inconsistent.** 0.5 against 0.167, same profile, same prompts,
+   different jobs. Zipher executed **one of six** planned emphases and **none of nine** planned
+   de-emphases — so a resume for an autonomous-infrastructure role kept SVN, SqlDbx, PHP and
+   Spanish. Whether this is a defect, a prompt weakness or ordinary variance **cannot be decided
+   from two samples**.
+2. **Output tokens are the cost lever and are larger than designed.** 15,512 and 23,908 across
+   3 and 5 calls, far above the diff-shaped output the schemas intend. The run stores totals, not a
+   per-call breakdown, so the cause is unknown.
+3. **The sample is n=2.** No threshold, gate or prompt change may be justified from it. That is
+   what slice 007 is for.
+4. **`ReviewerFinding.attempt` is stamped with the run's final attempt**, not the pass that caught
+   each finding — `run_tailoring` writes `result["attempt"]` to every row. The data cannot separate
+   a first-review concern from a second-review one, and the interface's multi-pass marker therefore
+   shows the same label on every finding of a run. Recorded in R5, not acted on.
+5. **`de_emphasise` adherence is unmeasurable.** Free text, no ids. Making it measurable changes
+   the Plan schema and therefore the Plan prompt.
+6. **An in-flight run is invisible to other sessions.** `run_tailoring` flushes `REVIEWING` but the
+   commit is at the end, so the interface shows "Writing" for the entire run and
+   "Checking its own work" is never reached. FR-040's distinction exists in code and tests but is
+   not delivered by the system.
 
 ### What is NOT built
 
-- **No real provider call has ever been made.** Every test runs against a scripted double. SC-006
-  ($0.30) and SC-001 (90s / 3min) are **unmeasured targets**.
-- **Slice 005 is not deployed.**
+- **Slice 005 is not deployed** (T088, T089).
+- **The full-revision-budget path has never run** — seven calls, three Opus reviews. It is the path
+  SC-006 is most likely to be broken by, and T085 asks for both paths.
 - **FR-017 has no test that answers it** — whether a tailored resume claims anything the owner did
   not do is a judgement a person has to make (T087).
+- **An approved version is not rendered as a document.** Deliberate: slice 006. See CLAUDE.md
+  → *Deliberate non-goals*.
 
 ---
 
 ## 3. Files modified
 
-Slice 005 spans `f414caf..798dc25`. Regenerate with:
+Slice 005 spans `f414caf..db89a26`. Regenerate with:
 
 ```bash
 git diff --name-status f414caf~1..HEAD -- backend/src frontend/src
@@ -140,6 +170,9 @@ git diff --name-status f414caf~1..HEAD -- backend/src frontend/src
 | `backend/src/careerhq/application/finalisation_rules.py` | The severity split, versioned. Where Principles II and III are reconciled |
 | `backend/src/careerhq/application/guidelines.py` | **The 005/006 boundary.** Read before touching slice 006 |
 | `frontend/src/components/applications/tailor-tab.tsx` | The five states, and why each is distinct |
+| `backend/src/careerhq/application/scoreability.py` | The single answer to "is there a posting to read", used by Match **and** Tailor |
+| `backend/src/careerhq/application/agents/tailoring/prompts.py` | `compose_resume()` and the four prompts. Read before touching any of them |
+| `specs/005-resume-tailoring/research.md` §R5 | **All the real measurements**, with measured facts and interpretation kept apart |
 
 ### Backend source
 
@@ -153,6 +186,11 @@ MOD  config.py                              (five llm_model_tailor_* entries)
 MOD  ports.py                               (T081 — the docstring was describing slice 004)
 MOD  main.py                                (router registration)
 MIG  0010_resume_versions · 0011_version_items_and_findings
+NEW  application/scoreability.py            (scoreable_posting — Match + Tailor)
+NEW  application/plan_adherence.py          (emphasis_adherence — measurement, no gate)
+MOD  application/ports.py                   (UsageRecorder, safe_validation_errors)
+MOD  application/analyze_match.py           (scoreability guard + prompt agree)
+MOD  api/routes/applications.py             (is_scoreable, _latest_analysis, _state_of)
 ```
 
 ### Frontend source
@@ -209,6 +247,35 @@ was tried and did **not** work; re-attempting any of them costs real time.
   with `-k leak` selected **zero** tests and printed no failure; it read as "the drill did not
   fire". The test name did not contain "leak" — a fixture argument did. **Read the
   `N deselected` count**, always.
+
+### Slice 005 — the two paid failures, and what each cost
+
+Both were the **same field** and **different root causes**, one below the other. Re-reading them in
+order is the cheapest way to understand why the id plumbing looks the way it does.
+
+- **Fixing a contract's *visibility* when the value never existed.** The first failure was
+  `ReviewFinding` requiring `source_item_id` while the JSON Schema advertised it optional — real,
+  and fixed by putting the rule in `Field(description=...)`. The second failure was the same
+  field: the ids **never entered the prompt chain at all**. `_render_master` returned `(text,
+  items)` and only `text` reached the state, so Draft was told to return items "by id" while being
+  shown 2,801 characters of profile and zero ids. Cost: **$0.361819** for the second failure alone.
+  The quieter consequence was worse — with no ids nothing maps back, so a run that *passed* review
+  would have persisted a diff with **zero proposed changes**.
+- **Believing a fix was complete because the layer I could see was fixed.** The lesson is not
+  "check the prompt"; it is that a diagnosis which explains the symptom is not necessarily the
+  bottom of the stack.
+- **Showing the Reviewer the diff and asking a document-level question.** `uncovered` asks what the
+  *resume* fails to address; it was handed only the changed items. On Zipher it reported eight
+  requirements "never addressed" against bullets sitting untouched in the resume, naming the exact
+  ids it believed had been omitted. That is what drove the run into a revision, and to $0.46.
+- **Two of my own tests were wrong, both caught only by drilling.** One demanded a rewritten item's
+  *original* wording, which another test correctly forbade. The other searched the whole prompt for
+  text the master also contains, so it passed with the fix reverted.
+- **Collapsing two questions into one guard.** Making `scoreable_posting` the sole gate for Match
+  broke FR-006: a description with an empty requirement list became scoreable. "Is scoring
+  meaningful" and "is there anything to send" are different questions. The existing suite caught it.
+- **Asserting an equivalence where only an implication holds.** Content is *necessary* for an
+  analysis to be reserved, not *sufficient*. Asserting `==` hid the FR-006 break for one commit.
 
 ### Slice 005 — the agent runtime
 
@@ -367,74 +434,81 @@ was tried and did **not** work; re-attempting any of them costs real time.
 
 ## 5. Exact next steps
 
-### A — The real provider run · **blocked on the author, deliberately** · T085–T087
+### A — Deploy and finish the measurement · **owner: the author** · T085–T089
 
-**The author has deferred this pending their own review of the completed flow.** They said they
-would approve it explicitly afterwards. **Do not run it without that.**
+The remaining five tasks. **T085 is half done**: the first-pass-clear path is measured (Cellebrite,
+$0.2955) and the **full-revision-budget path — seven calls, three Opus reviews — has never run**.
+That is the path SC-006 is most likely to be broken by; Zipher already missed it at 1.55× with one
+revision.
 
-Everything is in place: click **Tailor for this job** on any application with a `ready`,
-non-stale match analysis. Four of the eight local applications qualify.
+T086 is bookkeeping on numbers already in R5. **If a target is missed, mark it missed in `spec.md`**
+rather than adjusting it — slice 004 did exactly this with SC-004. T087 is not automatable: read a
+tailored resume as a person and ask whether it claims anything the owner did not do.
 
-Measure **both** paths — first-pass clear, and full revision budget — and record tokens, cost and
-elapsed time in `research.md` R5, the way slice 004's R8 recorded its own. Then compare against
-**SC-006 ($0.30)** and **SC-001 (90s / 3min)**. **If a target is missed, mark it missed in
-`spec.md`** rather than adjusting the number; slice 004 did exactly this with SC-004.
+T088/T089 deploy and verify on Railway. The `PGHOST=localhost PGPORT=5432` override is **not
+optional** — see CLAUDE.md.
 
-T087 is not automatable: read the tailored resume as a person and ask whether it claims anything
-the owner did not do. FR-017 has no test that answers this.
+### B — Investigate tailoring quality with parallel agents · **the intended next phase**
 
-```bash
-docker compose up -d && open http://localhost:3000   # localhost, never 127.0.0.1
-```
+**Before any further prompt or agent change.** Plan-to-draft adherence is 0.5 and 0.167 across two
+runs, and §2's *Known quality concerns* lists what is open. The decision already recorded is that
+**two samples cannot justify tuning a prompt** — so the next step is investigation and evidence, not
+edits.
 
-### B — Deploy slice 005 · **blocked on A** · T088, T089
+What is already in place to build on: `plan_adherence` on `GET /versions/{id}/run`, the four
+persisted runs, `research.md` R5's separation of measured fact from interpretation, and
+`ScriptedSeam` for driving the workflow without a provider.
 
-A real run on the live system with `is_fixture = false`, a real model name, real token counts and a
-real cost. Then verify the deployed database:
+**Do not start by changing `_PLAN` or `_DRAFT`.** That was declined deliberately; see CLAUDE.md
+→ *Deliberate non-goals*.
 
-```bash
-railway ssh --service pgvector "PGHOST=localhost PGPORT=5432 psql -U postgres -d railway \
-  -c 'SELECT count(*) FROM resume_versions;'"
-```
+### C — Slice 003 User Story 3 · **still blocked on the author** · 11 tasks
 
-**The `PGHOST`/`PGPORT` override is not optional.** The running container carries a stale host from
-a deleted proxy, and Railway recycles those ports — the default address now serves **another
-tenant's** database and answers the PostgreSQL protocol.
+A JobTracker export at `backend/tests/fixtures/jobtracker_export.csv`. **Checked 2026-08-26: the
+file has not arrived.**
 
-### C — Push `main` · **unblocked, owner: the author's call** · 1 command
+### D — Push · **unblocked, the author's call**
 
-Seven commits sit on local `main` and `origin/main` is behind. They are **contained in the pushed
-branch**, so nothing is at risk — but the slice-005 planning artifacts are invisible on GitHub's
-main branch.
+**17 commits on this branch, 7 on local `main`**, none pushed. Nothing is at risk — the main
+commits are contained in this branch — but neither is on GitHub.
 
 ```bash
-git log origin/main..main --oneline   # verify first
-git push origin main
+git log origin/005-resume-tailoring..HEAD --oneline    # verify first
+git push origin 005-resume-tailoring
 ```
 
-### D — Open the PR · **unblocked** · 1 command
+Then the PR: `https://github.com/nirtituani/CareerHQ/pull/new/005-resume-tailoring`
 
-Five commits are ahead of `origin/005-resume-tailoring`. Push, then:
-`https://github.com/nirtituani/CareerHQ/pull/new/005-resume-tailoring`
-
-### E — Slice 003 User Story 3 · **still blocked on the author** · 11 tasks
-
-A JobTracker export saved to `backend/tests/fixtures/jobtracker_export.csv`. **Checked 2026-08-24:
-the file has not arrived.** The mapping is written; this proves it against real data.
-
-### F — Decide the open question in `spec.md` § Open Decisions · **owner: the author**
-
-Does `user_corrected` constrain what tailoring may rewrite? Undefined in the spec, the design and
-`docs/03`. Currently corrected facts are treated like any other. **Worth settling before slice
-006**, where a retrieved rubric will push harder on rewording.
-
-### G — Housekeeping · **unblocked**
+### E — Housekeeping · **unblocked**
 
 - **Rotate the database password** and restart `pgvector`.
 - **Rotate the logo.dev token** hardcoded in public source at `ApplicationTable.jsx:4` in
   `nirtituani/job-tracker-web`.
+- Decide the open question in `spec.md` § Open Decisions: does `user_corrected` constrain what
+  tailoring may rewrite? **Worth settling before slice 006.**
 
 ---
+
+## 5A. Real data that must not be deleted or modified
+
+This is the project's only evaluation evidence. It was paid for.
+
+| Record | Why it must survive |
+|---|---|
+| Version `a8f1e4b7` + runs `a76bd349`, `cd27b092`, `2615363e` | Cellebrite. Two failures and the first successful run, on one reused draft — also the evidence the retry-reuse fix works |
+| Version `c582d938` + run `6356fb4e` | Zipher. The only run with a revision, and the 0.167 adherence sample |
+| Match `ad25de2c` (Voyantis, 0/100, **0 requirement rows**) | The historical invalid analysis. **Deliberately not deleted.** It is rendered as `nothing_to_score` rather than a verdict, which is the spec's own edge case finally implemented — so it also proves that fix |
+| Match `1285d10a` (Voyantis, **84 Strong**) | The scoreability fix working on real data |
+| All 8 match analyses | $0.309312 of real measurement |
+
+**Total real spend to date: roughly $1.43** — $1.12 tailoring, $0.31 match.
+
+Two rules that have already been broken once each and cost real data:
+
+- **Never run a test against the real profile.** A test run merged a fictional CV into it and
+  replaced the contact block. Use a scratch user seeded `@example.com`.
+- **Delete anything seeded by hand.** Several versions and a scratch application were created
+  during browser walkthroughs and removed afterwards. The current counts are the truth.
 
 ## 6. Process reminders
 
@@ -459,4 +533,10 @@ Does `user_corrected` constrain what tailoring may rewrite? Undefined in the spe
   `up -d` alone recreates the container from the same baked image. The frontend hot-reloads.
 - **Update `tasks.md` as you go**, and amend a task's text when the implementation deviates. Four
   were amended this slice — T054, T056, T072 and T077 — and each amendment records why.
+- **Drill the old behaviour, and count what you examined.** A gate nobody has watched fail is not a
+  gate, and a gate with nothing to examine passes forever — that has now shipped four times. Read
+  the `N deselected` count; a `-k` selector matching nothing prints a cheerful pass.
+- **Distinguish a test double from a model.** Fixtures are written by someone who read the code.
+  Where a model must read something out of a prompt, make the double read it out of the prompt too.
+- **Keep measured facts separate from interpretation** in tests, commits and `research.md`.
 - **`/handoff` before `/clear`.** It does not run automatically.

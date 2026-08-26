@@ -321,6 +321,81 @@ icon, and the `WHERE rejected IS TRUE OR status='Rejected'` query that proves wh
 go. **It also hardcodes a logo.dev token in public source** (`ApplicationTable.jsx:4`) — worth
 rotating.
 
+### Slice 005 — Resume Tailoring: the workflow, and what is load-bearing about it
+
+**Four nodes, one conditional edge, bounded at two revisions.** `Plan → Draft → Review → Revise`,
+orchestrated by LangGraph in `application/agents/tailoring/graph.py`, each node calling the existing
+`complete()` seam.
+
+| Stage | Reads | Returns | Responsibility |
+|---|---|---|---|
+| **Plan** | posting, match analysis (read-only), profile, guidelines | `TailoringPlan` | What to emphasise, what to de-emphasise, which gaps must **not** be misrepresented, and a strategy paragraph. Persisted (FR-009); Draft executes it rather than re-deciding it |
+| **Draft** | plan, posting, profile, guidelines | `TailoredDraft` | Rewrites, reorders, drops. **Returns only changed/dropped items, by id** — never the whole resume |
+| **Review** | profile (grounding), posting, **the composed resulting resume** | `ReviewResult` | `ungrounded` / `overstated` / `uncovered`, plus a confidence 0–100 |
+| **Revise** | findings, plan, profile, composed resume | `TailoredDraft` | Fixes what the Reviewer named. Escalates Sonnet→Opus on the second attempt **by task name**, never by a branch |
+
+**Invariants that are easy to break and expensive to rediscover:**
+
+- **Draft and Revise must return only changed items.** Output is 57–86% of cost and the slow half
+  of a completion (research R5). Showing a model the whole resume and letting it hand one back is
+  the cost problem, not a fix. A test asserts `_DRAFT` still says so.
+- **The Reviewer judges the *resulting* resume, not the diff.** `compose_resume()` applies the
+  draft over the master; `uncovered` is a question about the document and cannot be answered from a
+  diff. The master still travels whole, separately, because grounding asks whether a claim traces
+  to anything in the profile — including facts no draft touched.
+- **Every profile line the model may propose against carries `[id: <uuid>]`.** `_render_master`
+  renders them; `DraftedItem.source_item_id` maps a proposal back to a master row. Without ids
+  nothing maps, and a "successful" run persists a diff with zero changes.
+- **The severity split runs in the use case, before any row is written.** An `ungrounded` finding
+  discards its proposal and restores the owner's wording, so a fabricated claim has no persisted
+  representation and can never reach an approve button. A terminal `finalize` node would satisfy
+  every other rule and break this one.
+- **LangGraph orchestrates and owns nothing.** The test of it: deleting every LangGraph import and
+  rewriting the graph as a loop must require no schema change and no change to any use case.
+- **A validator's rules must be visible in the JSON Schema.** `model_validator(mode="after")` does
+  **not** serialise, and the schema is the whole contract the gateway sends. A conditional
+  requirement has to live in `Field(description=...)`, which does serialise. Two paid runs were
+  spent learning this.
+
+### The Match/Tailor scoreability rule
+
+`application/scoreability.py` → `scoreable_posting(application) -> str | None` is the **single**
+answer to "is there posting content to send". Both Match and Tailor ask it; nothing spends a
+completion when it returns `None`.
+
+Order: a `requirements IS NULL` legacy row is refused outright (research R1); then the
+`job_description` when it has content; then the requirements, composed one per line, when it does
+not. **Composition reformats and never adds** — a test walks every line and asserts it traces to a
+stored value.
+
+**Two different questions, and conflating them breaks FR-006.** Whether *scoring is meaningful* (a
+posting that yielded no requirements is "nothing to score against, not a zero") and whether *there
+is anything to send* are separate checks in `create_pending_analysis`. Collapsing them into one is
+a mistake that has already been made and caught once.
+
+### Testing philosophy this project actually runs on
+
+Beyond "tests first", five rules earned the hard way:
+
+1. **Drill the old behaviour.** A gate nobody has watched fail is not a gate. Break the
+   implementation, confirm the test names the exact violation, restore. When implementation
+   predates a test — as US1 did for most of US2 and US3 — ticking the task on inspection is a lie;
+   break it instead.
+2. **A gate with nothing to examine passes forever.** This has shipped **four** times: the route
+   enumeration examining zero routes, the Tailwind theme scan that never existed, an AST walk
+   finding zero call sites, and a `-k` selector matching no tests and printing a cheerful pass.
+   **Assert the count of what you examined**, and read `N deselected`.
+3. **Assert an absence against the right scope.** A prompt contains the master *and* the composed
+   resume; searching the whole prompt for text that is in both proves nothing. Radix portals broke
+   this the same way one slice earlier.
+4. **A test double is fed by someone who read the code; a model is not.** Every scripted fixture
+   supplied `source_item_id` because its author knew the mapping — so the suite proved the plumbing
+   worked when ids were supplied and never that a model *could* supply them. Where a model must
+   read something out of a prompt, make the double read it out of the prompt too.
+5. **Keep measured facts separate from interpretation**, in tests, in commits and in research
+   notes. "Eight `uncovered` findings exist" is measured; "the agent declined to invent" is a
+   reading. `research.md` R5 labels which is which, and so should anything added to it.
+
 ### Slice 004 decision recorded ahead of its spec
 
 `docs/08` §3.2.3 fixes the model per workflow node: **Sonnet** to analyze, draft and revise;
@@ -562,6 +637,45 @@ Recorded so they are not rediscovered.
 
 ---
 
+### Gotchas slice 005 proved
+
+Every one of these passed a green suite or a clean-looking log.
+
+- **`app.routes` no longer contains included routers.** FastAPI 0.141 wraps them as
+  `_IncludedRouter` with no `path`. Enumerate from `app.openapi()["paths"]`, which is what a client
+  can reach.
+- **An undeclared Tailwind theme colour generates no rule and no warning.** `bg-primary` computed
+  to `rgba(0,0,0,0)` and every default `<Button>` in the app rendered as bare text for three
+  slices. `@theme inline` is required, not `@theme`, or the values freeze at compile time and dark
+  mode never applies.
+- **`str(ValidationError)` embeds `input_value=`.** Logging it reinstates exactly the model output
+  the gateway strips. `safe_validation_errors()` in `application/ports.py` is shared by both layers;
+  it keeps `msg` only for `value_error`, where the text is ours.
+- **Usage is lost if it is only summed after the graph returns.** A graph that raises does not
+  return. `ExtractionFailedError` carries the usage it was billed for and `UsageRecorder` wraps the
+  seam, so a failed run records what it spent rather than reporting `$0` — which reads as free.
+- **A data-modifying CTE's INSERT is invisible to an UPDATE in the same statement.** The
+  version→run link matched zero rows and reported success.
+- **`func.now()` is transaction-scoped in PostgreSQL.** Every row written inside one transaction
+  gets the same `updated_at`. It is also why an in-flight tailoring run is invisible to other
+  sessions: `run_tailoring` flushes but the commit is at the end, so `REVIEWING` never becomes
+  observable and the interface shows "Writing" for the whole run.
+- **A background task's status changes are not visible until it commits.** Same cause as above,
+  stated for the interface: any "what is it doing now" display needs a committed transition.
+- **`docker compose logs --since` reads host-local time; the app logs UTC.** A silent 3-hour window
+  offset that returns the wrong lines and looks like an empty log.
+- **A Python replace-script that asserts before writing drops *all* edits when one string misses.**
+  A `tasks.md` update was lost while the code commit went through.
+- **`_latest_analysis` preferring the pointer hides a run in flight.** `current_match_analysis_id`
+  is written only on success (FR-015), so during a re-run the endpoint reported the *previous*
+  analysis — never `running` — and the interface stopped polling two seconds into a 26-second run.
+  An in-flight row is now preferred, but **only while it is plausibly in flight**: an abandoned
+  `pending` row falls through to the pointer, or a good score is replaced by `failed` for a run
+  nobody will finish.
+- **Local component state survives a route change.** Giving a tab polled state means React keeps it
+  across a navigation — same component, same position, different record. Both detail tabs are keyed
+  on `application.id`.
+
 ## Deliberate non-goals for now
 
 Do not build these without discussion — each was scoped out for a stated reason, recorded in
@@ -572,5 +686,19 @@ Do not build these without discussion — each was scoped out for a stated reaso
 - Multi-provider LLM routing (LiteLLM makes it configuration)
 - A full WYSIWYG resume editor
 
-And two things that are **not** optional despite being unbuilt: the Reviewer/evaluation layer
-(slice 005) and deployment (slice 002). Both are graded requirements.
+Slice 005 added four more, each declined with a reason rather than forgotten:
+
+- **Automatic retry on a validation failure.** A failed node currently ends the run. Whether to
+  retry is a recovery-behaviour decision, deliberately separated from correctness work.
+- **Tuning the Plan or Draft prompts.** Plan-to-draft adherence measured 0.5 and 0.167 across two
+  runs. **Two samples cannot justify a prompt change**, and the metric exists so slice 007 can
+  judge a distribution instead.
+- **Making `de_emphasise` measurable.** It holds free text with no ids, so "did the draft drop what
+  the plan named" is not computable. Fixing that means changing the Plan schema and therefore the
+  Plan prompt — the thing there is not yet evidence to justify.
+- **Assembling the approved version into a document.** `ResumeVersionItem` stores text, kind and
+  order but no role headings, dates or contact block, and reading them live from the profile would
+  break FR-031. The document is slice 006's, where export gives the snapshot a reason to exist.
+
+And two things that are **not** optional despite being unbuilt: the evaluation layer (slice 007)
+and deployment of slice 005. Evaluation is a graded requirement.
