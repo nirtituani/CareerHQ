@@ -1,0 +1,189 @@
+"""T032 — assertion 6: byte-determinism (FR-031), and the font the claim rests on.
+
+**Scope: the same runtime environment.** Rendering identical approved content twice on
+one runtime must produce byte-identical output. That is what FR-021 and Constitution IV
+actually need — verification compares *stored bytes* against a recorded checksum and
+never re-renders — and it is the failure FR-031 names: a **re-export**, which happens on
+the deployed runtime, silently producing different bytes after submissions exist.
+
+**It is deliberately not a claim about arbitrary machines.** A macOS developer host has
+no DejaVu and resolves to Verdana, so its bytes differ from the image's. Nothing in the
+specs asks a laptop to reproduce production bytes, and pretending otherwise would mean
+vendoring a font to satisfy a requirement nobody stated.
+
+**Separate processes, not two calls in one.** A creation timestamp captured at import
+would make an in-process comparison pass while every re-export differed — the exact
+defect this asserts against. The two renders are therefore two `subprocess` runs fed the
+same serialized document.
+
+**Measured before anything was written (2026-08-28): WeasyPrint 69.0 is already
+deterministic.** No `/CreationDate`, no `/ModDate`, no `/ID` in the trailer; the only
+metadata is `Producer`. **So no normalization code was added** — R10's premise that
+"PDFs embed a creation timestamp and document ID by default" does not hold at this
+version. These tests are the gate that catches a version bump reintroducing one, and
+they are drilled rather than trusted.
+"""
+
+from __future__ import annotations
+
+import io
+import json
+import pathlib
+import subprocess
+import sys
+
+import pdfplumber
+import pytest
+
+from careerhq.domain.schemas.document import ResumeDocument, ResumeSection
+from careerhq.infrastructure.documents.render import render_resume_pdf
+
+_BACKEND = pathlib.Path(__file__).resolve().parents[2]
+
+#: The font the ATS template asks for. Declared in the image so the guarantee does not
+#: rest on a transitive dependency — see the Dockerfile comment and T049.
+_REQUIRED_FONT_PACKAGE = "fonts-dejavu-core"
+
+
+def _sample() -> ResumeDocument:
+    return ResumeDocument(
+        full_name="Dana Levi",
+        contact=("dana@example.com", "+972 50 000 0000", "Tel Aviv"),
+        sections=(
+            ResumeSection(
+                heading="Summary",
+                lines=("Senior Backend Engineer with six years on payment platforms.",),
+            ),
+            ResumeSection(
+                heading="Experience",
+                lines=(
+                    "Owned the settlement service end to end, from schema to on-call.",
+                    "Cut reconciliation time from six hours to twenty minutes.",
+                ),
+            ),
+        ),
+    )
+
+
+def test_the_image_declares_the_font_the_template_depends_on() -> None:
+    """A1. The rendered bytes depend on which font resolves, so the font is a dependency.
+
+    **It was reaching the image transitively** — `python:3.12-slim` plus WeasyPrint's
+    native libraries happens to pull DejaVu today. A base image that stopped doing so
+    would change every rendered document, and FR-031's own failure mode is that this
+    surfaces only on a re-export. Declared explicitly, it is a guarantee rather than a
+    coincidence; asserted here so removing it is a test failure rather than a discovery.
+    """
+    lines = (_BACKEND / "Dockerfile").read_text().splitlines()
+
+    # **Comments are stripped first, and the drill is why.** The first version of this
+    # test searched the whole file, and passed after the package was deleted from the
+    # `apt-get install` list — because the comment above that list still named it. A test
+    # that a *word appears somewhere in a file* is not a test that a package is installed.
+    instructions = [line for line in lines if not line.strip().startswith("#")]
+    declared = [
+        line for line in instructions if line.strip().rstrip("\\").strip() == _REQUIRED_FONT_PACKAGE
+    ]
+
+    assert len(instructions) > 10, "the Dockerfile parsed to almost nothing; the scan is empty"
+    assert declared, (
+        f"{_REQUIRED_FONT_PACKAGE} is not an installed package in the backend image — it "
+        "appears in no instruction line. The ATS template renders in DejaVu Sans, and "
+        "relying on the base image to supply it makes the output of every export depend "
+        "on an undeclared transitive dependency."
+    )
+
+
+def _render_in_subprocess(script: pathlib.Path, payload: str, out: pathlib.Path) -> bytes:
+    # S603 suppressed by code: the argument vector is this test's own interpreter, a
+    # script this test wrote, and a payload this test serialized. Nothing is untrusted,
+    # and a separate process is exactly what makes the determinism claim meaningful.
+    result = subprocess.run(  # noqa: S603
+        [sys.executable, str(script), payload, str(out)],
+        cwd=_BACKEND,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0, f"the render subprocess failed: {result.stderr.decode()}"
+    return out.read_bytes()
+
+
+@pytest.fixture
+def render_script(tmp_path: pathlib.Path) -> pathlib.Path:
+    """A standalone renderer, so each render is a genuinely fresh interpreter."""
+    script = tmp_path / "render_once.py"
+    script.write_text(
+        "import json, sys\n"
+        "sys.path.insert(0, 'src')\n"
+        "from careerhq.domain.schemas.document import ResumeDocument, ResumeSection\n"
+        "from careerhq.infrastructure.documents.render import render_resume_pdf\n"
+        "raw = json.loads(sys.argv[1])\n"
+        "document = ResumeDocument(\n"
+        "    full_name=raw['full_name'],\n"
+        "    contact=tuple(raw['contact']),\n"
+        "    sections=tuple(\n"
+        "        ResumeSection(heading=s['heading'], lines=tuple(s['lines']))\n"
+        "        for s in raw['sections']\n"
+        "    ),\n"
+        ")\n"
+        "open(sys.argv[2], 'wb').write(render_resume_pdf(document))\n"
+    )
+    return script
+
+
+def test_rendering_the_same_document_twice_is_byte_identical(
+    render_script: pathlib.Path, tmp_path: pathlib.Path
+) -> None:
+    """FR-031, in the same runtime, across two interpreters.
+
+    The document is serialized once and handed to both runs, so "identical content" is a
+    property of the input rather than of two constructions that might differ.
+    """
+    document = _sample()
+    payload = json.dumps(
+        {
+            "full_name": document.full_name,
+            "contact": list(document.contact),
+            "sections": [{"heading": s.heading, "lines": list(s.lines)} for s in document.sections],
+        }
+    )
+
+    first = _render_in_subprocess(render_script, payload, tmp_path / "first.pdf")
+    second = _render_in_subprocess(render_script, payload, tmp_path / "second.pdf")
+
+    assert first, "the renderer produced no bytes"
+    assert first == second, (
+        f"two renders of identical content differ: {len(first)} vs {len(second)} bytes; "
+        f"first difference at offset "
+        f"{next((i for i, (a, b) in enumerate(zip(first, second, strict=False)) if a != b), 'n/a')}"
+    )
+
+
+def test_the_document_carries_no_time_varying_metadata() -> None:
+    """The mechanism behind the claim, asserted separately from the claim itself.
+
+    Byte-identity could hold today and break on a version bump that starts stamping a
+    creation date. Naming the specific keys means the failure says *what* changed rather
+    than only that two blobs differ.
+    """
+    rendered = render_resume_pdf(_sample())
+
+    # **Drilled unevenly, and that is recorded rather than smoothed over.** `/ID` is
+    # proven load-bearing: rendering with `pdf_identifier=os.urandom(16)` is named by this
+    # test, and `pdf_variant="pdf/a-3b"` is named too. **`/CreationDate` and `/ModDate`
+    # could NOT be induced** through WeasyPrint 69's public options — neither a
+    # `dcterms.created` meta tag, nor that tag with `custom_metadata=True`, nor the PDF/A
+    # variant put one in the file. They are kept as guards against a version that starts
+    # emitting one, not as clauses a drill has exercised.
+    for marker in (b"/CreationDate", b"/ModDate", b"/ID"):
+        assert marker not in rendered, (
+            f"{marker.decode()} appears in the rendered PDF; it varies per render and "
+            "makes FR-021's stable checksum unenforceable"
+        )
+
+    with pdfplumber.open(io.BytesIO(rendered)) as pdf:
+        metadata = dict(pdf.metadata)
+
+    time_varying = {k for k in metadata if k in {"CreationDate", "ModDate", "ID"}}
+    assert not time_varying, f"time-varying metadata present: {sorted(time_varying)}"
+    assert metadata, "no metadata at all — the assertion above would pass on any document"

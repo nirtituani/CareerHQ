@@ -41,6 +41,9 @@ import {
   type ResumeVersion,
   type TailoringRun,
   approveVersion,
+  exportVersion,
+  submitVersion,
+  versionDocumentUrl,
   decideItem,
   getTailoringRun,
   getVersion,
@@ -292,6 +295,38 @@ export function TailorTab({ applicationId }: { applicationId: string }) {
     }
   }
 
+  async function exportPdf() {
+    if (!version) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await exportVersion(version.id);
+      if (live.current) setVersion(result);
+    } catch (cause: unknown) {
+      if (live.current) setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      if (live.current) setBusy(false);
+    }
+  }
+
+  async function markSubmitted() {
+    if (!version) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await submitVersion(version.id);
+      // **Only after it resolves.** The screen must not describe a résumé as sent while
+      // the request is still in flight: this is the action a person stops thinking about
+      // the job after, and a premature "Submitted" is indistinguishable from one that
+      // worked.
+      if (live.current) setVersion(result);
+    } catch (cause: unknown) {
+      if (live.current) setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      if (live.current) setBusy(false);
+    }
+  }
+
   async function approve() {
     if (!version) return;
     setBusy(true);
@@ -370,7 +405,12 @@ export function TailorTab({ applicationId }: { applicationId: string }) {
     );
   }
 
-  const approved = version.status === "ready";
+  const submitted = version.status === "submitted";
+  const exported = version.status === "exported";
+  // A submitted version still has a stored document, so the download stays; what it no
+  // longer has is a way forward. Export is refused for it by `ensure_exportable` — the
+  // state is terminal — so offering the button would be offering a 409.
+  const approved = version.status === "ready" || exported || submitted;
   const proposals = version.items.filter(
     (item) => item.proposed_text !== null || item.findings.length > 0,
   );
@@ -387,8 +427,19 @@ export function TailorTab({ applicationId }: { applicationId: string }) {
             className="text-2xl leading-none"
             style={{ fontFamily: "var(--font-display)", color: "var(--foreground)" }}
           >
-            {approved ? "Approved" : "Ready for your approval"}
+            {submitted ? "Sent" : approved ? "Approved" : "Ready for your approval"}
           </p>
+          {/* Said once the request has actually resolved, never on the click. This is
+              the state a person stops checking the job after, so it has to describe
+              what happened rather than what was asked for — and it says the one thing
+              that is not obvious: this version is finished, and changing the résumé for
+              this job means tailoring it again (FR-025). */}
+          {submitted && (
+            <p data-testid="submitted-note" className="mt-1.5 text-sm" style={{ color: "var(--muted)" }}>
+              This is the résumé on record for this job. To change it, tailor this job
+              again — that produces a new version and leaves this one as it was sent.
+            </p>
+          )}
           <p className="mt-1.5 text-sm" style={{ color: "var(--muted)" }}>
             {version.confidence_score !== null && (
               <>
@@ -407,6 +458,38 @@ export function TailorTab({ applicationId }: { applicationId: string }) {
             import-review precedent, where an untouched review adds everything
             not discarded. Said out loud, because a person who has read two of
             eleven rows should know what the button means before pressing it. */}
+        {approved && (
+          /* Export renders the approved items to a PDF and stores it (FR-015).
+             The download is a separate link because downloading again must not
+             export again — a second export is a second stored copy and a second
+             record, which is not what a person pressing "download" is asking for. */
+          <div className="flex items-center gap-3" data-testid="export-controls">
+            {(exported || submitted) && (
+              <a
+                data-testid="download-pdf"
+                href={versionDocumentUrl(version.id)}
+                className="text-sm underline"
+                style={{ color: "var(--foreground)" }}
+              >
+                Download PDF
+              </a>
+            )}
+            {!submitted && (
+              <Button variant="outline" disabled={busy} onClick={exportPdf}>
+                {busy ? "Exporting…" : exported ? "Export again" : "Export as PDF"}
+              </Button>
+            )}
+            {/* Offered only once a document exists, because a submission is a record
+                *of that document* — there is nothing to freeze before then, and the
+                endpoint refuses it. */}
+            {exported && (
+              <Button data-testid="submit-version" disabled={busy} onClick={markSubmitted}>
+                {busy ? "Marking…" : "Mark as submitted"}
+              </Button>
+            )}
+          </div>
+        )}
+
         {!approved && (
           <div className="text-right">
             <Button disabled={busy} onClick={approve}>
@@ -420,6 +503,17 @@ export function TailorTab({ applicationId }: { applicationId: string }) {
           </div>
         )}
       </div>
+
+      {/* A refused or failed action has to say so **here**. Until T037 the only
+          error surface was the start view, so a failure on this screen — an
+          export refused with 409, an item decision rejected — set state nobody
+          rendered and the button simply stopped being busy. Silence after a
+          click reads as success. */}
+      {error && (
+        <p role="alert" data-testid="tailor-error" className="mt-4 text-sm" style={{ color: "var(--muted)" }}>
+          {error}
+        </p>
+      )}
 
       {/* `uncovered` findings concern the draft as a whole — there is no item
           for an unaddressed requirement to attach to, and inventing one would

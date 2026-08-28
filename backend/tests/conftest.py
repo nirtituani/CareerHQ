@@ -18,6 +18,21 @@ from collections.abc import AsyncIterator, Iterator
 import pytest
 import pytest_asyncio
 
+# **Homebrew on Apple Silicon installs to a prefix the dynamic linker does not
+# search.** WeasyPrint binds Pango, Cairo and GObject through cffi and `dlopen`s
+# them at import; without this the import fails with a message naming none of
+# the libraries, which reads as a broken install rather than a search-path
+# problem. `brew install pango` is the documented T049 prerequisite and is not
+# sufficient on its own here.
+#
+# Set before any test module imports the renderer, and only as a fallback, so a
+# developer who exports it in their shell — or a Linux/Docker environment where
+# the libraries are already on the default path — is unaffected.
+_BREW_LIB = "/opt/homebrew/lib"
+if os.path.isdir(_BREW_LIB) and "DYLD_FALLBACK_LIBRARY_PATH" not in os.environ:
+    os.environ["DYLD_FALLBACK_LIBRARY_PATH"] = _BREW_LIB
+
+
 # Set before careerhq.config is imported anywhere: Settings reads the
 # environment at construction, and several fields are deliberately required.
 TEST_ENV: dict[str, str] = {
