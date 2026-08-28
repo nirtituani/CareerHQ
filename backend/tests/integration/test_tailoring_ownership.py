@@ -249,8 +249,12 @@ async def test_no_tailoring_route_accepts_an_owner_parameter(app: Any) -> None:
         for path in app.openapi()["paths"]
         if path.startswith("/api/versions/") or path.endswith(("/tailor", "/versions"))
     }
-    assert len(tailoring_paths) == 6, (
-        f"expected the six contracted paths, found {sorted(tailoring_paths)}"
+    # **Nine since T043**, which added the submit operation; eight since T037, which added
+    # the export operation and the document download. The number is re-pinned rather than
+    # relaxed: the point of counting is that a route cannot appear without someone
+    # deciding it should.
+    assert len(tailoring_paths) == 9, (
+        f"expected the nine contracted paths, found {sorted(tailoring_paths)}"
     )
 
     offenders: list[str] = []
@@ -263,12 +267,16 @@ async def test_no_tailoring_route_accepts_an_owner_parameter(app: Any) -> None:
     assert not offenders, f"routes taking a client-supplied owner: {offenders}"
 
 
-async def test_the_six_contracted_routes_all_exist() -> None:
+async def test_the_contracted_routes_all_exist() -> None:
     """T054's count, asserted rather than eyeballed.
 
     The contract and `tasks.md` disagreed about this once — five routes against
     six — and `/speckit-analyze` is what caught it. A number in prose is not
     checkable; this is.
+
+    **Six until T037, eight after it, nine since T043**: export, the document download,
+    and submit. All are listed explicitly rather than the assertion being loosened to a
+    minimum, because the value of this gate is that an unplanned route fails it.
     """
     registered = {
         (sorted(route.methods)[0], route.path)  # type: ignore[attr-defined]
@@ -281,4 +289,7 @@ async def test_the_six_contracted_routes_all_exist() -> None:
         ("PATCH", "/versions/{version_id}/items/{item_id}"),
         ("POST", "/versions/{version_id}/approve"),
         ("GET", "/versions/{version_id}/run"),
+        ("POST", "/versions/{version_id}/export"),
+        ("GET", "/versions/{version_id}/document"),
+        ("POST", "/versions/{version_id}/submit"),
     }

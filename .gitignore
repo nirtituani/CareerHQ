@@ -60,3 +60,14 @@ testing files/
 # are disposable: the branch holds the work, and the worktree is removed once it
 # is merged.
 .claude/worktrees/
+
+# Slice 006 corpus-research example CVs. Two distinct reasons, one rule:
+#   - `cv 1/` … `cv 6/` are screenshots of REAL people's CVs, with real given
+#     names in the filenames and whatever contact details the originals carried.
+#     Same hazard as `testing files/` above, and this repository is public.
+#   - `*-reference.pdf` are licensed assets cleared for internal course use
+#     only, explicitly NOT for public or commercial distribution.
+# The files stay on disk for the research; they must not reach a commit.
+# `before-after-analysis.md` is the canonical artifact and is deliberately NOT
+# ignored — it stands on its own without the images.
+specs/006-document-retrieval/corpus-research/examples/

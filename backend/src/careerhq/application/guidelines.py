@@ -62,17 +62,67 @@ class GuidelineQuery:
 
     role_title: str
     requirements: Sequence[str] = ()
+    #: Which market this CV is being written for. **Added at T027, and it is the
+    #: second half of FR-038.** Precedence is scoped *"for Israeli-market CVs"*,
+    #: so retrieval that cannot tell which market it is serving cannot apply it —
+    #: a gap that survives any amount of topic metadata, and that R13 surfaced
+    #: alongside the topic one.
+    #:
+    #: Domain vocabulary, not retrieval's: it says something about the document
+    #: being written, which is exactly what this query is for. `"global"` is the
+    #: default so an unchanged caller keeps its existing behaviour.
+    #:
+    #: **The default stays `global`, and V1's actual answer is stated at the call
+    #: site** — `tailor_resume.V1_TARGET_MARKET`, decided as OQ-006-B on
+    #: 2026-08-28. Expressing a product decision by moving a default here would
+    #: make every future caller Israeli by omission, which is the invisible
+    #: inference that decision exists to avoid, relocated one layer down.
+    market: str = "global"
+    #: Unused as of slice 006 (decision D2): guidance is retrieved once for the
+    #: whole run, so there is no per-section query to carry. Kept because it
+    #: costs nothing and is exactly what a future per-node implementation would
+    #: need — but it is dead today, and pretending otherwise would be worse.
     section: str | None = None
 
 
 class GuidelineSource(Protocol):
     """One question in, guidance out.
 
-    Called by the Plan and Draft nodes rather than ahead of the graph, because
-    Draft's query depends on what Plan decided. `docs/08` §3.2.3 draws
-    "Retrieve resume guidelines" as a step between Analyze and Draft; it is
-    **not** a graph node, and making it one in slice 006 would be a workflow
-    change caused by nothing but RAG arriving.
+    **Called once, in the use case, before the graph is invoked** — the result
+    is placed in `TailoringState.guidelines` and shared by every node that
+    consumes it (today Plan and Draft). Slice 006 decision D2.
+
+    An earlier version of this docstring said the opposite: that Plan and Draft
+    would each call it, because Draft's query depends on what Plan decided. The
+    implementation never did that, and slice 006 resolved the conflict in favour
+    of the implementation rather than the prose. The reasoning, so it is not
+    re-litigated:
+
+    * The rendered guidance block is **507 tokens, 5.3% of the ~9,630-token
+      Draft prompt**, and retrieval replaces it with at most **1,500 tokens**
+      under the FR-014 ceiling — ~15.6% of that prompt. Plan-aware retrieval's
+      real job is fitting a context budget, and at this scale no such budget
+      binds. (An earlier version of this bullet said "~1,690 tokens at 40
+      retrieved chunks", computed at 42 tokens/rule; corpus rules measure ~76,
+      so 40 chunks cannot fit under the ceiling at all. The ceiling is the
+      honest bound and it makes this argument stronger, not weaker.)
+    * Resume-writing guidance is largely **job-independent**. "Never invent a
+      number", "no tables or columns" hold for every posting. The plan decides
+      which *profile items* to emphasise; it does not imply different *writing
+      advice*. So the plan adds little to a query that already carries the job
+      requirements the plan was derived from.
+    * Per-node retrieval would have changed the Draft node's body and this
+      graph's wiring for a benefit nobody has measured — churn in a workflow
+      that had just stabilised.
+
+    What is still true, and still forbids the other shape: retrieval is **not a
+    graph node**, and making it one would be a workflow change caused by nothing
+    but RAG arriving.
+
+    **When to revisit.** Only if slice 007's retrieval-quality metric shows the
+    single shared query missing guidance a per-node query would have found. That
+    is a measurement, not a preference — and until it exists, the shared call
+    stands.
     """
 
     async def guidelines_for(self, *, context: GuidelineQuery) -> Sequence[Guideline]: ...

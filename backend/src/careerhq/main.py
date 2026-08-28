@@ -15,6 +15,7 @@ from fastapi import FastAPI
 from starlette.middleware.sessions import SessionMiddleware
 
 from careerhq.config import Settings, get_settings
+from careerhq.infrastructure.embeddings import get_embedding_source
 from careerhq.infrastructure.logging import RequestContextMiddleware, configure_logging
 from careerhq.infrastructure.security import SecurityHeadersMiddleware
 
@@ -32,6 +33,24 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # Not fatal: the platform runs and reports healthy without it, so the
         # environment can be verified before a Google Cloud client exists.
         logger.warning("google oauth is not configured; sign-in will be unavailable")
+    if settings.guideline_source == "retrieval":
+        # T030, deferred from T008 because nothing held an embedder until now.
+        # SC-007 excludes model initialisation from its budget *because* it is
+        # paid at startup — which is only true if something actually pays it
+        # here. Skipped under the static rubric: loading 64 MB of weights a
+        # static run will never consult is pure startup cost.
+        try:
+            await get_embedding_source().warm_up()
+        except Exception:
+            # **Not fatal, and FR-010 decides that rather than a preference.**
+            # Retrieval may never fail a tailoring run, so it may certainly
+            # never fail the process: every run falls back to the static rubric
+            # and records that it did. A degraded platform, not no platform.
+            logger.warning(
+                "the embedding model failed to warm up; runs will fall back to the "
+                "static rubric until it loads",
+                exc_info=True,
+            )
     yield
     logger.info("careerhq shutting down")
 

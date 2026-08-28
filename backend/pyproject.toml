@@ -57,6 +57,52 @@ dependencies = [
     # provider bindings are not, and `tests/unit/test_architecture.py` forbids
     # them by name.
     "langgraph>=1.2.11,<1.3",
+    # -- Slice 006 ---------------------------------------------------------
+    # Local embeddings over ONNX. Apache-2.0 (the PyPI "Other/Proprietary"
+    # classifier is mis-set upstream and contradicted by the repository's own
+    # LICENSE file); the default model `BAAI/bge-small-en-v1.5` is MIT and
+    # emits 384 dimensions, which is what `vector(384)` was sized for.
+    #
+    # `sentence-transformers` is deliberately NOT used, despite being the
+    # obvious choice and what `embedding_model` originally named. It pulls
+    # `torch`, whose cp312 manylinux wheel is 527 MB, roughly doubling a
+    # backend image that already measures 1.01 GB — for a component whose
+    # whole job is turning ~35 short rules and one query into vectors. The
+    # fastembed model is 67 MB. Same dimension, same port, no schema change
+    # (spec.md D3, and the T001 blocker report).
+    "fastembed>=0.8,<0.9",
+    # The SQLAlchemy binding for the `vector` column type. The extension has
+    # been enabled in the database since migration 0001; this is the Python
+    # side, and without it the Vector() column type does not exist. Zero
+    # dependencies of its own.
+    "pgvector>=0.5,<0.6",
+    # PDF rendering. BSD-3, no browser binary — the template stays reviewable
+    # HTML/CSS. NOT pure Python: it binds Pango/Cairo/GObject through cffi, so
+    # the image needs libpango-1.0-0, libpangoft2-1.0-0, libharfbuzz0b and
+    # libcairo2, and macOS dev needs `brew install pango`. A missing native
+    # library fails at IMPORT, not at render (T049). Chosen over ReportLab (template becomes
+    # imperative Python nobody reviews as a design) and headless Chrome
+    # (hundreds of MB and a flaky CI dependency). Same licensing discipline
+    # that rejected PyMuPDF above (spec.md D7).
+    "weasyprint>=69,<70",
+    # Corpus front-matter (T025). The corpus README specifies YAML front-matter,
+    # so it is parsed with a YAML parser rather than approximated with regex —
+    # a hand parser silently mis-reads quoting, lists and anything multi-line.
+    # Already present transitively via langchain-core and huggingface_hub;
+    # declared because depending on somebody else's dependency tree is how a
+    # working install breaks on an unrelated upgrade.
+    "pyyaml>=6.0,<7.0",
+    # Corpus chunk token counts (T025). `knowledge_chunks.token_count` exists so
+    # the FR-014 ceiling can be enforced without re-tokenising every candidate,
+    # which requires the count to be stable and computed once at ingestion.
+    #
+    # cl100k_base is an APPROXIMATION of Anthropic's tokenizer, not a match.
+    # That is acceptable and the reason is worth stating: the ceiling is a cost
+    # and latency budget, not an API limit, so being a few percent out spends a
+    # fraction of a cent — whereas chars/4 is out by considerably more, and the
+    # embedding model's WordPiece tokenizer measures a different thing entirely.
+    # Also transitive via litellm today, and declared for the same reason as above.
+    "tiktoken>=0.13,<0.14",
 ]
 
 [project.optional-dependencies]
@@ -66,6 +112,10 @@ dev = [
     "pytest-cov>=7.1,<8.0",
     "ruff>=0.16,<0.17",
     "mypy>=2.3,<2.4",
+    # Stubs for the corpus front-matter parser (T025). Without them `mypy --strict`
+    # fails on `import yaml` alone; a dev-only dependency because nothing at
+    # runtime needs it.
+    "types-PyYAML>=6.0,<7.0",
 ]
 
 [build-system]
@@ -118,7 +168,9 @@ module = ["tests.*", "alembic.*"]
 disallow_untyped_defs = false
 
 [[tool.mypy.overrides]]
-module = ["authlib.*", "boto3.*", "botocore.*"]
+# `weasyprint` ships no `py.typed` (T031). Listed alongside the others rather than
+# silenced at the import site, so the set of untyped dependencies stays in one place.
+module = ["authlib.*", "boto3.*", "botocore.*", "weasyprint.*"]
 ignore_missing_imports = true
 
 # ---------------------------------------------------------------------------

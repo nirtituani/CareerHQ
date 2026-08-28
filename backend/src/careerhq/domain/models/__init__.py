@@ -26,6 +26,14 @@ from careerhq.domain.models.application import (
 )
 from careerhq.domain.models.identity import ProfessionalProfile, User
 from careerhq.domain.models.imports import ExtractionItem, ImportedResume
+from careerhq.domain.models.knowledge import (
+    EMBEDDING_DIMENSIONS,
+    KnowledgeChunk,
+    KnowledgeDocument,
+    Market,
+    SourceType,
+    TrustLevel,
+)
 from careerhq.domain.models.match import (
     MatchAnalysis,
     MatchBand,
@@ -53,6 +61,7 @@ from careerhq.domain.models.profile import (
 from careerhq.domain.models.provenance import ImportStatus, ItemDecision, Source
 from careerhq.domain.models.tailoring import (
     IN_FLIGHT_STATUSES,
+    ExportedDocument,
     FindingKind,
     ProposalDecision,
     ResumeVersion,
@@ -60,12 +69,14 @@ from careerhq.domain.models.tailoring import (
     ReviewerFinding,
     RunStatus,
     SourceKind,
+    SubmittedResume,
     TailoringRun,
     TailoringRunCall,
     VersionStatus,
 )
 
 __all__ = [
+    "EMBEDDING_DIMENSIONS",
     "IN_FLIGHT_STATUSES",
     "Application",
     "ApplicationStatusHistory",
@@ -74,12 +85,16 @@ __all__ = [
     "ContactInformation",
     "Education",
     "ExperienceBullet",
+    "ExportedDocument",
     "ExtractionItem",
     "FindingKind",
     "ImportStatus",
     "ImportedResume",
     "ItemDecision",
+    "KnowledgeChunk",
+    "KnowledgeDocument",
     "Language",
+    "Market",
     "MatchAnalysis",
     "MatchBand",
     "MatchRequirement",
@@ -101,9 +116,12 @@ __all__ = [
     "Skill",
     "Source",
     "SourceKind",
+    "SourceType",
+    "SubmittedResume",
     "SummaryBlock",
     "TailoringRun",
     "TailoringRunCall",
+    "TrustLevel",
     "User",
     "VersionStatus",
     "VolunteerExperience",

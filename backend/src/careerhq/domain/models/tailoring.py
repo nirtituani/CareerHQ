@@ -1,9 +1,15 @@
 """Resume tailoring — the version, the run that produced it, and what it holds.
 
-Four tables. `resume_versions` is the business document; `tailoring_runs` is the
-audit record of one workflow execution; `resume_version_items` is what the diff
-renders and what approval writes to; `reviewer_findings` is what the Reviewer
-caught.
+Six tables. `resume_versions` is the business document; `tailoring_runs` is the
+audit record of one workflow execution; `tailoring_run_calls` itemises what each
+call in that run was billed; `resume_version_items` is what the diff renders and
+what approval writes to; `reviewer_findings` is what the Reviewer caught.
+
+Slice 006 adds the two that carry a version out of the system:
+`exported_documents` records a rendered PDF, and `submitted_resumes` records
+what was actually sent to an employer — **insert-only**, because Constitution IV
+requires an application in `Applied` or later to be able to show the exact
+document it sent.
 
 **Two absences are load-bearing**, in the manner of `application.py` and
 `match.py`:
@@ -67,9 +73,23 @@ class VersionStatus(enum.StrEnum):
     actions, different interfaces, and a person watching a spinner cannot tell
     which one they are in. `AWAITING_APPROVAL` is the missing half.
 
-    `EXPORTED` and `SUBMITTED` are **deliberately absent**. They belong to slice
-    006, where export gives them something to mean. A state nothing can reach is
-    a claim the code does not support.
+    `EXPORTED` and `SUBMITTED` were deliberately absent until slice 006, which
+    is the slice that gives them something to mean — a state nothing can reach
+    is a claim the code does not support. Both arrive here with the render and
+    submit paths that reach them (FR-019, FR-021).
+
+    **`READY` is the state `data-model.md` calls `APPROVED`.** The document is
+    right about the shape of the lifecycle and wrong about that one name; the
+    value has been `ready` since migration `0010` and renaming it would rewrite
+    rows that are this project's only paid evaluation evidence, for no gain.
+    The lifecycle is therefore:
+
+        DRAFT → TAILORING → REVIEWING → AWAITING_APPROVAL → READY
+              → EXPORTED → SUBMITTED
+
+    **`SUBMITTED` is terminal.** No transition leaves it: what was sent to an
+    employer is a historical fact, and revising after submission creates a new
+    version rather than moving this one (FR-025).
     """
 
     DRAFT = "draft"
@@ -77,6 +97,8 @@ class VersionStatus(enum.StrEnum):
     REVIEWING = "reviewing"
     AWAITING_APPROVAL = "awaiting_approval"
     READY = "ready"
+    EXPORTED = "exported"
+    SUBMITTED = "submitted"
 
 
 #: Statuses during which the workflow is running. The partial unique index
@@ -183,7 +205,8 @@ class ResumeVersion(Base):
             postgresql_where=text("status IN ('tailoring', 'reviewing')"),
         ),
         CheckConstraint(
-            "status IN ('draft', 'tailoring', 'reviewing', 'awaiting_approval', 'ready')",
+            "status IN ('draft', 'tailoring', 'reviewing', 'awaiting_approval', 'ready', "
+            "'exported', 'submitted')",
             name="ck_resume_versions_status",
         ),
         CheckConstraint(
@@ -560,3 +583,116 @@ class ReviewerFinding(Base):
 
     run: Mapped[TailoringRun] = relationship(back_populates="findings")
     item: Mapped[ResumeVersionItem | None] = relationship(back_populates="findings")
+
+
+class ExportedDocument(Base):
+    """One rendered PDF of one approved version.
+
+    Recorded at export, **before** submission. Submission then promotes an
+    existing export rather than re-rendering, so the checksum travels with the
+    bytes instead of being recomputed over different ones — which is the whole
+    reason this table exists separately from `submitted_resumes`.
+
+    `checksum_sha256` is taken **over the stored bytes**, not over the content
+    that produced them (R11). Only the stored bytes are what an employer
+    received, and only they can be re-verified later without re-rendering.
+
+    **Not unique on `resume_version_id`, deliberately.** Re-exporting an
+    approved version is legitimate — a download that failed, a second copy —
+    and FR-031's byte-determinism means the repeat produces identical bytes and
+    an identical checksum. A unique constraint would refuse a harmless action
+    and buy nothing; the honest record is that the export happened twice.
+    """
+
+    __tablename__ = "exported_documents"
+
+    id: Mapped[uuid.UUID] = _pk()
+    resume_version_id: Mapped[uuid.UUID] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("resume_versions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    #: Object-storage locator for the rendered bytes.
+    #:
+    #: **Not `storage_key`**, which `data-model.md` calls it. That name already
+    #: belongs to `ImportedResume` — the uploaded CV — and
+    #: `test_the_uploaded_file_is_read_by_exactly_one_module` finds readers of it
+    #: by attribute name, so a third table using the same word makes every
+    #: future line in this file look like a read of somebody's uploaded file.
+    #: The gate failed on exactly that the moment these models were added. The
+    #: alternative was widening its allow-list to this module, which would blind
+    #: it here permanently; a distinct name keeps it sharp and costs one word.
+    document_storage_key: Mapped[str] = mapped_column(String(512), nullable=False)
+    checksum_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    byte_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    exported_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        # A checksum is a fixed-width hex digest or it is not a checksum. This
+        # is what makes FR-021's re-verification a comparison rather than a
+        # guess about what was stored.
+        CheckConstraint(
+            "checksum_sha256 ~ '^[0-9a-f]{64}$'", name="ck_exported_documents_checksum_hex"
+        ),
+        CheckConstraint("byte_size > 0", name="ck_exported_documents_byte_size"),
+    )
+
+
+class SubmittedResume(Base):
+    """What was actually sent to an employer. **Insert-only.**
+
+    The strongest claim in this slice, and the one Constitution IV rests on: an
+    application in `Applied` or later must be able to show the exact document
+    that was sent, unchanged by anything that happened afterwards (FR-023).
+
+    That is why nothing here is derived at read time and nothing points at the
+    profile. `document_storage_key` and `checksum_sha256` are a snapshot of bytes that
+    already exist — the same discipline `ResumeVersionItem.original_text`
+    already applies to text, one layer up.
+
+    **There is no `UPDATE` path and no `updated_at` column.** The absence of the
+    column is deliberate and load-bearing: a row that cannot record having been
+    modified is a row nothing quietly modifies. Attempts to modify are refused
+    explicitly rather than ignored (FR-022), which is the use case's job and is
+    drilled by T039 — the schema's contribution is to offer nothing to write to.
+
+    **Unique on `resume_version_id`.** One submission per version; a second
+    send is a new version (FR-025), not a second row against the old one. In the
+    schema, because two clicks can race an application-level check.
+    """
+
+    __tablename__ = "submitted_resumes"
+
+    id: Mapped[uuid.UUID] = _pk()
+    resume_version_id: Mapped[uuid.UUID] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("resume_versions.id", ondelete="RESTRICT"),
+        nullable=False,
+        unique=True,
+    )
+    #: Satisfies Constitution IV's Applied-or-later requirement: the submission
+    #: is bound to the application it was sent for, not merely to the version.
+    application_id: Mapped[uuid.UUID] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("applications.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    #: See `ExportedDocument.document_storage_key` for why this is not called
+    #: `storage_key`.
+    document_storage_key: Mapped[str] = mapped_column(String(512), nullable=False)
+    checksum_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    byte_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    submitted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "checksum_sha256 ~ '^[0-9a-f]{64}$'", name="ck_submitted_resumes_checksum_hex"
+        ),
+        CheckConstraint("byte_size > 0", name="ck_submitted_resumes_byte_size"),
+    )

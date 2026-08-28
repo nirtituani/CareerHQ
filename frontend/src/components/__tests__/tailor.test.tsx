@@ -8,7 +8,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TailorDiffItem } from "@/components/applications/tailor-diff-item";
 import { TailorTab } from "@/components/applications/tailor-tab";
 import { ApiError } from "@/lib/api";
-import type { ResumeVersion, ReviewerFinding, VersionItem } from "@/lib/api";
+import type {
+  ExportedVersion,
+  ResumeVersion,
+  ReviewerFinding,
+  SubmittedVersion,
+  VersionItem,
+} from "@/lib/api";
 
 /**
  * The Tailor tab, at the surface where Principle II is actually enforced.
@@ -38,6 +44,8 @@ vi.mock("@/lib/api", async (importOriginal) => {
     startTailoring: vi.fn(),
     decideItem: vi.fn(),
     approveVersion: vi.fn(),
+    exportVersion: vi.fn(),
+    submitVersion: vi.fn(),
   };
 });
 
@@ -108,8 +116,9 @@ async function renderTab(value: ResumeVersion | null) {
   if (value) mocked.getVersion.mockResolvedValue(value);
   mocked.getTailoringRun.mockRejectedValue(new ApiError(404, "No run for this version."));
 
-  render(<TailorTab applicationId="app-1" />);
+  const rendered = render(<TailorTab applicationId="app-1" />);
   await waitFor(() => expect(screen.queryByText("Loading…")).toBeNull());
+  return rendered;
 }
 
 beforeEach(() => {
@@ -574,5 +583,167 @@ describe("correcting a proposal by hand", () => {
     const field = screen.getByLabelText(/edit experience/i);
     expect(field.tagName).toBe("TEXTAREA");
     expect(field).not.toHaveAttribute("contenteditable");
+  });
+});
+
+/**
+ * T037 — the export affordance.
+ *
+ * Export and download are separate controls on purpose: downloading again must not
+ * export again, because a second export is a second stored copy and a second record,
+ * which is not what someone pressing "download" is asking for.
+ */
+describe("exporting an approved version", () => {
+  const exported = (overrides: Partial<ResumeVersion> = {}) =>
+    ({
+      ...version({ status: "exported", ...overrides }),
+      export: {
+        checksum_sha256: "a".repeat(64),
+        byte_size: 10096,
+        exported_at: "2026-08-28T10:00:00+00:00",
+      },
+    }) as ExportedVersion;
+
+  it("offers no export until the version is approved", async () => {
+    await renderTab(version({ status: "awaiting_approval" }));
+
+    expect(screen.queryByTestId("export-controls")).toBeNull();
+  });
+
+  it("exports an approved version through the API and shows the download", async () => {
+    mocked.exportVersion.mockResolvedValue(exported());
+    await renderTab(version({ status: "ready" }));
+
+    // Approved but not yet exported: nothing to download.
+    expect(screen.queryByTestId("download-pdf")).toBeNull();
+
+    await userEvent.click(screen.getByRole("button", { name: "Export as PDF" }));
+
+    expect(mocked.exportVersion).toHaveBeenCalledWith("version-1");
+    await waitFor(() => expect(screen.getByTestId("download-pdf")).toBeTruthy());
+    expect(screen.getByTestId("download-pdf").getAttribute("href")).toBe(
+      "/api/versions/version-1/document",
+    );
+  });
+
+  it("keeps export available for an already-exported version", async () => {
+    await renderTab(exported());
+
+    expect(screen.getByRole("button", { name: "Export again" })).toBeTruthy();
+    expect(screen.getByTestId("download-pdf")).toBeTruthy();
+  });
+
+  it("shows the refusal instead of pretending the export happened", async () => {
+    mocked.exportVersion.mockRejectedValue(
+      new ApiError(409, "This version was already submitted and cannot be exported again."),
+    );
+    await renderTab(version({ status: "ready" }));
+
+    await userEvent.click(screen.getByRole("button", { name: "Export as PDF" }));
+
+    await waitFor(() =>
+      expect(screen.getByText(/already submitted/)).toBeTruthy(),
+    );
+    expect(screen.queryByTestId("download-pdf")).toBeNull();
+  });
+});
+
+/**
+ * T043 — the submit affordance.
+ *
+ * Submission is the one action in this slice that cannot be taken back: it freezes what
+ * was sent (FR-021), locks the version (FR-022), and a change of mind afterwards means a
+ * **new** version rather than an edit to this one (FR-025). So the two things worth
+ * proving here are that it is not offered where it is not possible, and that a refusal is
+ * visible — a 409 that leaves the screen looking unchanged reads as success, which on
+ * this button means a person believes a résumé is on record when none is.
+ */
+describe("submitting an exported version", () => {
+  const exported = (overrides: Partial<ResumeVersion> = {}) =>
+    ({
+      ...version({ status: "exported", ...overrides }),
+      export: {
+        checksum_sha256: "a".repeat(64),
+        byte_size: 10096,
+        exported_at: "2026-08-28T10:00:00+00:00",
+      },
+    }) as ExportedVersion;
+
+  const submitted = () =>
+    ({
+      ...version({ status: "submitted" }),
+      submission: {
+        resume_version_id: "version-1",
+        checksum_sha256: "b".repeat(64),
+        byte_size: 10096,
+        submitted_at: "2026-08-28T12:00:00+00:00",
+      },
+    }) as SubmittedVersion;
+
+  it("does not offer submission for a version that has not been exported", async () => {
+    await renderTab(version({ status: "ready" }));
+
+    expect(screen.getByTestId("export-controls")).toBeTruthy();
+    expect(screen.queryByTestId("submit-version")).toBeNull();
+  });
+
+  it("submits an exported version through the API", async () => {
+    mocked.submitVersion.mockResolvedValue(submitted());
+    await renderTab(exported());
+
+    await userEvent.click(screen.getByTestId("submit-version"));
+
+    expect(mocked.submitVersion).toHaveBeenCalledWith("version-1");
+    await waitFor(() => expect(screen.getByTestId("submitted-note")).toBeTruthy());
+  });
+
+  it("offers no further submission or export once the version is submitted", async () => {
+    await renderTab(submitted());
+
+    expect(screen.queryByTestId("submit-version")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Export/ })).toBeNull();
+    // The document is still readable — downloading is not exporting, and a person is
+    // entitled to a copy of what they sent.
+    expect(screen.getByTestId("download-pdf")).toBeTruthy();
+  });
+
+  it("shows the refusal instead of pretending the submission happened", async () => {
+    mocked.submitVersion.mockRejectedValue(
+      new ApiError(409, "This version is ready and has not been exported."),
+    );
+    await renderTab(exported());
+
+    await userEvent.click(screen.getByTestId("submit-version"));
+
+    await waitFor(() => expect(screen.getByTestId("tailor-error")).toBeTruthy());
+    expect(screen.getByText(/has not been exported/)).toBeTruthy();
+    expect(screen.queryByTestId("submitted-note")).toBeNull();
+  });
+
+  it("does not report success while the request is still in flight", async () => {
+    let settle: (value: SubmittedVersion) => void = () => {};
+    mocked.submitVersion.mockReturnValue(
+      new Promise<SubmittedVersion>((resolve) => {
+        settle = resolve;
+      }),
+    );
+    await renderTab(exported());
+
+    await userEvent.click(screen.getByTestId("submit-version"));
+
+    // **The claim being tested.** A button that says "Submitted" the moment it is
+    // pressed is indistinguishable from one that worked, and this is the action where
+    // that matters most: the person stops thinking about the job.
+    expect(screen.queryByTestId("submitted-note")).toBeNull();
+    expect(screen.getByTestId("submit-version").textContent).toContain("Marking");
+
+    settle(submitted());
+    await waitFor(() => expect(screen.getByTestId("submitted-note")).toBeTruthy());
+  });
+
+  it("shows no internal storage address anywhere on the screen", async () => {
+    const { container } = await renderTab(submitted());
+
+    expect(container.textContent ?? "").not.toContain("exports/");
   });
 });

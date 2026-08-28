@@ -21,6 +21,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Response, status
 from sqlalchemy import select
 
 from careerhq.api.deps import CompletionClient, CurrentUser, DbSession
+from careerhq.api.routes.tailoring import submission_out
 from careerhq.application.analyze_match import (
     create_pending_analysis,
     is_abandoned,
@@ -34,6 +35,7 @@ from careerhq.application.record_application import (
     record_application,
 )
 from careerhq.application.scoreability import scoreable_posting
+from careerhq.application.submissions import submission_for
 from careerhq.domain.models import (
     Application,
     MatchAnalysis,
@@ -207,7 +209,25 @@ async def list_applications(session: DbSession, user: CurrentUser) -> dict[str, 
 async def get_application(
     application_id: uuid.UUID, session: DbSession, user: CurrentUser
 ) -> dict[str, Any]:
-    return _application_out(await _owned(session, user, application_id))
+    """One application, and the résumé it sent if it sent one (FR-024).
+
+    **Here and not on the list**, which renders every application a person has: the
+    reference is a per-row query, and *"given an application, when I **inspect** it"* is
+    the scenario the requirement states.
+
+    **`submission_for` answers it**, rather than a query written a second time. The wrong
+    second answer is always available and always plausible — the latest version, the
+    latest export, the master résumé — and each would name a document nobody received
+    (`docs/03` §12.2). `null` is the truthful answer for an application that sent nothing
+    through CareerHQ, which every imported row has not.
+
+    Ownership is settled by `_owned` before anything about a submission is read.
+    """
+    record = await _owned(session, user, application_id)
+    body = _application_out(record)
+    submission = await submission_for(session, application_id=record.id)
+    body["submission"] = submission_out(submission) if submission else None
+    return body
 
 
 @router.patch("/{application_id}", summary="Update, moving status if it changed")

@@ -176,8 +176,29 @@ it waits on every GitHub check suite reporting on the commit, not only this repo
 third-party check that never completes leaves a merge permanently undeployed while Actions looks
 entirely green.
 
-Database migrations run as a pre-deploy step (`alembic upgrade head`). If a migration fails, the
-deployment does not proceed and the previous version keeps serving.
+Database migrations and corpus ingestion both run as a pre-deploy step:
+
+```toml
+preDeployCommand = "alembic upgrade head && python -m careerhq.ingest"
+```
+
+If either fails, the deployment does not proceed and the previous version keeps serving.
+
+**The `&&` is the ordering, not a separator**: `knowledge_chunks` has to exist before ingestion
+writes to it. **Pre-deploy, not startup**, so the model is loaded once per deploy rather than once
+per replica — and so two replicas booting together cannot race the corpus's unique constraint.
+Re-running an unchanged corpus creates nothing and embeds nothing, and the embedding weights are
+baked into the image, so the step makes no network call.
+
+Locally, the same command by hand:
+
+```bash
+docker compose exec backend python -m careerhq.ingest
+```
+
+Run it after editing anything under `backend/corpus/`. Without it the files and the database
+disagree about what guidance exists, retrieval falls back to the static rubric, and every run
+records that it did — which looks entirely healthy.
 
 ### Reading logs
 
