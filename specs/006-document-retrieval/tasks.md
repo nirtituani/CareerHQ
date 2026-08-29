@@ -1984,10 +1984,10 @@ belongs; T050 is here.*
       prompt content. Decide whether the extra fields join the item text or become their own
       snapshot columns, and measure the prompt delta before committing to either.
 
-- [ ] **T052** **The token ceiling budgets rule text; the prompt carries citations too.**
-      *(Appended 2026-08-29 at T046, from T045's measurement. **Option 2 implemented 2026-08-29.
-      Stays open**: SC-008's recorded verdict was measured against the old prompt and re-measuring
-      needs a paid arm — see "What is done and what is not" below.)*
+- [x] **T052** **The token ceiling budgets rule text; the prompt carries citations too.**
+      *(Appended 2026-08-29 at T046, from T045's measurement. **Option 2 implemented and
+      re-measured 2026-08-29.** Both halves of T052 are done. **SC-008 itself remains MISSED**,
+      for a reason outside this task's mandate — see the re-measurement below.)*
       **This is why SC-008 is missed**, and it is an accounting discrepancy rather than a
       retrieval defect. `KnowledgeChunk.token_count` counts the **rule text**, and
       `_retrieve`'s budget is spent against it — but `prompts.py::_guidelines` renders
@@ -2037,13 +2037,53 @@ belongs; T050 is here.*
       was sent a content hash per rule and asked to do nothing with it. Removing waste is the
       project's stated priority order (Correctness → Simplicity → **Efficiency**), and this would
       be correct with SC-008 already passing.
-      ***What is done and what is not.*** Done: the waste is gone, the saving is measured, the
-      ceiling is honest. **Not done: SC-008's recorded verdict still reads 2.12% MISSED**, measured
-      against the old prompt. The projected ~1.46% is a **projection** — it scales a `cl100k_base`
-      proportion onto the provider's authoritative token delta, which R15 explicitly warns against
-      for anything but proportions. **Re-measuring needs a third paid arm** (retrieval, citations
-      stripped, same session and application). Until then SC-008's number stays as measured; do not
-      update it from a projection.
+      ***Re-measured 2026-08-29, on current code. SC-008: 3.22%, MISSED.***
+
+      **Two fresh paid arms, not one, and the second arm is why the number is trustworthy.** The
+      original plan was a single retrieval arm compared against the existing static baseline
+      `e70ecd76`. That would have been wrong: **T052 removed citations from the static rubric
+      too**, so `e70ecd76` sent guidance the current code does not. Measured: its `tailor_plan`
+      was 7,221 on current code against 7,428 before — a **207-token** provider-measured
+      difference. A single-arm comparison would have credited retrieval with that saving and
+      understated the overhead.
+
+      | | static (new) | retrieval (new) | delta |
+      |---|---|---|---|
+      | run | `aae6f565` | `1070657e` | |
+      | `tailor_plan` | 7,221 | 8,936 | **+1,715** |
+      | `tailor_draft` | 7,816 | 9,855 | **+2,039** |
+      | total cost | **$0.233124** | **$0.245262** | |
+      | | | **input-token delta** | **+3,754** |
+
+      **+3,754 x $2.00/MTok = $0.007508**, against the same-session static arm **$0.233124** =
+      **3.22% — MISSED** against the unchanged 2% threshold. Both arms: 3 calls, first pass clear,
+      one application (`2c36feee`), one process, one pricing window. Total paid: **$0.478386**.
+
+      ***The 1.68% figure is not a pass and must not be recorded as one.*** Dividing the same
+      $0.007508 by the *old* baseline `$0.446391` gives 1.68%, and that is **not the same-session
+      measurement**: `e70ecd76` was a five-call run that revised, this session's static arm was a
+      three-call run that did not. R15's method pairs against the same-session baseline, and by
+      that method the answer is 3.22%. Recording 1.68% would be selecting the flattering
+      denominator — precisely what the refusal to adjust the target exists to prevent.
+
+      ***The citation removal worked; the metric still does not resolve.*** The numerator fell
+      **+4,727 -> +3,754 tokens, a 21% reduction**, and is now provider-measured on both sides
+      rather than reconstructed. Against the *same* denominator as before ($0.446391) the figure
+      moves 2.12% -> 1.68%. Yet the same-session verdict got **worse**, 2.12% -> 3.22%, because
+      the denominator nearly halved when this session's static arm did not revise.
+
+      **That is the confirmation, not a contradiction.** SC-008 divides a fixed per-run overhead
+      by a total run cost that varies 2.7x on revision behaviour, so the measurement cannot
+      establish whether retrieval's overhead is above or below the threshold *independently of
+      revision count*. **The target is not adjusted and the metric is not redefined** — both are
+      outside this task's mandate, and SC-004 and SC-001 set the precedent for leaving a missed
+      target standing. What T052 owned is done: the waste is gone, the saving is measured on both
+      arms, and the ceiling is honest.
+
+      ***One caveat on the numerator.*** `tailor_draft` corroborates `tailor_plan` to within
+      **18.9%** this time, against 0.6% originally — the draft prompt carries the plan's output,
+      which differed between arms (2,657 vs 3,194 tokens). `tailor_plan` remains the clean control
+      at **+1,715**, since only the guidance block differs there.
       ***One thing this does not resolve.*** SC-008 divides a **fixed** per-run retrieval overhead
       by a denominator that varies 2.7× on whether the Reviewer revised. The same overhead reads
       1.73%–4.58% across the six successful runs, ordered by revision count. That is a property of
