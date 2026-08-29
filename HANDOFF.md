@@ -1,50 +1,69 @@
 # HANDOFF
 
-**Last updated:** 2026-08-29 (Slice 006 post-T046 — everything but deployment; every number below re-measured against the database) · **Commit:** `298a45f` · **Branch:** `005-resume-tailoring` (all Slice 006 and 008 work is **uncommitted** on this branch)
+**Last updated:** 2026-08-29 (**Slice 007 built and its paid benchmark run**; every number below measured)
 
-> **Slice 005 is complete and deployed** — 100 of 101 tasks; T088 is open *on purpose* (it needs a
-> real paid production run). **Slice 006 — Document & Retrieval is at 47 of 51**: **T001–T046 and
-> T050 are complete.** Corpus, retrieval, citations, latency instrumentation, export, submission,
-> immutability, revision lineage, the insert-only gate, the API and affordance, corpus ingestion,
-> and both measurements. **Next is T047** (full gates + Docker verification), then **T048**
-> (deploy). **T051 is open and is not a blocker.**
+**Two branches are live and both matter.** `005-resume-tailoring` sits at **`01030f6`**, pushed and
+CI-green, **1 ahead of `origin/main`** — that one commit is the T052 documentation and it is still
+not merged (§5A). `007-evaluation-benchmark` branches from it and is **entirely uncommitted**.
+
+> ⚠️ **This file is the reconciliation of two independent HANDOFF states, and it is now the
+> authoritative one.** The 007 worktree's *committed* copy was the older pre-deployment version
+> (`298a45f`); the primary worktree held an uncommitted post-deployment rewrite. Updating the
+> committed one would have produced a document that looked current while describing a superseded
+> state, so the rewrite was adopted wholesale and extended — **nothing from it was dropped**:
+> exactly seven of its lines changed, being the header, the Slice 007 roadmap row, and five
+> pre-existing lines that stated 3.22% without naming it as **missed** against ≤2%.
 >
-> **Retrieval now runs against a populated corpus — locally.** T050 gave `ingest_corpus` a caller
-> (`python -m careerhq.ingest`, pre-deploy). The local database holds **18 documents and 79
-> chunks, all embedded at 384 dimensions**, and re-ingestion is idempotent (0/0/0/0). **The
-> deployed database is still at head `0014` and has no knowledge tables at all**, so a production
-> run would still fall back to the static rubric. T048 owns that.
+> **The primary worktree's copy was never written to**, so no Slice 008 work was disturbed. It
+> still holds its own now-superseded version; **replace it with this file** rather than merging
+> by hand.
+
+> ✅ **Slice 006 is deployed and retrieval is live.** `origin/main` is `73dca63` (PR #4), the
+> backend deployment reports `SUCCESS` on that commit, production is at
+> **`0018_corpus_embedding_model`** with **18 documents / 79 chunks**, every document recorded
+> against **`BAAI/bge-small-en-v1.5`**, and readiness answers **HTTP 200**. A tailoring run in
+> production now uses the corpus rather than the FR-009 static fallback.
 >
-> **SC-007 MET, SC-008 MISSED.** Latency **p50 12.1 ms / max 24.8 ms** against 500 ms (T044, R14).
-> Cost **2.12%** against **≤2%** (T045, R15) — missed on the most favourable denominator
-> available, and the target was **not** adjusted. The cause is measured: `token_count` budgets
-> **rule text only** while the rendered prompt also carries a citation per guideline, so a
-> "1,500-token" ceiling reaches the model at ~2,190. **No task owns fixing it** — see §5.
+> **Slice 006 is 55 of 57.** T051, T052, T053, T054, T055 and T056 are done, committed, pushed and
+> CI-green. **Two boxes remain unticked: T048 and T057.**
 >
-> 🔴 **$3.084181 of paid evaluation evidence lives in one local Docker volume and nowhere else**
-> (8 real runs, 8 analyses, 6 versions — re-measured today; production has 0 runs).
-> `docker compose down -v` destroys it. **Back it up before anything else** — §5 E2.
+> ⚠️ **T048's box is unticked but its work is finished and verified in production.** The deploy
+> happened, the corpus loaded, and the ingestion fix shipped — nobody ticked the checkbox. Do not
+> read `- [ ] T048` as outstanding work; read it as an untidied record. **T057 is the only task
+> with work left**, and it is **deferred by decision** — see §5.
 >
-> **All three open questions are now closed.** **OQ-006-A — DECIDED, YES, implemented**: a run
-> that retrieved guidance records it even if it later fails; the snapshot is written **immediately
-> after retrieval**, a **pre**-retrieval failure leaves `NULL`, and `[]` is never a substitute for
-> unknown. **OQ-006-B — DECIDED, implemented**: V1 tailors every run for the **Israeli** market
-> (`V1_TARGET_MARKET`), stated at the call site and never inferred. **OQ-006-C — DECIDED and
-> IMPLEMENTED at T050**: ingestion runs **pre-deploy, after `alembic upgrade head`, as
-> `python -m careerhq.ingest`**; the startup hook is **ruled out** and stays ruled out.
+> **The T052 documentation commit `01030f6` is NOT on `main`.** Production runs `73dca63`, which
+> predates it. The divergence is **documentation only** — three markdown files — so production
+> behaviour is identical; but `main`'s specs still record SC-008 as 2.12%, while the branch records
+> the current 3.22%.
 >
-> **The corpus is 79 rules across 18 documents and is REVIEWED. Do not add rules to hit a category
-> target.** Three categories are deliberately short of their original targets because the source
-> register has no further evidence to derive them from — see §2. Removal is preferable to invention.
+> **SC-007 MET, SC-008 MISSED — and re-measured.** Retrieval latency p50 12.1 ms / max 24.8 ms
+> against 500 ms (R14, measured at T044, not re-measured today). **SC-008 is 3.22%** against the
+> **unchanged ≤2%** threshold, re-measured on current code at T052 with two fresh paid arms. The
+> citation fix worked — the numerator fell **+4,727 → +3,754 tokens, 21%** — and the ratio still
+> got worse, because the denominator halved when this session's static arm did not revise. **The
+> 1.68% against the older baseline is not a pass and must not be recorded as one.**
 >
-> **A parallel session is working Slice 008 in this same working tree.** It owns
-> `application/ports.py`, `research_*.py`, `citation_check.py` and `domain/schemas/research.py`.
-> Do not edit those. Alembic head is `0016_export_and_submission`; **whoever writes a migration next
-> rebases onto it and does not branch the history.**
+> 🔴 **$8.488570 of paid evaluation evidence now lives in two local Docker volumes** —
+> **$3.562567** from slices 004–006 plus **$4.925403** from the Slice 007 benchmark. Backed up
+> 2026-08-29 to `/Users/nirtituani/CareerHQ-backups/2026-08-29/`, **outside the repository** — but
+> that backup predates the two T052 arms **and the entire Slice 007 benchmark**, and is **on the
+> same machine**. See §5A and §4A.
 >
-> **Implementation priority, in this order: Correctness → Simplicity → Efficiency → Course
-> requirements.** Do **not** add agent/ReAct complexity to look more agentic, or to satisfy a
-> superficial reading of the course requirements.
+> **Slice 007's results are the exception and are safe**: they are committed *files* under
+> `specs/007-evaluation-benchmark/results/`, deliberately, so they survive
+> `docker compose down -v`. The tailoring rows behind them do not.
+>
+> **A parallel session owns 12 uncommitted paths in this tree** (`ports.py`, `research_*.py`,
+> `citation_check.py`, `domain/schemas/research.py`, their tests, `specs/008-company-research/`).
+> **Do not edit, stage or commit them.** Twelve commits have now been made across several sessions
+> and every one excluded them; `ports.py` at HEAD still hashes identically to `298a45f`, verified
+> today.
+>
+> **Implementation priority: Correctness → Simplicity → Efficiency → Course requirements.** Do not
+> add agent/ReAct complexity to look more agentic.
+
+---
 
 ## 1. Core goal
 
@@ -61,572 +80,170 @@ are release blockers.
 
 ### The roadmap was renumbered on 2026-08-22
 
-Build order now matches slice numbers.
+Build order now matches slice numbers. **Counts measured this session** with
+`grep -cE '^- \[[xX]\]'` — see §2 for the case trap that makes the obvious command wrong.
 
 | | Slice | State |
 |---|---|---|
-| 005 | **Resume Tailoring** | **92/97 — built and exercised on real jobs; undeployed** |
-| 006 | Document & Retrieval — RAG over guidelines, PDF export, submit-and-lock | Not started |
-| 007 | Evaluation & Benchmark | Not started. **Graded** |
-| 008 | Company Research | Droppable (`docs/08` §11) |
-| 009 | Career Advisor | Droppable |
+| 005 | **Resume Tailoring** | **100/101 — built, exercised on real jobs, deployed.** T088 open on purpose |
+| 006 | **Document & Retrieval** — RAG over guidelines, PDF export, submit-and-lock | **50/56 — built and green; undeployed** |
+| 007 | **Evaluation & Benchmark** — harness, synthetic benchmark, metrics, judge, paid pass | **50/50 built; 48 ticked, 2 partial. GRADED. Paid benchmark RUN: $4.925403 of a $10 ceiling** |
+| 008 | Company Research | In progress in a **parallel session**; droppable (`docs/08` §11) |
+| 009 | Career Advisor | Not started. Droppable |
 
 **Evaluation has been deferred twice and two slices stand in front of it.** If the budget runs
 short, 008 and 009 are what get dropped. Recorded in `docs/05` §5.7 in those words.
 
-**The 005/006 boundary is structural and must stay that way.** RAG is an *input enhancement* via
-the `GuidelineSource` port, not a redesign of the tailoring workflow. Slice 006 swaps
-`StaticGuidelines` for a retrieval implementation and changes nothing else — no node, no state key,
-no finalisation rule. `application/guidelines.py`'s docstring is the argument; it also explains why
-the port deliberately has no `top_k`, no scores and no embedding parameters.
+**The 005/006 boundary is structural and it held.** RAG is an *input enhancement* via the
+`GuidelineSource` port, not a redesign of the tailoring workflow. Slice 006 swapped
+`StaticGuidelines` for a retrieval implementation and changed **no node, no state key and no
+finalisation rule** — `run_tailoring` was not edited at all, so FR-029 needed a test rather than a
+change. `application/guidelines.py`'s docstring is the argument; it also explains why the port
+deliberately has no `top_k`, no scores and no embedding parameters.
 
 ---
 
 ## 2. Current implementation status
 
-**Every number below was produced by a command run on 2026-08-28. Nothing is carried forward.**
-**Re-measured at the T037 handoff, and three recorded figures were wrong** — see §2a.
+**Everything here was measured on 2026-08-29 by a command run in this session.**
 
-| Gate | Result | Command |
+### Slice task counts
+
+| Slice | Done / total | Open |
 |---|---|---|
-| Backend suite | **787 passed**, 86.50% coverage (gate 80%) | `.venv/bin/pytest -q` |
-| Frontend suite | **172 passed** (12 files) | `npm test -- --run` |
-| ruff check / format | clean, 202 files formatted | `.venv/bin/ruff check . && ruff format --check .` |
-| mypy strict | clean, **82 source files** (+ `scripts/`) | `.venv/bin/mypy src` |
-| Alembic | single head **`0016_export_and_submission`** | migration chain read directly |
-| Local database | head `0016`, **1 user · 10 applications · 6 versions · 11 run rows (8 paid) · 8 analyses · 0 exports · 0 submissions** | `docker compose exec postgres psql` |
-| Local corpus | **18 knowledge documents, 79 chunks**, all embedded (T050) | same |
-| Deployed database | head **`0014_displaced_position`** · 1 user · 1 application · **0 versions · 0 runs** · 1 analysis | `railway ssh --service pgvector` |
+| 001 platform-foundation | 69 / 69 | none |
+| 002 deployment | 52 / 52 | none |
+| 003 data-foundation | 98 / 109 | T074–T084, the JobTracker import path |
+| 004 match-analysis | 89 / 89 | none |
+| 005 resume-tailoring | **100 / 101** | T088 — a real paid production run, open on purpose |
+| 006 document-retrieval | **56 / 57** | **T048** (done, box untidied). **T057 is now DONE — landed in slice 007 at T044** |
+| 007 evaluation-benchmark | **49 / 50** | **T047** partial — the real sanity set is built and isolated, deliberately unpopulated |
+| **Total** | **513 / 526** | 13 |
 
-| Slice | Tasks | State |
+> ⚠️ **Count these with `grep -cE '^- \[[xX]\]'`.** Slice 005 marks its 100 done tasks `- [X]`
+> with a **capital X** and every other slice uses lowercase, so `grep -c '^- \[x\]'` reports
+> **0 / 1** for a slice that is 100 / 101.
+
+### Live system — deployed and verified
+
+| | Production | Local |
 |---|---|---|
-| 001 — Platform Foundation | 69 / 69 | Complete |
-| 002 — Deployment | 52 / 52 | Complete |
-| 003 — Data Foundation | 98 / 109 | US1, US2 done. **US3 blocked on a JobTracker CSV** |
-| 004 — Match Analysis | 89 / 89 | Complete, verified in production |
-| 005 — Resume Tailoring | **100 / 101** | Complete and deployed. T088 open deliberately |
-| **006 — Document & Retrieval** | **38 / 51** | **Phase 4 complete** — export works end to end, endpoint and affordance included. Next is **T038** (submission). T050/T051 appended, both unbuilt |
-| 008 — Company Research | no `tasks.md` | Spec/plan/research/open-questions only. **Being built in parallel in this tree** |
+| Commit | **`73dca63`** (`origin/main`, PR #4), deployment `SUCCESS` | `01030f6` |
+| Alembic head | **`0018_corpus_embedding_model`** | `0018_corpus_embedding_model` |
+| knowledge documents / chunks | **18 / 79** | 18 / 79 |
+| Recorded embedding model | **`BAAI/bge-small-en-v1.5`** (all 18) | NULL — corpus predates `0018` |
+| Readiness | **HTTP 200** — `database ok · cache not_configured · object_storage ok · ai_provider ok` | — |
+| users / applications / analyses | 1 / 1 / 1, `$0.039222` | — |
+| resume_versions | **0** | 8 |
 
-### 2a. What re-measurement corrected at the T037 handoff
+**Local and production disagree about the embedding model, and that is expected.** Local `.env`
+sets MiniLM, the image bakes and production uses `bge-small`. The local corpus was embedded with
+MiniLM (measured: cosine **1.000000** to MiniLM, **0.345992** to bge-small) and records NULL,
+because it predates migration `0018`. T053's guard treats NULL as *unknown*, warns once and
+proceeds. **Every local measurement — SC-007, SC-008, retrieval quality — was taken on MiniLM.**
 
-**Three recorded figures were wrong, and the corpus finding is the consequential one.**
+### Tests — run this session
 
-1. ***There is a SEVENTH real tailoring run that `research.md` R5 does not record.***
-   `ff0e310c` — **succeeded, 0 revisions, $0.307106, `is_fixture = false`, 2026-08-26.** The R5
-   table lists six. Whoever relies on that table for evaluation evidence is missing a successful
-   zero-revision sample, which is the cheapest kind and the one the distribution has fewest of.
-2. ***The spend figures were understated.*** Measured by `SUM(cost)`:
-   **tailoring 7 runs / $2.122210**, match 8 analyses / $0.309312, **total $2.431522**. §5A said
-   "roughly $1.43" and R5's table totals $1.815104; both predate the seventh run and neither was
-   re-summed.
-3. ***The corpus has never been ingested anywhere.*** The local database is at head `0016` with
-   the knowledge tables present and **0 documents, 0 chunks**; the deployed database is still at
-   `0014` and has no knowledge tables at all. So **no retrieval has ever run against a populated
-   corpus outside the test suite** — every real tailoring run used the static rubric. This is
-   OQ-006-C/T050 stated as a measurement rather than as a missing caller, and it is why
-   **T044/T045 (SC-007/SC-008) cannot be measured yet**.
-
-***And the evaluation data is LOCAL ONLY.*** All 7 runs, 8 analyses and 4 versions live in the
-`careerhq` Docker volume on this machine. Production has 0 versions and 0 runs. §5A says this data
-"must not be deleted" without saying where it is: **`docker compose down -v` destroys $2.43 of paid
-evidence**, and CLAUDE.md documents that command as the way to get a clean database. There is no
-backup.
-
-### Slice 006 — what is built (T001–T037, T049)
-
-**The corpus — 79 rules, 18 documents, 4,285 tokens, 54.2 tokens/chunk** (`cl100k_base`, measured
-this session, not estimated).
-
-| Category | Rules | | Trust level | Rules |
-|---|---|---|---|---|
-| universal | 28 | | internal | 54 |
-| integrity | 15 | | industry | 10 |
-| role-seniority | 12 | | institutional | 9 |
-| tailoring | 11 | | vendor_documented | 6 |
-| israel | 7 | | **Market** | global 72 · israel 7 |
-| ats | 6 | | **Topics** | 16 of 16 in use |
-
-**Three categories are short of their original targets, deliberately.** israel 7 (target 10–14),
-ats 6 (12–15), role-seniority 12 (20–30). The register holds no further evidence to derive them
-from, and two of the most commonly written ATS rules are excluded by decision (header/footer
-parsing, file format). **Do not pad them.** What would close each: a verified Israeli primary
-source; a vendor documenting header handling or current format behaviour; any role-specific source.
-
-**The pipeline.**
-
-- `infrastructure/corpus/loader.py` (T025) — parses `## Rules` list items **only**. Document prose,
-  preambles, change notes and `## Removed` sections can never become chunks. Both boundaries drilled.
-- `application/ingest_corpus.py` (T026) — idempotent: re-running an unchanged corpus creates
-  nothing, deletes nothing, and makes **zero embedding calls**. Not insert-only: rules deleted from
-  the corpus leave the database.
-- `application/retrieved_guidelines.py` (T027) — semantic selection, **all 15 integrity rules
-  pinned regardless of similarity**, FR-014 ceiling enforced from stored `token_count`, resolvable
-  citations, both fallback paths recorded on `last_fallback_reason`.
-- `citation_snapshot()` (T028) — the recorded citation, **written from the retrieved objects and
-  never from `TailoringState`**. Seven fields plus the rendered `source`; `RetrievedGuideline`
-  gained `trust_level` for it. `state.guidelines` stays `list[dict[str, str]]` — the two keys a
-  prompt renders and nothing more. **A guideline with no citation records none**: the static
-  rubric persists `{text, source}`, because emitting `content_hash: ""` would write a record that
-  fails its own verification and so is indistinguishable from drift. **No migration** —
-  `guidelines_used` was already JSONB.
-- **The export renderer (T031, with the minimum of T034/T035 it required)** —
-  `domain/schemas/document.py` (`ResumeDocument`/`ResumeSection`, pure content, no ORM) and
-  `infrastructure/documents/render.py` (WeasyPrint behind a boundary). **Sections are explicit, not
-  derived from `SourceKind`**: a renderer that grouped by kind would decide the document's order
-  itself, and "approved order" would mean something the caller could not control. **T035's metadata
-  pinning did not land** — it belongs with T032.
-- **The export endpoint and affordance (T037)** — `POST .../export` (409 on refusal, 404 for a
-  missing or unowned version) and `GET .../document` (attachment, `private, no-store`, 404 before
-  any export). **Separate routes so downloading again is not exporting again.** No storage key in
-  any response. Frontend: `exportVersion`, `versionDocumentUrl`, and an Export/Download pair;
-  `VersionStatus` gained `"exported"` only — `"submitted"` waits until something can reach it.
-- **The export use case (T036)** — `application/export_resume.py`: refuse → render → store bytes →
-  `ExportedDocument` → `status = EXPORTED`, the caller committing. **Bytes are stored before the
-  row**, so a failed upload records nothing rather than leaving a checksum pointing at bytes that
-  do not exist. SHA-256 is over the exact stored bytes; a fresh storage key per export so a
-  re-export cannot overwrite what the first one checksummed. **Not in `export.py`** — T033 asserts
-  the guard imports no renderer, so the use case took its own module (`plan.md`'s file map
-  deviated from, recorded).
-- **The renderer boundary (T035)** — `weasyprint` is imported by `render.py` alone, asserted in
-  `test_architecture.py` beside the litellm guard. **The naive guard was not enough**: `render.py`
-  re-exported `HTML`, so a caller could `from ...render import HTML` and drive the engine while
-  that guard stayed green. Bound privately as `_HTML`, and asserted on the module's namespace
-  rather than on `__all__`. **No metadata pinning was written** — WeasyPrint 69 emits nothing to
-  pin, and T032's test already guards a future version that starts to.
-- **The ATS template's guarantees (T034)** — contact details in the body rather than a page
-  header/footer (asserted by flow position, so changing the margins cannot break it), headings
-  surviving as recognisable words (the corpus's letter-spacing rule, S-006), no private-use icon
-  glyphs, and **no vector objects at all**. Single column, no tables and no images were already
-  guaranteed by T031 and are recorded rather than duplicated.
-- **The export precondition (T033)** — `application/export.py`: `ensure_exportable(status)` and
-  `ExportRefused`. **FR-016 only**; the use case is T036. Exportable is `{READY, EXPORTED}` —
-  `READY` is what the specs call `APPROVED`, and `EXPORTED` is included because
-  `ExportedDocument` has no unique constraint on the version *so that re-export works*.
-  `SUBMITTED` is refused because it is terminal. The guard **imports no renderer**, asserted, so
-  it cannot render before refusing.
-- **Export byte-determinism (T032)** — `fonts-dejavu-core` declared in the image, FR-031 scoped to
-  one runtime, and **no normalization code**: WeasyPrint 69.0 emits no timestamp and no document
-  ID, so there was nothing to pin. Asserted across two processes, and the font declaration is
-  asserted by parsing the Dockerfile's instruction lines (**comments stripped** — the first version
-  matched the comment and passed the drill).
-- **The guidance snapshot's placement (OQ-006-A)** — written **immediately after retrieval,
-  before the graph**, so a run that failed inside the graph still records what it was advised. A
-  failure *before* retrieval leaves `NULL`; `[]` is never written. The success-path assignment was
-  removed, so there is one write and no success/failure divergence.
-- **The V1 market (OQ-006-B)** — `tailor_resume.V1_TARGET_MARKET = "israel"`, passed explicitly
-  into every `GuidelineQuery`. **FR-038 precedence fires in production as of this decision**; it
-  did not before. Never inferred from the posting or the profile. The port's default stays
-  `global`.
-- **The wiring (T030)** — `build_guideline_source()` at the seam in `api/routes/tailoring.py`,
-  `get_embedding_source()` (process-wide, `lru_cache`d) in `infrastructure/embeddings/`, and
-  `warm_up()` called from `lifespan` only when the selector says `retrieval`. **`run_tailoring`
-  itself was not edited**: it already called `guidelines_for` once before the graph, so FR-029
-  needed a test rather than a change. A failed warm-up is **not fatal** — FR-010 decides that.
-  `guideline_source` is now `Literal["retrieval", "static"]`, because a typo landing on retrieval
-  is how SC-008's static baseline would be taken against retrieval and reported as a comparison.
-- `RetrievedGuidelines.last_retrieval_ms` (T029) — FR-039 latency, plus `duration_ms` in the log
-  record's `extra` (**never the message** — Railway blanks it). Recorded on **every** exit,
-  fallbacks included; cleared at the top of each call; **the clock stops once**, so the
-  empty-corpus path's two log records carry one figure. No migration, no dependency, no metrics
-  pipeline — an attribute beside `last_fallback_reason`.
-
-### The R13 decision — resolved, and it reversed an earlier one
-
-**Embeddings cannot express FR-038's "same topic".** Measured over 504 cross-market pairs: the one
-true same-topic pair (Israeli section ordering vs the global section-order rule) scores **0.650 and
-ranks 326th — below the 0.670 median** — while the pair the corpus review ruled *complementary*
-scores **0.861, first of all**. The negative outranks the positive by 0.211, so no threshold orders
-them correctly: at 0.60 the true case is caught but 435 of 504 pairs fire; at every higher
-threshold the complementary pair is wrongly caught and the true one missed. Full account:
-`research.md` **R13**.
-
-**T025 had deferred `topic` on the argument that a hand-maintained taxonomy would duplicate what
-the embeddings classify. R13 showed they do not classify it at all, so that objection fell** and
-the field was authored at T027:
-
-- **`topic` is a document-level LIST** from a 16-value vocabulary (`domain/models/knowledge.py::Topic`)
-  read off the 79 shipped rules. A list, not a scalar, because two documents legitimately span two
-  subjects — rules are grouped by *trust level*, a different axis — and a scalar would have forced
-  those files to split for an unrelated reason.
-- **`GuidelineQuery.market`** added (defaults to `global`) — the second blocker R13 found.
-  Precedence is scoped *"for Israeli-market CVs"*, so retrieval that cannot tell which market it
-  serves cannot apply it.
-- **Precedence is a set intersection: deterministic, reviewable, nothing to tune.** No cosine
-  anywhere in the topic path, and a test asserts no threshold appears.
-- **Outranks, never replaces.** Nothing is suppressed — the volunteering pair is complementary, and
-  FR-038 says global guidance remains applicable to Israeli CVs. One stable pass moves only the
-  chunks the rule requires.
-
-**Contested topics (where precedence can fire):** `section-order` — `israel-military-and-section-order`
-vs `universal-document-conventions`; `volunteering` — `israel-military-and-section-order` vs
-`universal-structure-and-ordering`.
-
-### The open measurement question — unchanged, and now better than feared
-
-`chars/4` overestimated the corpus by **23%** (~5,540 vs the measured 4,285). Consequences:
-**~27 chunks fit the 1,500 ceiling, not ~19**, and **integrity pins 795 tokens = 53% of the budget,
-leaving 705 (~13 chunks)** rather than the 67% projected.
-
-D5's floor-upward sizing (~35 rules ≈ 1,890 tokens at 54/chunk) still does not fit 1,500, so **the
-conflict is real but smaller**. **The ceiling has not been moved and must not be** until T044/T045
-measure actual retrieval. The projection documents still carry the chars/4 figures — deliberately
-not churned; re-baselining is the author's call.
-
-### The T013–T018 reconciliation — closed, and it corrected this file twice
-
-**Resolved 2026-08-28. All six are ticked and every one was drilled.** The previous entry here said
-several were "substantively covered" by the T027 test file. **That reading was wrong about two of
-them**, and the corrections are recorded in `tasks.md` rather than quietly ticked:
-
-- **T014, T015, T017** — genuinely covered by tests written at T027. Ticked only after drilling
-  each. T017 needed **three** drills, because "records that it fell back" is a separate claim from
-  "survives the fallback" and only the third drill exercises it.
-- **T016 was half covered**, and the covered half was the weaker one: recomputing a hash over text
-  that has not moved says nothing about FR-011/FR-012, which are claims about a corpus that
-  *changes*. Three tests added — unchanged re-ingestion, an edited rule, and a row tampered with in
-  place (with a control, so a check that fails everything cannot pass).
-- **T018 was not covered at all.** The existing test asserted `hasattr(source, "guidelines_for")`;
-  the whole state-and-prompt clause had no test. Three added, one per surface. The forbidden-word
-  scan is scoped to the **citation halves only**, and `rank` is excluded from the vocabulary
-  because a real Israeli rule uses the word.
-- **T013 was genuinely uncovered** and is now implemented. `StubEmbedder` cannot express it — a
-  character-sum vector makes "a different query selects a different set" arithmetic about the
-  double. `LexicalEmbedder` derives its vector from the words in the text. **Measured**: 13
-  non-integrity rules for a backend posting, 12 for a nursing one, **1 in common**.
-
-**The lesson for this file**: "substantively covered" was an inspection, and an inspection is what
-this project's own rules forbid ticking on. Neither claim survived contact with a drill.
-
-### Live system
-
-**https://frontend-production-02ac.up.railway.app** — readiness reads `database ok · cache
-not_configured · object_storage ok · ai_provider ok`. **Nothing from slice 005, 006 or 008 is
-deployed.** It all lives uncommitted on this branch.
-
-### Real evaluation evidence — measured 2026-08-26
-
-**`specs/005-resume-tailoring/research.md` R5 is authoritative** for the tailoring numbers and
-labels which parts are measured and which are one reader's interpretation. This is the summary.
-
-**Tailoring runs — six real ones, three successful:**
-
-| Job | Run | Status | Rev | In | Out | Cost | Elapsed | Proposals | Findings |
-|---|---|---|---|---|---|---|---|---|---|
-| Cellebrite | `a76bd349` | failed | 0 | 0 | 0 | $0 | 4m00s | — | — |
-| Cellebrite | `cd27b092` | failed | 0 | 30,028 | 21,641 | $0.361819 | 3m29s | — | — |
-| Cellebrite | `2615363e` | **succeeded** | 0 | 34,888 | 15,512 | **$0.295450** | 2m50s | **4** | 7 |
-| Zipher | `6356fb4e` | **succeeded** | **1** | 41,621 | 23,908 | **$0.464942** | 4m20s | **1** | 12 |
-| Harman | `60263226` | **succeeded** | **2** | 64,493 | 21,855 | **$0.547891** | 4m01s | **4** | 15 |
-| Voyantis | `508f4c2c` | **failed** | 0 | 12,736 | 11,953 | **$0.145002** | 2m12s | — | — |
-
-**The table above accounts for six runs and $1.815104. It is not the total, and has not been
-since the T037 handoff.** It is left as written because it is R5's measured *analysis* of the six
-runs R5 analysed; everything since has been counted, not analysed. **Never quote $1.815104, or the
-table's row count, as a total.**
-
-***The one authoritative figure is the database, and here it is, re-measured at the T046
-handoff:***
-
-| | |
+| Suite | Result |
 |---|---|
-| tailoring runs, all rows | **11** |
-| of those, **real** (cost > 0) | **8**, totalling **$2.774869** |
-| of those, succeeded | 6 |
-| zero-cost rows | 3 — one old failure, and two from T045's free fixture dry-run |
-| match analyses | 8, **$0.309312** |
-| **total paid evidence** | **$3.084181** |
+| Backend, local | **831 passed**, coverage **86.76%** |
+| Backend, CI on `01030f6` | **785 passed** |
+| Frontend | **187 passed**, 12 files |
+| CI overall on `01030f6` | **success**, both jobs |
 
-**Two things this accounting has got wrong twice, so read them before adding a number.**
-A **row count is not a run count**: three of the eleven cost nothing, and two of those exist only
-because a harness was validated against the fixture provider before it was allowed to spend.
-And a **total is not a sum of the tables in this file**: T045 added $0.652659 that no table above
-mentions. Re-measure with `SUM(cost)` rather than adding to a figure someone wrote down.
+The 46-test gap between local (831) and CI (785) is the parallel session's five untracked Slice
+008 test files. **Do not "fix" the local number.**
 
-```sql
-SELECT count(*) FILTER (WHERE cost > 0) AS real_runs, sum(cost) FROM tailoring_runs;
-```
+### Success criteria
 
-**Harman `60263226` is the full-revision-budget path** (seven calls, the Opus escalation firing,
-three review passes). **T085/T086 remain open**: its cost and latency are *not* yet recorded in
-`research.md`, and both SC targets were missed — SC-006 at 1.83×, SC-001 over the 3-minute ceiling.
+| | Result |
+|---|---|
+| **SC-007** | **MET** — p50 12.1 ms / max 24.8 ms against 500 ms (T044, not re-measured today) |
+| **SC-008** | **MISSED — 3.22%** against the unchanged **≤2%** threshold |
 
-**Voyantis `508f4c2c` is cost and reliability evidence only, never a quality sample.** Anthropic
-returned `overloaded_error` on the first review call; the plan and draft had already been billed.
-Recorded in `research.md` R5. **Voyantis remains a wanted candidate for a future successful
-sample** — the posting is not disqualified by this.
+**SC-008, re-measured at T052 on current code**, two fresh paid arms, one application
+(`2c36feee`), one process, one pricing window, neither revising:
 
-The two failures were the `source_item_id` defects; the first predates usage accounting, which is
-why it records `$0` for calls it made.
+| | static `aae6f565` | retrieval `1070657e` |
+|---|---|---|
+| total cost | **$0.233124** | **$0.245262** |
+| `tailor_plan` | 7,221 | 8,936 → **+1,715** |
+| `tailor_draft` | 7,816 | 9,855 → +2,039 |
 
-**Against the targets — recorded, not adjusted:**
+**+3,754 tokens × $2.00/MTok = $0.007508 ÷ $0.233124 = 3.22%, MISSED against ≤2%.** Paid this
+session: **$0.478386**.
 
-- **SC-006 ($0.30)**: met by Cellebrite at $0.2955 (1.5% headroom, on three calls of a possible
-  seven); **missed** by Zipher at $0.4649 — **1.55×** — with a single revision.
-- **SC-001 (90s typical / 3min full budget)**: **missed by both.** 2m50s and 4m20s.
+**Two arms were needed, not one.** T052 removed the citation from the *static* rubric too, so the
+old baseline `e70ecd76` sent guidance current code does not — a **207-token** provider-measured
+difference. A one-arm comparison would have credited retrieval with that saving.
 
-**Plan execution — corrected 2026-08-26. `research.md` R5's newest subsection is authoritative;
-the figures below are its summary.** The old single ratio (D0) counted a proposal *reverted* to the
-owner's wording as executed, double-counted a duplicated planned id, scored label-kind targets it
-could not measure, and reported a contaminated run's unknowable outcomes as failures. D0 is
-preserved for comparison, not withdrawn.
+**The 1.68% against `e70ecd76` is not a pass.** That run revised (5 calls); both arms here did not
+(3 calls). It is not the same-session measurement and must not be recorded as one.
 
-| Job | D0 | D1 — Draft compliance | D3 — Plan effect | State vector (corrected) |
-|---|---|---|---|---|
-| Cellebrite | 0.500 | acted **3**, ratio **withheld** | **3/6 = 0.500** | 3 survived · **3 unknown_position** · 1 label_kind |
-| Harman | 0.286 | acted **3**, ratio **withheld** | **0/5 = 0.000** | 2 reverted · 1 discarded · **2 unknown_position** · 2 label_kind |
-| Zipher | 0.167 *(historical)* | **not computable** | **not computable** | 1 survived · **5 unknown** |
-
-**D1's ratios were withdrawn by T095 and cannot be recovered.** They were computed by reading "no
-text proposal" as "no proposal", and the position data disproves that: Cellebrite and Harman each
-hold only **5 distinct positions across 9 bullets**, and master ordering is a unique sequence, so
-both demonstrably reordered. The `acted` counts of 3 survive as floors; the denominator of 7 and the
-0.429 ratio do not. **Whether a proposal arrived was never persisted for these runs** — not
-destroyed, never written — so it is permanently unrecoverable, and **no replacement ratios are
-offered**. Rows predating `displaced_position` classify as `unknown_position`, which leaves D1's
-denominator and withholds its ratio while any remain. **No backfill.** Full account in
-`research.md` R5 → *"the D1 ratios are withdrawn"*.
-
-**D3 is unaffected and every D3 figure above stands** — whether text survived is knowable however
-little is known about ordering.
-
-**The surviving conclusion**, restated honestly: both uncontaminated runs acted on at least three
-planned emphases by text evidence, and neither can say how many more it acted on by reordering. The
-old 0.5-vs-0.167 D0 spread still must **not** be read as evidence that the Draft behaved
-differently. Zipher remains contaminated by the pre-T094 Revise replacement defect: 1 determinable
-of 6. **n = 3 and one is contaminated; this is not a claim about model behaviour in general.**
-
-De-emphases planned → items dropped: Cellebrite 10 → 12 · Zipher 9 → **0** (the T094 defect) ·
-Harman 10 → 9.
-
-**Match analyses — 8, all `ready`:** Cognita 54 then 70 · Harman 85 · DriveNets 91 · Cellebrite 69 ·
-Zipher 71 · **Voyantis 0 then 84 Strong**. Total match spend **$0.309312**.
-
-### Known quality concerns — open, and deliberately not acted on
-
-1. **Plan-to-draft execution is inconsistent.** 0.5 against 0.167, same profile, same prompts,
-   different jobs. Zipher executed **one of six** planned emphases and **none of nine** planned
-   de-emphases — so a resume for an autonomous-infrastructure role kept SVN, SqlDbx, PHP and
-   Spanish. Whether this is a defect, a prompt weakness or ordinary variance **cannot be decided
-   from two samples**.
-2. **Output tokens are the cost lever and are larger than designed.** 15,512 and 23,908 across
-   3 and 5 calls, far above the diff-shaped output the schemas intend. The run stores totals, not a
-   per-call breakdown, so the cause is unknown.
-3. **The sample is n=2.** No threshold, gate or prompt change may be justified from it. That is
-   what slice 007 is for.
-4. **`ReviewerFinding.attempt` is stamped with the run's final attempt**, not the pass that caught
-   each finding — `run_tailoring` writes `result["attempt"]` to every row. The data cannot separate
-   a first-review concern from a second-review one, and the interface's multi-pass marker therefore
-   shows the same label on every finding of a run. Recorded in R5, not acted on.
-5. **`de_emphasise` adherence is unmeasurable.** Free text, no ids. Making it measurable changes
-   the Plan schema and therefore the Plan prompt.
-6. **An in-flight run is invisible to other sessions.** `run_tailoring` flushes `REVIEWING` but the
-   commit is at the end, so the interface shows "Writing" for the entire run and
-   "Checking its own work" is never reached. FR-040's distinction exists in code and tests but is
-   not delivered by the system.
-7. **CONFIRMED DEFECT (found by §5B, 2026-08-26) — a revision erases the draft's decisions.**
-   `TailoringState.items` has no reducer (`state.py:57`), so the Revise node's returned list
-   *replaces* the draft's (`graph.py:94-97`) — while `_REVISE` rule 4 instructs "Return only the
-   items you are changing". A delta contract, executed as a replacement. Measured: Zipher's final
-   version has 1 proposal, **0 drops, 35/35 included**, while one of its own findings praises a
-   "Big Data Concepts" drop that exists nowhere in the persisted version; Cellebrite (no revision)
-   dropped 12. Found independently by two of the four investigators. **Still in current code.**
-   Consequence: any drop or reorder the Reviser does not re-emit is silently lost — so Zipher's
-   "9 planned de-emphases → 0 dropped" and its 0.167 adherence measure the post-revision wreckage,
-   not the Draft node. Fix proposed in §5 B, not yet approved or implemented.
-
-### 2a. What the §5B investigation established — 2026-08-26
-
-Four parallel read-only investigators (Claude Code Agent tool, no worktrees needed — read-only),
-one per open concern: plan-to-draft adherence, output-token anatomy, Review/Revise dynamics,
-instrumentation gaps for slice 007. Constraints held and verified: no provider calls, SELECT-only
-SQL, no file writes — `git status` clean at `e8075b3` afterwards. Every number below was measured
-by an investigator this session (SQL against the local database, file:line reads, or re-running
-`emphasis_adherence()` as a pure function). Full verbatim reports live in the session transcript;
-this section is the durable record.
-
-**Adherence (concern 1) — the numbers are right, the samples are not comparable.**
-
-- The plan **does** reach the Draft model in executable form: every emphasis in both persisted
-  plans carries a `source_item_id`, serialised into the prompt, with matching `[id: …]` anchors in
-  the master (`prompts.py:238-244`, `tailor_resume.py:312-313`). Non-execution is not id plumbing.
-- `emphasis_adherence()` re-run on the persisted plans reproduces 0.5 and 0.167 exactly — but the
-  metric counts only *text rewrites of the exact planned item id*. Drops, reorders, and content
-  absorbed into another item do not count. Cellebrite's 4/8 **double-counts a duplicate directive**
-  (two emphases share id `cd5f3821`): distinct-item execution is 3/7 ≈ 0.43.
-- **Both drafts absorbed unexecuted emphasis content into the summary rewrite** — Zipher's single
-  proposal contains near-verbatim content of all five unexecuted emphases; Cellebrite's absorbs 3
-  of 4. Exactly one emphasis in either run was ignored outright (Cellebrite's "C++ and Python as
-  OOP languages", `13fc719c`).
-- **Both runs predate `f1f5c7b`** (the diff-only-review fix) — Zipher finished 26 minutes before
-  it was committed. Combined with concern 7, the 0.5-vs-0.167 comparison sets runs produced under
-  different effective conditions against each other. **No post-fix run exists anywhere.**
-
-**Output tokens (concern 2) — 86-88% of billed output is unaccounted for; prime suspect named.**
-
-- Persisted model text ≈ 2,132 of 15,512 tokens (Cellebrite) and ≈ 2,804 of 23,908 (Zipher),
-  chars÷4 estimate. Reconstructing full JSON with generous structural overhead still leaves a
-  4-6× gap. The failed run `cd27b092` billed 21,641 output tokens and persisted **zero** model text.
-- The gateway sends bare completions — no `max_tokens`, no `thinking`, no `effort`
-  (`litellm_gateway.py`). Current API documentation: omitting `thinking` runs **adaptive thinking
-  at default high effort, billed inside output tokens, never returned in content**.
-- A cost-feasibility decomposition (Sonnet provably billed below list rate; solving the price
-  constraint) localises ~12-14K of Cellebrite's 15.5K output on the **Sonnet plan/draft calls**.
-- **Interpretation, medium-high confidence:** the unaccounted output is adaptive-thinking tokens,
-  mostly on Sonnet. **Cannot be confirmed from persisted data** — no per-call usage survives
-  (`UsageRecorder.calls` is summed and discarded, `tailor_resume.py:444-459`), and a ScriptedSeam
-  replay cannot settle it. The T085 full-budget run can, if per-call usage is persisted first.
-- Also billed and discarded: every `DraftedItem.reason` (schema-required, no column stores it),
-  Zipher's entire draft output (concern 7), and all of a failed run's output.
-
-**Review/Revise (concerns 4, and the revision's real story).**
-
-- Zipher's 8 `uncovered` findings, cross-referenced item-by-item against the persisted 35 rows:
-  **3 outright artifacts** of the diff-only bug (they name bullets "omitted entirely" that sat
-  untouched in the resume), **4 genuine profile gaps** (Kubernetes/Spark/MLOps/FinOps/IDF — no
-  master row supports them), **1 mixed**. Roughly half the uncovered volume was legitimate signal.
-- The revision fired on **first-pass confidence < 70**, not on `ungrounded` — zero `ungrounded`
-  rows exist in the entire table, and only ungrounded-or-confidence blocks (`finalisation_rules.py`).
-  The first-pass confidence value is **permanently unrecoverable**: `state.confidence` has no
-  reducer, only the final 76 persisted, and the backend container was recreated after the runs.
-- The revision **did** its wording job: all three overstated claims it was told to fix were
-  softened exactly as directed (verified quote-by-quote against the final text).
-- Pass attribution: `reviewer_findings` has **no timestamp column**; ids are random; ctid preserves
-  insertion order but not the pass boundary. Content constraints prove findings 1-3 are pass-1;
-  placing findings 8-11 is **undeterminable** — including the case that all 12 came from pass 1.
-
-**Instrumentation gaps (slice 007 readiness), the short map:**
-
-- **Per-call usage:** capture-side complete (`UsageRecorder.calls` holds per-call model/tokens/
-  cost), storage-side absent — summed then discarded. `Usage` also has no task label, so even
-  persisting it as-is could not name the node except by model inference.
-- **Per-pass findings and confidence:** destroyed *upstream* of persistence — the state schema has
-  no attempt field and `confidence` is overwritten per pass. A write-time fix alone cannot work.
-- **Observability:** `run_tailoring` contains zero commits; the only commits are in the API layer
-  before and after the run. `REVIEWING` is never observable (concern 6 confirmed at file level);
-  Plan/Draft/Revise phases are not in the status vocabulary at all.
-- **Prompts are entirely unversioned and unpersisted** — zero version constants in `prompts.py`;
-  no run column stores a template version. The biggest regression-attribution gap for slice 007:
-  after any prompt edit, historical runs are indistinguishable from current-prompt runs. Contrast
-  the exercised precedents: `match_analyses.criteria_version` (data shows `v2-importance` →
-  `v3-earned`) and `finalisation_rules_version` per run.
-- **Metric readiness:** grounding accuracy best-served (structural `source_item_id` traceability +
-  per-item text snapshots); requirement coverage computable only by judgement, not join (every
-  requirement↔content link is free text); calibration has no human-rating store and n≈1 approval
-  data; **regression delta most blocked** (prompt identity, per-call models, and run-time input
-  snapshots all missing — posting and profile are read live and mutable).
-- Smaller absences, recorded: job-URL extraction usage persisted nowhere; retry deletes the prior
-  attempt's item rows; failed runs persist only totals plus an exception class name.
-
-**Permanently unanswerable for the existing four runs** (information destroyed in state before
-persistence): Zipher's first-pass confidence, the pass attribution of its findings beyond 1-3, and
-what its Draft node actually returned.
-
-### What is NOT built
-
-- **Slice 005 is not deployed** (T088, T089).
-- **The full-revision-budget path has never run** — seven calls, three Opus reviews. It is the path
-  SC-006 is most likely to be broken by, and T085 asks for both paths.
-- **FR-017 has no test that answers it** — whether a tailored resume claims anything the owner did
-  not do is a judgement a person has to make (T087).
-- **An approved version is not rendered as a document.** Deliberate: slice 006. See CLAUDE.md
-  → *Deliberate non-goals*.
+**The fix worked and the metric still does not resolve.** The numerator fell 21% and is now
+provider-measured on both sides, yet the same-session verdict worsened 2.12% → 3.22% — missed
+before the fix and still missed after it — because the
+denominator nearly halved. SC-008 divides a fixed per-run overhead by a total run cost that varies
+2.7× with revision behaviour, so it cannot establish the overhead's position relative to the
+threshold **independently of revision count**. **No target was adjusted and no metric redefined.**
 
 ---
 
 ## 3. Files modified
 
-### Slice 006 — uncommitted as of 2026-08-28
+Regenerate with:
 
-Regenerate with `git status --short`. Nothing is staged. **Files marked ⚠️ belong to the parallel
-Slice 008 session — do not edit them.**
+```bash
+git diff --name-status 1cf9a70~1..HEAD -- backend/src frontend/src
+git log --oneline 1cf9a70~1..HEAD
+```
 
-| Layer | File | Change |
-|---|---|---|
-| domain | `domain/models/knowledge.py` | **new** — `KnowledgeDocument`, `KnowledgeChunk`, `Market`, `TrustLevel`, `SourceType`, **`Topic`** |
-| domain | `domain/models/tailoring.py` | `VersionStatus += EXPORTED, SUBMITTED`; `ExportedDocument`, `SubmittedResume` |
-| domain | `domain/models/__init__.py` | registers the above |
-| domain | ⚠️ `domain/schemas/research.py` | slice 008 |
-| application | `application/embeddings.py` | **new** — `EmbeddingSource` port |
-| application | `application/ingest_corpus.py` | **new** — idempotent ingestion (T026) |
-| application | `application/export.py` | **new** — FR-016 precondition only (T033) |
-| application | `application/export_resume.py` | **new** — the export use case (T036) |
-| application | `application/retrieved_guidelines.py` | **new** — retrieval + precedence (T027), `citation_snapshot()` + `trust_level` (T028), `last_retrieval_ms` (T029) |
-| application | `application/tailor_resume.py` | **MOD** — one line: `run.guidelines_used = citation_snapshot(guidance)` (T028). The only tracked backend source file this slice modified beyond config |
-| application | `application/guidelines.py` | `GuidelineQuery.market` added; D2 docstring corrected |
-| application | ⚠️ `application/ports.py`, `research_queries.py`, `research_company.py`, `citation_check.py` | slice 008 |
-| infrastructure | `infrastructure/corpus/` | **new** — loader/chunker (T025) |
-| infrastructure | `infrastructure/embeddings/` | **new** — fastembed adapter (T008) |
-| infrastructure | `infrastructure/documents/render.py` | **new** — WeasyPrint behind a boundary (T031/T035). `__init__.py` untouched: the package already exists for CV import |
-| domain | `domain/schemas/document.py` | **new** — `ResumeDocument`, `ResumeSection` (T031) |
-| tests | `tests/conftest.py` | `DYLD_FALLBACK_LIBRARY_PATH` fallback so WeasyPrint imports on Apple Silicon |
-| migrations | `alembic/versions/0015_knowledge_corpus.py` | **new** — corpus tables, `vector(384)` |
-| migrations | `alembic/versions/0016_export_and_submission.py` | **new** — export/submit + status widening |
-| corpus | `backend/corpus/` | **new** — 18 documents, 79 rules, + authoring contract |
-| config | `config.py`, `Dockerfile` (+ **`fonts-dejavu-core`**, T032), `pyproject.toml` | embedding config; Pango/Cairo libs + baked model; `fastembed`/`pgvector`/`weasyprint`/`pyyaml`/`tiktoken`/`types-PyYAML` |
-| tests | `tests/unit/test_corpus.py` (8), `test_corpus_loader.py` (12), `test_embeddings.py` (5), `test_export_ats.py` (5, T031), `test_export_determinism.py` (3, T032), `test_export_precondition.py` (10, T033), `test_export_template.py` (4, T034) | **new** |
-| tests | `tests/integration/test_export_use_case.py` (13, T036), `test_export_api.py` (12, T037) | **new** |
-| tests | `tests/integration/test_tailoring_ownership.py` | route-enumeration gates re-pinned 6 → 8 (T037) |
-| frontend | `lib/api.ts`, `components/applications/tailor-tab.tsx` | export + download affordance (T037) |
-| tests | `tests/integration/test_corpus_ingestion.py` (6), `test_guideline_retrieval.py` (**26** — T013–T018 and T029 added to T027's 15), `test_guideline_snapshot.py` (**7** — T028 plus OQ-006-A), `test_retrieval_wiring.py` (**10** — T030 plus OQ-006-B) | **new** |
-| tests | `tests/unit/test_architecture.py` | import guard widened by 6 embedding runtimes + count assertion |
-| docs | `CLAUDE.md` | refactored 11,448 → ~9,300 tokens; status moved here |
-| specs | `specs/006-document-retrieval/` | full SDD artifact set incl. `corpus-research/` |
+`1cf9a70` is slice 006's first commit. **Twelve commits on the branch**, all pushed and CI-green:
+
+| Commit | What |
+|---|---|
+| `01030f6` | **T052 docs** — SC-008 re-measurement recorded. **Not on `main`** |
+| `2f0ba29` | **T048** — corpus ingestion in the Railway pre-deploy |
+| `1c11ad5` | **T056** — the sent résumé, on the Details tab |
+| `5601c3f` | **T055** — CI gets production's renderer |
+| `94955af` | **T053** — the corpus records which model embedded it |
+| `aad97a6` | **T052** — prompt citation decoupled from the recorded snapshot |
+| `c64b9c9` | **T051** — role context snapshotted; grouped Experience |
+| `941eac4` | **T054** — the tailor screen's dead controls and silent refusals |
+| `bf4bbcd` | font timestamp pinned, so a re-export is byte-identical |
+| `5d666fa`, `0c5ed56` | embedding-model test determinism; submission-refusal transaction |
+| `1cf9a70` | retrieval, export and submission — the slice but deployment |
 
 ### Read these first
 
 | File | Why |
 |---|---|
-| `specs/006-document-retrieval/tasks.md` T050 / T051 | The two appended tasks. **T050's design is decided and unbuilt; T051's is undecided.** Both block things |
-| `backend/corpus/README.md` | The authoring contract. **Read before touching any corpus file** |
-| `application/retrieved_guidelines.py` | T027. The precedence rule and the R13 argument for its shape |
-| `infrastructure/corpus/loader.py` | The chunker-scope invariant — why prose can never become guidance |
-| `specs/006-document-retrieval/research.md` §R13 | The measurement that reversed the topic decision |
-| `specs/006-document-retrieval/corpus-research/source-register.md` | Every source, its licence, its disposition |
+| `backend/railway.toml` | The T048 fix and the reason it is `/bin/sh -c`. **`preDeployCommand` is a single command**; Railway's schema types it as a string or a one-element array, so a bare `&&` runs only the first half |
+| `application/immutability.py` | The two locked states, and why `READY` is not one |
+| `application/ingest_corpus.py` | T053's guard: refuses a model swap before embedding or writing anything; NULL means unknown |
+| `application/export_resume.py` | `_role_groups` — role order is snapshotted `role_ordinal`, bullet order is `position` within a role |
+| `agents/tailoring/prompts.py::_guidelines` | T052: rule text only; the citation lives in `guidelines_used` |
+| `specs/006-document-retrieval/tasks.md` | Every decision, drill and finding, per task |
 
-### Backend source
+### By layer
 
-```
-NEW  api/routes/tailoring.py                (the six routes)
-NEW  application/tailor_resume.py           application/finalisation_rules.py
-NEW  application/guidelines.py              (GuidelineSource port + static rubric)
-NEW  application/agents/tailoring/{graph,state,prompts,__init__}.py
-NEW  domain/models/tailoring.py             domain/schemas/tailoring.py
-MOD  config.py                              (five llm_model_tailor_* entries)
-MOD  ports.py                               (T081 — the docstring was describing slice 004)
-MOD  main.py                                (router registration)
-MIG  0010_resume_versions · 0011_version_items_and_findings
-NEW  application/scoreability.py            (scoreable_posting — Match + Tailor)
-NEW  application/plan_adherence.py          (emphasis_adherence — measurement, no gate)
-MOD  application/ports.py                   (UsageRecorder, safe_validation_errors)
-MOD  application/analyze_match.py           (scoreability guard + prompt agree)
-MOD  api/routes/applications.py             (is_scoreable, _latest_analysis, _state_of)
-```
+- **Backend application** — added `embeddings.py`, `export.py`, `export_resume.py`,
+  `immutability.py`, `ingest_corpus.py`, `retrieved_guidelines.py`, `submissions.py`,
+  `submit_resume.py`; modified `guidelines.py`, `tailor_resume.py`,
+  `agents/tailoring/prompts.py`
+- **Backend domain** — added `models/knowledge.py`, `schemas/document.py`; modified
+  `models/tailoring.py` (role-context columns), `models/__init__.py`
+- **Backend infrastructure** — added `corpus/loader.py`, `documents/render.py`,
+  `embeddings/fastembed_source.py`, `ingest.py`; modified `config.py`, `main.py`
+- **Migrations** — `0015` corpus, `0016` export/submission, `0017` role context, `0018` corpus
+  embedding model. All four applied in production
+- **Deployment** — `backend/railway.toml`, `.github/workflows/ci.yml`, `.env.example`, `README.md`
+- **Frontend** — `tailor-tab.tsx`, `tailor-diff-item.tsx`, `detail-tabs.tsx`, `lib/api.ts`
 
-### Frontend source
+### Not in this list, deliberately
 
-```
-NEW  components/applications/tailor-tab.tsx        tailor-diff-item.tsx
-MOD  lib/api.ts                     (six calls; ApiError now carries the unflattened detail)
-MOD  components/applications/detail-tabs.tsx       (the Tailor tab)
-MOD  app/applications/[id]/page.tsx (removed the stale disabled "Tailor CV" button)
-MOD  app/globals.css                (**the shadcn token bridge — see §4**)
-```
-
-### Tests
-
-```
-NEW  backend/tests/support/{scripted_seam,tailoring_fixtures,__init__}.py
-NEW  backend/tests/integration/test_tailoring_api.py         (25)
-NEW  backend/tests/integration/test_tailoring_ownership.py   (10)
-NEW  backend/tests/integration/test_tailoring_workflow.py    (15)
-NEW  backend/tests/integration/test_tailoring_{preconditions,reaper,schema,concurrency}.py
-NEW  backend/tests/integration/test_{owner_data_untouched,version_immutability,version_status_transitions}.py
-NEW  frontend/src/components/__tests__/tailor.test.tsx       (30)
-NEW  frontend/src/components/__tests__/tailor-findings.test.tsx (7)
-MOD  backend/tests/integration/test_auth.py  (**the enumeration was checking zero routes**)
-MOD  frontend/src/components/__tests__/tokens.test.ts (a Tailwind theme-colour gate)
-```
+`application/ports.py` and every `research_*` module belong to the **parallel Slice 008 session**
+and are uncommitted. `ports.py` at HEAD is byte-identical to `298a45f`, verified today.
 
 ---
 
@@ -1005,299 +622,427 @@ is worth expecting rather than discovering.
   `selectinload` still sees the empty list assigned at construction. The composed document came out
   **empty while two assertions passed anyway**.
 
+
+### Slice 006 — verification, concurrency and determinism (added 2026-08-29)
+
+- **A test that passes because two things happened in the same second.** The FR-031 byte-identity
+  test rendered twice back-to-back with no delay. `fontTools` stamps the embedded font subset's
+  `head.modified` with wall-clock time, whose resolution is **one second** — so the test passed
+  whenever both renders landed inside one second, *whether or not the bug was present*. It was
+  present on every Linux render: **five distinct hashes from eight consecutive renders** in the
+  production image. Green on macOS for months, because macOS resolves a different font and
+  preserves its original date instead of restamping. **T032 concluded "already byte-identical"
+  from the one environment where that is true.** Any determinism test must cross the resolution of
+  whatever clock could be involved.
+- **The PDF's metadata was the wrong place to look.** `/CreationDate`, `/ModDate` and `/ID` are all
+  genuinely absent at WeasyPrint 69 — T032 measured that correctly. The timestamp was one level
+  down, inside the embedded font, reachable only by inflating a stream and walking an sfnt table
+  directory. Three bytes differed; two were checksums derived from the third.
+- **A concurrency test that tested a sequence.** Two `submit_version` calls under `asyncio.gather`
+  ran to completion one after the other — the second was refused by the *guard* on an already
+  `SUBMITTED` status, never reaching the constraint. Both paths return the same message on purpose,
+  so every assertion passed while the raced code path was never entered. Fixed with a barrier in
+  the storage double (a racer parked there has passed the guard and cannot have committed) plus
+  `assert isinstance(loser.__cause__, IntegrityError)`, which is the only thing that distinguishes
+  the two paths.
+- **A refusal that poisoned the caller's transaction.** Converting the raced `IntegrityError` into
+  `SubmissionRefused` left the session in a failed transaction, so the same exception type meant
+  two different things depending on which branch raised it. **`session.rollback()` looked like the
+  fix and is worse** — measured: it makes the session usable by destroying the caller's earlier
+  uncommitted writes. A savepoint is correct, **but only with the `add` and the status change
+  inside it**: wrapping just the `flush()` changes nothing, because writes registered beforehand
+  belong to the outer transaction. That form passed every test until one was written for it.
+- **A narrowing nothing defended.** Restricting the duplicate-detection predicate to an exact
+  `diag.table_name` match broke no test, because the table has exactly one unique constraint and
+  every real violation names it. The difference only shows on an input the schema cannot produce.
+  Needed a unit test with a synthetic diagnostic, or the tightening was decoration.
+- **`litellm` calls `load_dotenv()` at import.** It walks up from the working directory and injects
+  the developer's `.env` as real environment variables — `_env_file=None` does not stop it. A
+  config test asserting a *default* therefore asserted whatever the machine was configured for, and
+  passed or failed on whether an earlier test had imported `litellm` first. Green in a full local
+  run, red alone and red in CI, which has no `.env`. **Any test asserting a default must
+  `monkeypatch.delenv` the variable.**
+- **`docker compose restart` does not pick up a new image.** Cost a wrong conclusion: a verified
+  fix appeared not to work because the running container was still the old build. `up -d`
+  recreates. (The documented gotcha said `.env`; it applies to images too.)
+- **A test fixture written into a table the code under test reads.** The caller's "earlier
+  uncommitted write" was an `ExportedDocument`, which `latest_export` then selected as the document
+  to submit — `KeyError`. Use a table the path does not consult.
+- **`conftest`'s truncation does not reach the knowledge tables.** `_TABLES` is
+  `("professional_profiles", "users")` with `CASCADE`, which covers what a *user* owns; the corpus
+  is deliberately not user-owned. The first test to ingest the real corpus **and commit** would
+  have left its rows as the silent fixture for every retrieval test after it.
+- **The browser found three defects the suite could not (T047).** `Accept`/`Reject`/`Edit` render
+  on a locked version where every click is a guaranteed 409; the 409 is **swallowed silently**
+  because `decide()` has no `catch` while `exportPdf` and `markSubmitted` both do; and the
+  submitted view instructs "tailor this job again" while offering no control to do it. The suite
+  asserted the *export* controls were absent and that *export* errors render — never the item
+  path. **The rule held again: the suite has never once caught a display bug.** Tracked as T054.
+- **CI declares no system dependencies at all.** The Dockerfile explicitly declares
+  `fonts-dejavu-core` because "which font resolves decides the rendered bytes", and CI installs
+  nothing — so the ATS and determinism assertions run against a document production does not
+  produce. Tracked as T055.
+
+
+### Slice 006 — the tailor screen, T054 (added 2026-08-29)
+
+- **A `disabled` prop existed on `TailorDiffItem` and no caller had ever passed it.** Its docstring
+  said *"true once the version is `ready`"* — the **wrong** set — and because nothing used it, the
+  wrong set was never exercised and never contradicted. A prop with no call site is not a feature
+  with a default; it is an untested claim. Found only because T054 went looking for where to add
+  the gate and discovered the gate already there, pointed at the wrong states.
+- **Gating item controls on `approved` is the plausible over-fix, and it silently breaks FR-029.**
+  `approved` is `ready || exported || submitted` and is what the *export* controls use, so reaching
+  for it reads as consistency. It removes editing from a `ready` version, which FR-029 requires to
+  stay editable and which `docs/03` §10.1 describes as approval *"not a one-way door until
+  export"*. It passes any test written only against `submitted`. The guard is a test asserting the
+  three controls are **still present** on `ready`; drilled, and it fails by name.
+- **The three defects were each invisible to the half of the suite that could have caught them.**
+  `tailor.test.tsx` asserted the *export and submit* controls are absent for a submitted version,
+  and asserted an error renders for a failed **export** and a failed **submit** — never for a
+  failed item decision, and never that the decision buttons were gone. The backend tests were right
+  about the backend; the frontend tests were right about their own half. Neither half was wrong, and
+  the defect lived exactly on the seam.
+- **Fixing one defect exposed a fourth of the same family.** `tailor()` sets `refusal`, not
+  `error`, and **only the start view rendered `refusal`**. Adding the re-tailor button to the diff
+  view would therefore have shipped a button whose most likely outcome — `stale_analysis`, because
+  the version was written against a match several actions old — set state nobody displayed. This is
+  the *same* defect as the silent `decide()`, one action along, and it would have been introduced
+  by the fix for a different one. **Adding an affordance means auditing every state its handler can
+  set, not just the success path.**
+- **A one-line UI gate is worth more than it looks, and less than the schema.** All four defects
+  were frontend-only; the backend refused correctly with the right message throughout, the item
+  never changed, and the submission was untouched. Nothing about data integrity was ever at stake.
+  What was at stake is a person believing they changed a résumé they did not — which is Principle
+  II's actual subject, and not something a 409 in a browser console addresses.
+
+### Handoff and measurement (added 2026-08-29)
+
+- **The handoff skill's own task-counting command reports 0 / 1 for a slice that is 100 / 101.**
+  `specs/005-resume-tailoring/tasks.md` uses `- [X]`, capital, for all 100 of its done tasks;
+  every other slice uses lowercase. `grep -c '^- \[x\]'` matches none of them and prints a
+  confident zero. Use `grep -cE '^- \[[xX]\]'`. This is the fifth instance of the project's
+  "a gate with nothing to examine passes forever" pattern, and the first one found in the tooling
+  that exists to prevent drift rather than in a test.
+- **A local test count is not the CI test count, and the difference is not a bug.** Local pytest
+  reported **797 passed** while CI reported **751** on the same commit. The gap is exactly the 46
+  tests in the parallel session's five untracked Slice 008 files. Recording 797 as "the suite" in a
+  handoff would make the next session hunt 46 missing tests in CI. **When a working tree is shared,
+  measure the suite and say which tree you measured.**
+- **The previous HANDOFF disagreed with itself about spend, and the stale half was the detailed
+  one.** Its header said $3.084181; its §5A said "$2.431522 across 7 runs". Measured today: 11 runs,
+  $3.084181. The narrative section had been updated less recently than the summary, which is the
+  opposite of the intuition that detail is more current than summary.
+
+---
+
+
+### Deployment — the pre-deploy that ran half of itself (added 2026-08-29, T048)
+
+- **A version-controlled `preDeployCommand` was silently not the one that ran, and the deploy was
+  green.** `railway.toml` said `alembic upgrade head && python -m careerhq.ingest`. Deployment
+  `75cd8ea` migrated cleanly `0014 → 0018`, reported **SUCCESS**, passed every health check — and
+  **never ran ingestion**. Production sat with an empty corpus while retrieval fell back to the
+  static rubric, which is FR-009 working correctly and therefore invisible.
+- **`preDeployCommand` is a *single* command.** Railway's published JSON schema types it as a
+  string or a **one-element** array; there is no multi-command form. Under
+  `builder = "DOCKERFILE"` nothing interprets a shell operator, so `a && b` runs `a` and stops.
+  The fix is `'/bin/sh -c "…"'`, which Railway's own staff give as the remedy.
+- **Three wrong hypotheses, each plausible, each disproven by evidence rather than argument.** A
+  dashboard override — the service instance has `preDeployCommand: null`. The wrong config file —
+  Railway reports `configFile: /backend/railway.toml`, the correct one. And argv splitting, which
+  was "disproven" by reasoning that alembic would have errored on the extra arguments. **That
+  third inference was the instructive one**: it assumed the only alternatives were shell
+  evaluation or naive splitting, and missed the actual behaviour — the first command runs and the
+  rest is discarded silently. A confident deduction from an incomplete set of possibilities.
+- **The comment asserted a guarantee the platform never provided.** It read *"the `&&` is the
+  ordering"*. A configuration file claiming a property it does not have is worse than one that
+  says nothing, because it stops anyone checking.
+- **Grepping deployment logs for the logger name found nothing, on a deploy that worked.** After
+  the fix, the ingestion lines are present as `corpus ingested` and `corpus ingestion finished` —
+  Railway had stripped the *logger names* while keeping the message text, the inverse of the
+  documented "Railway blanks the message field" behaviour. Searching for `careerhq.ingest`
+  returned **0** and would have been reported as a failure had the corpus counts not contradicted
+  it. **Verify a deploy by its effect on the database, not by its log grep.**
+- **A green deployment is not evidence the corpus loaded**, and nothing in the pipeline asserts
+  it. `test_the_pre_deploy_command_migrates_before_it_ingests` checks the *configuration*; no
+  check exists for the *outcome*. That gap is still open.
+
+### Measurement — the T052 re-measurement (added 2026-08-29)
+
+- **A one-arm comparison would have been wrong in the favourable direction.** The plan was a
+  single retrieval arm against the existing baseline `e70ecd76`. But T052 removed the citation
+  from the **static** rubric too, so that baseline sent guidance current code does not — measured
+  at **207 provider tokens** on `tailor_plan`. The saving would have been credited to retrieval.
+  **When a change touches both arms of an A/B, the old baseline is not a baseline any more.**
+- **The offline estimate of that correction was 134 tokens; the measured value was 207.** The
+  estimate used `cl100k_base` where the arms are provider-counted — the mixing R15 warns against.
+  It was directionally right and numerically 35% low.
+- **The numerator improved 21% and the metric got worse.** +4,727 → +3,754 tokens, yet
+  same-session SC-008 (006) moved 2.12% → **3.22%**, missed at both, because this session's
+  static arm did not revise
+  and the denominator nearly halved. SC-008 divides a fixed cost by a variable one; the same
+  overhead reads 1.37%–3.22% depending on the denominator chosen — and SC-008 (006) is recorded
+  as missed at 3.22%. **A metric that moves when the
+  thing it measures improves is measuring something else.**
+- **The flattering denominator was available and was not taken.** $0.007508 ÷ $0.446391 = 1.68%,
+  which reads as a pass. It is not the same-session pairing and is recorded in all three
+  documents as explicitly not a pass.
+
+---
+
+## 4A. Slice 007 — built, and its benchmark paid for (2026-08-29)
+
+**The evaluation harness exists, ran against real models, and produced measurements.**
+Artifacts: `specs/007-evaluation-benchmark/`, results in its `results/` directory.
+
+### Spend — $4.925403 of a $10 hard ceiling
+
+| | |
+|---|---|
+| Benchmark tailoring runs (23) | **$4.335980** — exact, persisted |
+| Judge calls, main pass (8) | **$0.395800** — exact, itemised |
+| Judge calls, timeout-interrupted segment (3) | $0.163623 — derived from the guard's trace |
+| Case 1's failed judge call | **$0.030000 — an agreed upper bound, not a measurement** |
+| **Cumulative** | **$4.925403 · 49% of ceiling · $5.074597 unused** |
+
+**81 model calls. 23 tailoring runs, 12 judge calls — exactly the approved number.**
+22 of 23 runs succeeded; 9 judge calls validated, **3 unjudged** on one recurring
+fault: `{"at": "dimensions", "type": "too_long"}`, the model returning more than the
+five rubric dimensions. Not systematic, and **the schema was deliberately not
+relaxed mid-measurement** — that would make the scores incomparable.
+
+Runs cost **$0.183 mean against a $0.308 estimate**, because the synthetic profiles
+are smaller than the real one (17,706 input tokens against 26,774). **Judge cost is
+now calibrated at $0.049475 mean**; the plan guessed $0.070 and an offline
+reconstruction said $0.021.
+
+### SC-006 — the Principle III release-blocker, now measured
+
+> **`persisted_ungrounded = 0` across all 23 paid arms.**
+
+Preserved as evidence: **2 ungrounded claims caught and discarded before
+persistence**, **28 overstated claims flagged**, `traceable` 1.0 everywhere. The two
+caught claims mean the guardrail has fired on real model output, so SC-006 finally
+has something to be a regression test *of*.
+
+### SC-008 — two criteria, and they must never be conflated
+
+**SC-008 (006) remains `MISSED — 3.22% against an unchanged ≤2% threshold`.**
+Nothing in slice 007 reinterprets, replaces or supersedes it.
+`backend/tests/unit/test_sc008_is_not_relabelled.py` is the gate; it scans every
+slice-007 artifact plus `CLAUDE.md`, and asserts the count of files it examined.
+
+**SC-008 (007) — a different criterion — is `unresolved`, which is a valid outcome
+of it rather than a pass/fail claim about retrieval.**
+
+| | |
+|---|---|
+| Numerator | **3,376.6 ± 225.8 tokens**, n = 5 pairs (6.7% relative spread) |
+| `plan_share` | 0.454 – 0.555 on every pair — Plan and Draft each carry about half |
+| Denominator | n = 18, mean $0.184185, range $0.104822 – $0.404111, revision rate 33.3% |
+| **Interval** | **[1.67%, 6.44%]** — straddles the 2% position |
+
+**The numerator is now well established; the uncertainty is entirely in the
+denominator**, and the live data shows why: **static arms revised 4 of 5 while
+retrieval arms revised 2 of 12.** A total-cost comparison would have credited
+retrieval with that and reported a revision-behaviour artefact as a cost finding —
+exactly the failure T052 diagnosed.
+
+> ⚠️ **PRICING WINDOW. This result holds at Sonnet 5's $2.00/MTok input rate, valid
+> through 2026-08-31 — LiteLLM's own table, and what the gateway billed. At the
+> post-2026-08-31 rate of $3.00/MTok the interval becomes [2.51%, 9.66%] and
+> resolves *above* 2%. Never quote the verdict without its window.**
+
+### T057 — closed as measured, not as a demonstrated improvement
+
+**Mechanism confirmed**: items now read `B.Sc. in Software Engineering · Software
+Engineering · Ben-Gurion University of the Negev · 2014-2018 · 87` where pre-T057
+they read the institution alone. The qualification reaches the model and the export.
+
+**Quality: mean Δ +0.073, n = 5, range −0.20 to +0.40. No regression observed; no
+improvement demonstrable. The noise floor is unmeasured**, because D3 approved one
+paid pass and SC-001's repeat was the third — so the delta cannot be compared
+against zero, and is not. What it delivers is a bound.
+
+**The experiment ran backwards from the plan, deliberately**: T040 is the
+**post**-T057 arm and T045 the **pre**-T057 arm, because T057 had already landed at
+T044 before the benchmark existed. The temporary source revert was restored and
+**SHA-256 verified** (`f218a263b985`).
+
+### The persistence question — resolved without a migration
+
+**`alembic` still ends at `0018`. Slice 007 needs no migration.** The plan proposed
+two columns; building the harness eliminated both:
+
+- **`guideline_source` — not needed.** Two drafts asked *what a run was configured
+  with*, which the record genuinely cannot answer. That is the wrong question: a
+  metric describes what a run **was advised by**, and `guidelines_used` states that
+  exactly — a corpus citation or `StaticGuidelines`' constant. Measured across all
+  ten real runs carrying a snapshot: seven rubric constants, three citations, no
+  overlap. Fallback detection is *intent versus outcome* and needs no column.
+  Reframing took reportable runs from **2 of 13 to 8 of 13**.
+- **`benchmark_run_id` — withdrawn.** The result artifact already maps cases to runs.
+- **`duration_ms` — the only remaining candidate**, and nothing in slice 007 needs it
+  except SC-010, which exists only because M-001 was inherited. **Recommendation:
+  drop SC-010 here, or let Slice 008 take `0019` and land this later.**
+
+### Two defects the paid pass found, both fixed
+
+1. **The spend guard did not charge for billed failures.** `ExtractionFailedError`
+   carries the usage the provider billed; the guard recorded only successes, so a
+   failing call read as free — **a hole in the ceiling**. Fixed by duck-typing on
+   `.usage`, the pattern `UsageRecorder` already documents.
+2. **A failed judge killed the pass**, after the tailoring run had already been paid
+   for. The judge contract says the case is *unjudged* and the run *continues*.
+
+### Where slice 007 stands
+
+**48 of 50 tasks ticked; 2 partial and both are the author's.**
+
+- **T047** — the real sanity set is built and provably isolated (outside the repo,
+  gitignored, PII-scanned) but **deliberately unpopulated**: filling it means copying
+  a real CV onto disk. It spends no money.
+- **T049** — `CLAUDE.md` done; this file adopted and extended, and the primary
+  worktree's copy still needs reconciling.
+
+**Nothing is committed.** Slice 008, `ports.py`, production and the pre-existing
+evaluation evidence were untouched throughout: the original 8 versions / 13 runs /
+1 submission / $3.253255 are byte-identical, and benchmark rows sit alongside them
+under `google_sub LIKE 'benchmark|%'`.
+
+---
 ## 5. Exact next steps
 
-### A0 — 🎯 **T047: full gates, then Docker** · **owner: Claude** · next · nothing blocks it
+**Slice 006 is deployed and every Claude-ownable item in it is done.** What remains is one
+deferred task, two tidy-ups, and the graded slice nobody has started.
 
-Verify: `cd backend && .venv/bin/pytest -q && .venv/bin/mypy src && .venv/bin/ruff check .`
-and `cd frontend && npm test -- --run && npx tsc --noEmit && npm run lint && npm run build`
+### A0 — **Slice 007 is uncommitted** · owner: **the author** · **nothing blocks it, and it is the largest body of unsaved work in the project**
 
-**Everything but deployment is done.** Export, submission, immutability, revision lineage, the
-insert-only gate, the API and affordance, corpus ingestion, and both measurements. **T047** runs
-the gates on the host and then verifies in Docker; **T048** deploys. Nothing else is queued.
+The whole slice — harness, synthetic benchmark, metrics, judge, the paid results and this file —
+is uncommitted on `007-evaluation-benchmark`. **The measurements it contains cost $4.925403 and
+exist nowhere else**, except that the *results* are committed files rather than database rows, so
+they survive a volume loss. Review and commit. §4A is the summary.
 
-**Two things T047 should not be surprised by.** The backend image had to be rebuilt during T050
-because it predated migration `0016` and `alembic current` failed *inside the container* against a
-database already at `0016` — the known "compose does not pick up backend code changes" trap.
-And **`exported_documents` and `submitted_resumes` are both empty locally**: export and submit are
-tested end to end but have never been exercised by a person in a browser, which is exactly the
-class of bug this project's own rule says the suite has never caught.
+### A — **Get `01030f6` onto `main`** · owner: **the author** · nothing blocks it
 
-***Below this line, the T038–T043 notes are kept as the record of what those tasks found.***
-
-**Three defects were found at T037 and are worth remembering**, because none was found by reading
-code: `ensure_exportable` crashed on **every real refusal** (`status.value` on a `String` column
-that loads as a plain `str` — the enum-vs-str trap again, and the unit tests passed enum members
-only); a failed action on the diff screen rendered **nothing**, so a 409 looked like success; and
-**ownership was never checked on the document download** — the drill found it, and it was the route
-that hands over somebody's résumé.
-
-**Two of the three items that were waiting for T036 are closed:** the contract's `APPROVED`
-wording is corrected (it now reads *"has been approved and is not submitted — `READY` or
-`EXPORTED`"*), and the guard is called first, before any side effect, asserted on spies rather
-than only on the exception.
-
-**The third is not closed and was deliberately not solved: it is now T051.** `ResumeDocument`
-carries no employer, job title or dates, so an exported résumé lists bullets with nothing saying
-where or when — while the corpus's vendor-sourced ATS rule requires employer and title as separate
-readable text. **The exporter does not fabricate them.** It is not T036's (FR-017 defines the
-exported text as the approved items and their order, which is what it exports), and it is a real
-decision rather than a field: the role context lives on `WorkExperience`, not on the version, so
-reading it live would leave part of an approved document **unsnapshotted and able to change
-underneath its own checksum** (Principle IV). See T051.
-
-**T034 changed one thing in the template**: the heading's `border-bottom` was removed. WeasyPrint
-paints a bottom border as **two filled rectangles spanning the whole heading box**, so no height
-threshold could separate a hairline rule from a shaded panel — and loosening one until the border
-passed would have admitted the panels the assertion refuses. The decoration bought nothing a parser
-reads, so the guarantee is now exact: **the page carries no vector objects at all**.
-
-**Carried into T036 from T033 — a contract wording fix, not a code change.**
-`contracts/export.md` states the export precondition as *"the version is `APPROVED`"*. Two problems:
-the state is named **`READY`** in the model (T005), and the literal reading makes a version
-exportable **exactly once ever**, because FR-019 moves it to `EXPORTED`. `ExportedDocument` has no
-unique constraint on `resume_version_id` precisely so re-export is possible. The guard resolves
-this as `{READY, EXPORTED}` and refuses `SUBMITTED` (terminal). **The contract should be amended to
-"has been approved and is not submitted"** when T036 touches that section.
-
-**Resolved at T032 (A1 + B, the author's decision).** `fonts-dejavu-core` is now an **explicit apt
-dependency** of the backend image, and FR-031 is **scoped to one runtime environment** in both
-`spec.md` and the export contract. Vendoring the font (A2) was rejected: cross-machine byte
-identity is not a requirement any spec establishes. **The test was not weakened** — it renders the
-same document twice in two separate processes and demands byte-identical output.
-
-**No metadata normalization was written, deliberately.** Measured first: **WeasyPrint 69.0 emits no
-`/CreationDate`, no `/ModDate` and no `/ID`**, so R10's premise is false at this version and
-T035's "pin metadata and timestamps" had nothing to pin. The tests are the gate that catches a
-version bump reintroducing one.
-
-*Background — the earlier note, which was half wrong and is kept because the correction is the
-useful part:*
-
-**Found at T031, and half of it was WRONG — corrected 2026-08-28.** The claim was *"neither host
-nor container has DejaVu"*. The host half holds: macOS resolves to **Verdana**. **The container
-half did not.** Built against the Dockerfile's exact package list, `python:3.12-slim` carries **8
-DejaVu font files**, so production renders in the font the template asks for and the divergence is
-**dev-host vs container**. The claim was generalised from the host to an image nobody had opened.
-**The real risk is that DejaVu arrives transitively rather than by declaration** — a base-image
-change would alter output silently, which is exactly FR-031's *"surfaces only on a re-export"*.
-
-**Also measured, and it contradicts R10:** two renders in separate processes 2.5s apart are already
-**byte-identical**; the PDF's only metadata is `Producer: WeasyPrint 69.0` — no `CreationDate`, no
-`/ID`. R10's premise that timestamps make renders differ is **not true of WeasyPrint 69**, so
-T035's pinning may be a no-op at this version. The test still earns its place: it is what catches a
-version bump reintroducing one.
-
-**Environment, now required for the backend suite**: `brew install pango` is installed but is **not
-sufficient on Apple Silicon** — Homebrew's prefix is off the dynamic linker's search path and
-WeasyPrint `dlopen`s GObject at import. `tests/conftest.py` sets `DYLD_FALLBACK_LIBRARY_PATH` as a
-fallback so a bare `.venv/bin/pytest` works. **T049's documented prerequisite was incomplete**;
-the doc sweep at T046 recorded the real one in `CLAUDE.md` under *Environment and tooling*:
-`brew install pango` is necessary and **not sufficient** on Apple Silicon, and `conftest.py` sets
-`DYLD_FALLBACK_LIBRARY_PATH` so a bare `.venv/bin/pytest` works.
-
-### A — **T050: give `ingest_corpus` a caller** · **DONE 2026-08-28** · no longer blocks T048
-
-**T001–T030 are done. T028, T029 and T030 are accepted and must not be changed.** Phase 3 is
-complete: tailoring runs on retrieved, cited guidance and the workflow is unchanged.
-
-**It does not yet do so in a deployed environment.** `ingest_corpus` has no caller outside the
-test suite, so a deployed backend retrieves against an empty corpus, falls back to the static
-rubric on every run, and records `empty_corpus` faithfully. **No task in T031–T049 covered this**;
-T050 was appended for it. The code is correct and the slice does nothing — which is the worst
-shape a gap can have, because every gate is green.
-
-**DECIDED 2026-08-28 by the author. OQ-006-C is closed. IMPLEMENTED at T050 the same day.**
-`src/careerhq/ingest.py`, `preDeployCommand = "alembic upgrade head && python -m careerhq.ingest"`,
-documented locally as `docker compose exec backend python -m careerhq.ingest`. Measured in the real
-image: **18 documents, 79 chunks, exit 0, ~5.7s**; a second run is **0/0/0/0**; a dead database
-exits **1**. The local corpus is populated for the first time. **Production is not** — see T048.
-
-```toml
-# backend/railway.toml
-preDeployCommand = "alembic upgrade head && python -m careerhq.ingest"
-```
-
-Four parts, all settled: ingestion runs **pre-deploy**; **after `alembic upgrade head`** (the `&&`
-is the ordering guarantee — `knowledge_chunks` must exist first); the command is
-**`python -m careerhq.ingest`**; and **the application startup hook is ruled out** — not
-deprioritised, ruled out, because it pays a model load on every container start and races two
-replicas against `uq_knowledge_chunks_document_content`, both of which scale with replica count
-and would surface as a mysterious boot failure after an unrelated scaling change.
-
-Verified against the real build context: **19 corpus `.md` files and 0 test files reach the
-image**, and the weights are baked (T008/D3), so pre-deploy ingestion makes no network call.
-Pre-deploy already reaches the private database. An **operator command** was rejected too: a corpus
-edit would ship without reaching the database. **Not** in `entrypoint.sh` either — a stale schema
-breaks the application, a stale corpus does not.
-
-**This is not a config line.** There is no CLI in this project at all (no `[project.scripts]`, no
-`__main__.py`), so `python -m careerhq.ingest` has to be written — with a commit, the
-`IngestionReport` logged in `extra={…}`, and a **non-zero exit on failure**, without which the
-pre-deploy placement buys nothing. Full scope under **T050**.
-
-Also unblocked now that `warm_up()` has a caller: **T044 may measure SC-007** — but a measurement
-taken before T050 measures the fallback path, not retrieval.
-
-Verify: `cd backend && .venv/bin/pytest -q && .venv/bin/mypy src && .venv/bin/ruff check .`
-
-### B — Slice 006's design decisions · **all three closed; one still needs building (T050)**
-
-**Newly surfaced by OQ-006-A's analysis, and NOT part of that decision.** The tailoring route
-returns `run.guidelines_used or []`, so a `NULL` reaches the client as an empty list — the exact
-conflation of *unknown* with *advised nothing* that the column now refuses. It affects a run that
-failed before retrieval. A route concern, not a persistence one; unowned, and small.
-
-**OQ-006-A — DECIDED 2026-08-28 by the author: YES. Implemented.** ***A run that has successfully
-retrieved guidance records it, even if the run later fails.*** Written **immediately after
-retrieval, before the graph** — not on the failure path, and the success-path assignment is gone,
-so success and failure cannot drift into two different records.
-
-| Run fails | `guidelines_used` |
-|---|---|
-| **Before** retrieval | **`NULL`** — nothing was fetched, and `NULL` means unknowable |
-| **After** retrieval | **the full T028 citation** — those rules reached the Plan prompt and were billed for |
-
-***`[]` is never written for either.*** An empty list asserts a run was advised nothing, which is a
-claim about a retrieval that never happened. **Why after retrieval rather than on the failure
-path**: Principle V requires every WorkflowExecution to preserve *its inputs*, and three of the
-four things it names already survive a failure because they are written at run creation.
-`guidelines_used` was the only input written at the end — an accident of when the field was added.
-The precedent is `UsageRecorder`, verbatim: *a run that reads as free is worse than one that reads
-as unrecorded, because nobody investigates a free run.*
-
-**Consequences**: the three existing failed runs stay `NULL` for ever; **slice 007 must filter on
-`status`**, not on the presence of a snapshot; and **T029's latency number is unaffected** — it
-stays unpersisted, and the parallel question for it is *not* answered by this decision. Full
-record in `tasks.md` under T030.
-
-**OQ-006-B — DECIDED 2026-08-28 by the author, and implemented.** ***V1 tailors every run for the
-Israeli market.*** `tailor_resume.V1_TARGET_MARKET = "israel"`, passed explicitly into
-`GuidelineQuery`; FR-038 precedence now fires in production, where it previously never did.
-**Nothing infers the market** from the posting, the location or the profile — a wrong constant is a
-line someone can read, a wrong inference is not. **`GuidelineQuery.market` still defaults to
-`global`**, deliberately: moving the default would make every future caller Israeli by omission.
-The extension path is a real product-level market selection, at which point the constant becomes
-that field's default. Full record in `tasks.md` under T030.
-
-**OQ-006-C — CLOSED 2026-08-28, decided by the author. Implementation not started; T050 owns it.
-Blocks T048.** *`ingest_corpus` has no caller outside the test suite.* Decided:
-`preDeployCommand = "alembic upgrade head && python -m careerhq.ingest"` — pre-deploy, after the
-migration, by that command, **with the application startup hook ruled out**. Locally a documented
-`docker compose exec` equivalent, **not** a line in `entrypoint.sh`. Evidence, rejected
-alternatives and T050's scope are in §5 A and under **T050**.
-
-### C — T044/T045 own the ceiling question · **owner: Claude, later in the slice**
-
-The 1,500-token ceiling **has not been moved and must not be** on arithmetic. Integrity pins 795
-tokens (53%); D5's floor is ~1,890 at the measured 54/chunk and still overshoots. T044 measures
-real retrieval latency; T045 measures cost against a `StaticGuidelines` baseline **in the same
-session**, so pricing conditions match. Those two are the evidence a different ceiling would need.
-
-**Blocked by T050, and measurement at this handoff made that concrete.** The local database has
-**0 knowledge documents and 0 chunks** — the corpus has never been ingested anywhere outside the
-test suite. Running T044/T045 today would measure the **static-fallback path** and report it as
-retrieval. Do T050 first, then measure.
-
-### D — Evidence-quality follow-ups · **owner: the author** · recorded, not blocking
-
-Neither triggers a register-mandated removal, and **no rule should change because of them**:
-
-- **F8** — 9 institutional rules rest on gov.il sources (S-001, S-002) whose licensing is
-  **unverified**. The register calls this low-risk under authored rules and records the check as
-  owed. Given the S-009 finding, treat "low-risk" with less confidence than the register does.
-- **F9** — **6 of 79 rules** rest on `summary_only` sources (S-006/7/8), all of them the ATS rules.
-  Bounds how much weight `vendor_documented` can carry. *(Recounted 2026-08-28: this was 19 before
-  S-009's licensing was resolved and its verification moved `summary_only` → `read`, which took the
-  8 seniority rules out of the count. The earlier figure was carried forward without re-measuring —
-  exactly the drift this file exists to prevent.)*
-
-### D2 — T046: move the durable gotchas into CLAUDE.md · **owner: Claude, at Phase 6**
-
-§4 gained a large block this session (autogenerate's two defects, Alembic not diffing check
-constraints, `lazy_load` not deferring the download, the four drills that passed). **Several are
-durable engineering rules rather than slice history**, and T046 is the tracked task that moves them
-— `CLAUDE.md` was refactored this session to hold exactly that kind of rule and nothing about
-status. Do not move them ad hoc; do it once, at T046, so the two files do not drift again.
-
-### E — T088, the last Slice 005 task · **owner: the author** · needs a paid run
-
-Deliberately open. Deployment and infrastructure were verified; the *real paid production run*
-acceptance criterion was consciously deferred. **Do not close it by weakening the criterion.**
-
-### E2 — 🔴 **Back up the local evaluation data** · **owner: the author** · new at this handoff
-
-**$2.431522 of paid evidence exists in one Docker volume on one machine and nowhere else.** 7
-tailoring runs, 8 match analyses, 4 versions — measured today. Production has 0 versions and 0
-runs. `docker compose down -v` destroys all of it, and CLAUDE.md documents that command as the way
-to get a clean database; §5A says the data must not be deleted without ever saying where it is.
-
-Cheapest fix, and it needs no decision:
+The branch is **1 commit ahead**: the T052 documentation. It is three markdown files, so
+production behaviour is unaffected — but `main`'s specs record SC-008 as **2.12%** while the
+branch records the measured **3.22%**, missed against ≤2%. A PR and merge closes it; the deploy
+it triggers is a
+no-op for behaviour.
 
 ```bash
-docker compose exec -T postgres pg_dump -U careerhq careerhq > careerhq-eval-$(date +%F).sql
+gh pr create --base main --head 005-resume-tailoring --title "docs(006): T052 re-measurement"
 ```
 
-Keep it outside the repository — it contains a real profile. **Slice 007's benchmark is measured
-against this data**, so losing it costs the evaluation slice its baseline as well as the money.
+### B — **T048's checkbox** · owner: whoever touches `tasks.md` next · trivial
 
-### F — Slice 003 User Story 3 · **still blocked on the author** · 11 tasks
+`- [ ] T048` is still unticked although the work is done, deployed and verified. **Not
+outstanding work — an untidied record.** Left alone here because this session was scoped to
+`HANDOFF.md` only. Tick it with the deployment evidence and slice 006 becomes 56 of 57.
 
-Needs `backend/tests/fixtures/jobtracker_export.csv`. **Checked 2026-08-28: still absent.**
+### C — **T057** · owner: **the author** · **deferred by decision**, not forgotten
 
-### G — Slice 008 · **owner: the parallel session** · coordinate, do not touch
+**The only slice-006 task with work left.** Education and Language items capture one field and
+drop the rest: the profile stores `qualification = "B.Sc. in Computer Science"` and the exported
+PDF says only *"Ben-Gurion University"*.
 
-It owns `application/ports.py`, `research_queries.py`, `research_company.py`,
-`citation_check.py` and `domain/schemas/research.py`, and has **no `tasks.md`**. It has added no
-migration; **head stays `0016_export_and_submission` and whoever writes next rebases onto it.**
-OQ-E (the 90-day staleness threshold) still awaits the author's approval.
+**Fully investigated; the fix is small and measured.** `+16 tokens, 1.07%` of the master block on
+the real profile, **no migration**, and the richer composition already exists in
+`analyze_match.py:218`. **Projects and Certifications have zero rows**, so Education and Language
+are the only kinds with live impact.
 
-### H — Commit and push · **the author's call** · nothing is staged
+**Deferred because it changes what the model is sent** — the one behaviour-altering change left in
+this slice — and judging its effect needs evaluation rather than a token count. That belongs with
+slice 007. Nothing is at risk while it waits: no requirement is breached, and the degree is
+already visible in the profile UI and already read by match scoring.
 
-Two slices of uncommitted work sit on `005-resume-tailoring`. **Before any `git add -A`:**
+### D — **A post-deploy corpus assertion** · owner: **the author** · nothing blocks it · **new**
 
-```bash
-git check-ignore -v "specs/006-document-retrieval/corpus-research/examples/cv 1/elnatan_after_p1.png"
-```
+`75cd8ea` deployed green with an empty corpus and nothing noticed. The T048 test checks the
+*configuration*; no check exists for the *outcome*. A post-deploy assertion on
+`knowledge_chunks` would have caught it in seconds. **This is the gap that let the failure
+happen, and it is still open.**
 
-must report the ignore rule. Verified 2026-08-28: all 16 files under `examples/` are ignored and
-**0 are tracked**. The two S-021 research PDFs under `corpus-research/sources/research/` are **not**
-ignored and a `git add -A` would stage them — left untracked on the author's instruction, kept, and
-not to be published.
+### E — **T088 (slice 005): a real paid production run** · owner: **the author** · unblocked
 
-### I — Rotate the `logo.dev` token in `job-tracker-web` · **owner: the author**
+Infrastructure was verified at the slice-005 deploy; the criterion — a run with
+`is_fixture = false`, a real model name, real tokens, a real cost — is **not met**. Retrieval is
+now live in production, so such a run would also be the first real evidence of the corpus in use.
 
-`nirtituani/job-tracker-web` is public and hardcodes a logo.dev token (`ApplicationTable.jsx:4`).
-A different repository; nothing here depends on it, which is why it keeps being forgotten.
+### F — **Slice 007 evaluation** · **BUILT AND MEASURED 2026-08-29** · was the project's largest risk
 
+**No longer open.** It was deferred twice and named "the single largest risk in the project"; it
+is now 49 of 50, with a paid benchmark behind it. See §4A.
+
+**What it did not settle**, carried forward honestly rather than closed:
+
+- **No measured noise floor.** One paid pass was approved; SC-001's repeat on an unchanged system
+  was the third. Every delta the slice reports is therefore a **bound**, not a movement — the T057
+  comparison says so in its own text.
+- **The judge is unvalidated.** No human-rated sample exists, so FR-025 keeps every judge score
+  labelled `unvalidated` and no conclusion rests on one.
+- **SC-008 (007) is `unresolved`**, which is a valid outcome of that criterion rather than a
+  verdict on retrieval — and it holds **only inside the $2.00/MTok pricing window ending
+  2026-08-31**.
+- **SC-010 is unmet and needs a column** (`tailoring_run_calls.duration_ms`). It is the only thing
+  in the slice that would need a migration, and it is inherited from M-001 rather than required by
+  anything slice 007 measures.
+
+### G — **Off-machine backup of the evaluation evidence** · owner: **the author** · see §5A
+
+The 2026-08-29 backup is on the same machine as the volumes and **predates the two T052 arms**.
+
+---
 ## 5A. Real data that must not be deleted or modified
 
-This is the project's only evaluation evidence. It was paid for.
+The project's only evaluation evidence. It was paid for. **All counts measured 2026-08-29.**
+
+**Local totals: 8 versions, 13 runs, 8 analyses, spend `$3.562567`.** Production separately holds
+**1 match analysis at `$0.039222`** — so "the evidence is local-only" is true of tailoring runs
+and not of everything.
 
 | Record | Why it must survive |
 |---|---|
-| Version `a8f1e4b7` + runs `a76bd349`, `cd27b092`, `2615363e` | Cellebrite. Two failures and the first successful run, on one reused draft — also the evidence the retry-reuse fix works |
-| Version `c582d938` + run `6356fb4e` | Zipher. The only run with a revision, and the 0.167 adherence sample |
-| Match `ad25de2c` (Voyantis, 0/100, **0 requirement rows**) | The historical invalid analysis. **Deliberately not deleted.** It is rendered as `nothing_to_score` rather than a verdict, which is the spec's own edge case finally implemented — so it also proves that fix |
-| Match `1285d10a` (Voyantis, **84 Strong**) | The scoreability fix working on real data |
-| All 8 match analyses | $0.309312 of real measurement |
-| Run `ff0e310c` (succeeded, 0 revisions, $0.307106) | **Not in R5's table.** A successful zero-revision sample, which the distribution has fewest of |
+| Version `a8f1e4b7` + runs `a76bd349`, `cd27b092`, `2615363e` | Cellebrite. Two failures and the first success on **one reused draft** — the evidence the retry-reuse fix works |
+| Version `c582d938` + run `6356fb4e` | Zipher. The 0.167 adherence sample |
+| Version `1bd5f20f` (**submitted**) | **The only export and the only submission.** 12,085 bytes, checksum `d77926480e3c…`; export and submission checksums match, which is FR-021's re-hash working on real bytes |
+| Match `ad25de2c` (Voyantis, **0**) | The historical invalid analysis, **deliberately not deleted** — rendered as `nothing_to_score` |
+| Match `1285d10a` (Voyantis, **84**) | The scoreability fix on real data, same posting |
+| Runs `60263226` ($0.547891, 2 revisions) and `7c1d64d4` ($0.206268, 0) | The measured cost spread at its ends — 2.66× on one pipeline |
+| **Runs `aae6f565` and `1070657e`** (T052, 2026-08-29) | **The SC-008 re-measurement.** The static and retrieval arms on current code; `$0.478386` |
 
-**Total real spend to date: $2.431522** — **$2.122210 tailoring across 7 runs**, $0.309312 match
-across 8 analyses. Measured by `SUM(cost)` at the T037 handoff. *(This line previously read
-"roughly $1.43 — $1.12 tailoring", which was wrong before the seventh run and wronger after it.)*
+### Backed up 2026-08-29 — and the backup is already behind
 
-***Where it lives, which nothing here used to say: the LOCAL Docker volume only.*** Production has
-**0 versions and 0 runs**. `docker compose down -v` destroys all of it, and CLAUDE.md documents that
-command as the way to get a clean database. **There is no backup.**
+**`/Users/nirtituani/CareerHQ-backups/2026-08-29/`**, outside the repository.
 
-Two rules that have already been broken once each and cost real data:
+| File | Size | Verification |
+|---|---|---|
+| `careerhq_postgres_data.tgz` | 54M | `tar -tzf` readable, 1,977 entries |
+| `careerhq_minio_data.tgz` | 308K | 154 entries; contains the exported PDF object |
+| `careerhq_logical.dump` | 320K | `PGDMP`; `pg_restore -l` lists 32 TABLE DATA entries |
 
-- **Never run a test against the real profile.** A test run merged a fictional CV into it and
-  replaced the contact block. Use a scratch user seeded `@example.com`.
-- **Delete anything seeded by hand.** Several versions and a scratch application were created
-  during browser walkthroughs and removed afterwards. The current counts are the truth.
+**Two limits, both real.** It is **on the same machine** — protection against
+`docker compose down -v`, not against losing the laptop. And it **predates the two T052 arms**,
+so `aae6f565` and `1070657e` exist in no backup.
 
+***It lives in TWO volumes, not one.*** `careerhq_postgres_data` holds the rows;
+`careerhq_minio_data` holds the **exported PDF bytes** a submission checksum refers to. Lose the
+second and re-verification fails permanently — by design, a mismatch refuses and repairs nothing.
+
+**Keep backups outside the repo.** `./backup/` is **not** gitignored and there is no `*.tgz` or
+`*.dump` rule; a dump carries the real profile — home address, phone, employment history — and
+this repository is **public**.
+
+Two rules already broken once each:
+
+- **Never run a test against the real profile.** One merged a fictional CV into it. Seed
+  `@example.com` — never `.test` or `.invalid`, which `EmailStr` rejects, producing a 500 that
+  reads as an application bug.
+- **Delete anything seeded by hand.** The counts above are the truth.
+
+---
 ## 6. Process reminders
 
 - **Spec-Driven Development** via Spec-Kit: `specify → plan → tasks → analyze → implement →

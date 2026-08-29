@@ -1,0 +1,443 @@
+{
+  "phase": "t045-pre",
+  "benchmark_set": "v1",
+  "projection_usd": 4.762704,
+  "ceiling_usd": 10.0,
+  "already_spent_usd": 3.71998,
+  "metric_version": "1.0.0",
+  "rubric_version": "v1",
+  "arms": [
+    {
+      "case_id": "be-01-mid-payments",
+      "guidance_intended": "retrieval",
+      "guidance_used": "corpus",
+      "run_id": "9b632adc-1de3-4a83-bc90-7cdcd1b6c348",
+      "version_id": "90404bc2-cbf5-47c6-93a0-6f724a5c131a",
+      "status": "succeeded",
+      "failure_reason": null,
+      "attempts": 0,
+      "cost": 0.184772,
+      "input_tokens": 17320,
+      "output_tokens": 12111,
+      "review_confidences": [
+        86
+      ],
+      "guidelines": 27,
+      "items": 21,
+      "grounding": {
+        "traceable": {
+          "value": 1.0,
+          "n": 21,
+          "measured": true,
+          "reason": ""
+        },
+        "ungrounded_caught": 0,
+        "overstated_flagged": 0,
+        "persisted_ungrounded": 0,
+        "proposals": 0
+      },
+      "coverage": {
+        "overall": {
+          "value": 0.5,
+          "n": 6,
+          "measured": true,
+          "reason": ""
+        },
+        "must_have": {
+          "value": 0.3333333333333333,
+          "n": 3,
+          "measured": true,
+          "reason": ""
+        },
+        "unmatched_findings": 0
+      }
+    },
+    {
+      "case_id": "be-02-staff-platform",
+      "guidance_intended": "retrieval",
+      "guidance_used": "corpus",
+      "run_id": "de7c43ae-a6a9-478a-81c0-2629024c80ce",
+      "version_id": "59ae119c-7cc8-4eeb-bbf4-57ec93944528",
+      "status": "succeeded",
+      "failure_reason": null,
+      "attempts": 0,
+      "cost": 0.209859,
+      "input_tokens": 17325,
+      "output_tokens": 14133,
+      "review_confidences": [
+        85
+      ],
+      "guidelines": 27,
+      "items": 21,
+      "grounding": {
+        "traceable": {
+          "value": 1.0,
+          "n": 21,
+          "measured": true,
+          "reason": ""
+        },
+        "ungrounded_caught": 0,
+        "overstated_flagged": 0,
+        "persisted_ungrounded": 0,
+        "proposals": 0
+      },
+      "coverage": {
+        "overall": {
+          "value": 0.0,
+          "n": 5,
+          "measured": true,
+          "reason": ""
+        },
+        "must_have": {
+          "value": 0.0,
+          "n": 3,
+          "measured": true,
+          "reason": ""
+        },
+        "unmatched_findings": 1
+      }
+    },
+    {
+      "case_id": "be-03-junior-api",
+      "guidance_intended": "retrieval",
+      "guidance_used": "corpus",
+      "run_id": "444a6e3e-a84f-4f1f-80f7-7f55e84c4b0f",
+      "version_id": "7448c5b6-0862-4fb9-bbad-67421acedd11",
+      "status": "succeeded",
+      "failure_reason": null,
+      "attempts": 0,
+      "cost": 0.160465,
+      "input_tokens": 16540,
+      "output_tokens": 10172,
+      "review_confidences": [
+        88
+      ],
+      "guidelines": 27,
+      "items": 21,
+      "grounding": {
+        "traceable": {
+          "value": 1.0,
+          "n": 21,
+          "measured": true,
+          "reason": ""
+        },
+        "ungrounded_caught": 0,
+        "overstated_flagged": 0,
+        "persisted_ungrounded": 0,
+        "proposals": 1
+      },
+      "coverage": {
+        "overall": {
+          "value": 0.6,
+          "n": 5,
+          "measured": true,
+          "reason": ""
+        },
+        "must_have": {
+          "value": 1.0,
+          "n": 2,
+          "measured": true,
+          "reason": ""
+        },
+        "unmatched_findings": 0
+      }
+    },
+    {
+      "case_id": "ds-01-senior-forecasting",
+      "guidance_intended": "retrieval",
+      "guidance_used": "corpus",
+      "run_id": "19718fb6-37a3-4357-be70-2a0123ab0930",
+      "version_id": "8fd760ab-5f4a-4683-ac71-9e5e5e231e87",
+      "status": "succeeded",
+      "failure_reason": null,
+      "attempts": 0,
+      "cost": 0.139313,
+      "input_tokens": 16114,
+      "output_tokens": 7962,
+      "review_confidences": [
+        84
+      ],
+      "guidelines": 27,
+      "items": 19,
+      "grounding": {
+        "traceable": {
+          "value": 1.0,
+          "n": 19,
+          "measured": true,
+          "reason": ""
+        },
+        "ungrounded_caught": 0,
+        "overstated_flagged": 1,
+        "persisted_ungrounded": 0,
+        "proposals": 2
+      },
+      "coverage": {
+        "overall": {
+          "value": 1.0,
+          "n": 5,
+          "measured": true,
+          "reason": ""
+        },
+        "must_have": {
+          "value": 1.0,
+          "n": 3,
+          "measured": true,
+          "reason": ""
+        },
+        "unmatched_findings": 0
+      }
+    },
+    {
+      "case_id": "ds-02-mle-production",
+      "guidance_intended": "retrieval",
+      "guidance_used": "corpus",
+      "run_id": "7eb7774c-23af-4eff-91c2-cd75b4da4044",
+      "version_id": "d365b8f5-8041-4a66-a2f3-fd8b4ab1191c",
+      "status": "failed",
+      "failure_reason": "ExtractionFailedError",
+      "attempts": 0,
+      "cost": 0.17307400000000003,
+      "input_tokens": 16396,
+      "output_tokens": 10460,
+      "review_confidences": null,
+      "guidelines": 27,
+      "items": 0
+    },
+    {
+      "case_id": "ds-03-analytics-lead",
+      "guidance_intended": "retrieval",
+      "guidance_used": "corpus",
+      "run_id": "d92d701e-7294-4505-94c3-9b0a9b2f6d0a",
+      "version_id": "e8c84cf2-94b1-4c3a-a07a-8768bd048b2f",
+      "status": "succeeded",
+      "failure_reason": null,
+      "attempts": 1,
+      "cost": 0.33794,
+      "input_tokens": 26846,
+      "output_tokens": 20134,
+      "review_confidences": [
+        62,
+        82
+      ],
+      "guidelines": 27,
+      "items": 19,
+      "grounding": {
+        "traceable": {
+          "value": 1.0,
+          "n": 19,
+          "measured": true,
+          "reason": ""
+        },
+        "ungrounded_caught": 0,
+        "overstated_flagged": 4,
+        "persisted_ungrounded": 0,
+        "proposals": 4
+      },
+      "coverage": {
+        "overall": {
+          "value": 0.4,
+          "n": 5,
+          "measured": true,
+          "reason": ""
+        },
+        "must_have": {
+          "value": 0.6666666666666666,
+          "n": 3,
+          "measured": true,
+          "reason": ""
+        },
+        "unmatched_findings": 0
+      }
+    }
+  ],
+  "judged": [],
+  "refusals": [],
+  "corpus": "18/79/unknown",
+  "fingerprint": {
+    "benchmark_set": "v1",
+    "metric_version": "1.0.0",
+    "finalisation_rules_version": "v1-severity",
+    "guideline_source": "retrieval",
+    "corpus_identity": "18/79/unknown",
+    "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+    "pricing_basis": "litellm",
+    "model_config": {
+      "tailor_plan": "anthropic/claude-sonnet-5",
+      "tailor_draft": "anthropic/claude-sonnet-5",
+      "tailor_review": "anthropic/claude-opus-5"
+    }
+  },
+  "denominator_sample": {
+    "n": 30,
+    "revised": 10,
+    "min_usd": 0.104822,
+    "max_usd": 0.547891
+  },
+  "calls": [
+    {
+      "task": "tailor_plan",
+      "model": "claude-sonnet-5",
+      "input_tokens": 5946,
+      "output_tokens": 2223,
+      "cost": 0.034122,
+      "cumulative": 3.754102
+    },
+    {
+      "task": "tailor_draft",
+      "model": "claude-sonnet-5",
+      "input_tokens": 6935,
+      "output_tokens": 8841,
+      "cost": 0.10228,
+      "cumulative": 3.856382
+    },
+    {
+      "task": "tailor_review",
+      "model": "claude-opus-5",
+      "input_tokens": 4439,
+      "output_tokens": 1047,
+      "cost": 0.04837,
+      "cumulative": 3.904752
+    },
+    {
+      "task": "tailor_plan",
+      "model": "claude-sonnet-5",
+      "input_tokens": 5885,
+      "output_tokens": 5015,
+      "cost": 0.06192,
+      "cumulative": 3.966672
+    },
+    {
+      "task": "tailor_draft",
+      "model": "claude-sonnet-5",
+      "input_tokens": 6837,
+      "output_tokens": 7780,
+      "cost": 0.091474,
+      "cumulative": 4.058146
+    },
+    {
+      "task": "tailor_review",
+      "model": "claude-opus-5",
+      "input_tokens": 4603,
+      "output_tokens": 1338,
+      "cost": 0.056465,
+      "cumulative": 4.114611
+    },
+    {
+      "task": "tailor_plan",
+      "model": "claude-sonnet-5",
+      "input_tokens": 5730,
+      "output_tokens": 2654,
+      "cost": 0.038,
+      "cumulative": 4.152611
+    },
+    {
+      "task": "tailor_draft",
+      "model": "claude-sonnet-5",
+      "input_tokens": 6370,
+      "output_tokens": 6695,
+      "cost": 0.07969000000000001,
+      "cumulative": 4.232301
+    },
+    {
+      "task": "tailor_review",
+      "model": "claude-opus-5",
+      "input_tokens": 4440,
+      "output_tokens": 823,
+      "cost": 0.042775,
+      "cumulative": 4.275076
+    },
+    {
+      "task": "tailor_plan",
+      "model": "claude-sonnet-5",
+      "input_tokens": 5629,
+      "output_tokens": 1765,
+      "cost": 0.028908000000000003,
+      "cumulative": 4.303984
+    },
+    {
+      "task": "tailor_draft",
+      "model": "claude-sonnet-5",
+      "input_tokens": 6280,
+      "output_tokens": 5207,
+      "cost": 0.06463,
+      "cumulative": 4.368614
+    },
+    {
+      "task": "tailor_review",
+      "model": "claude-opus-5",
+      "input_tokens": 4205,
+      "output_tokens": 990,
+      "cost": 0.045775,
+      "cumulative": 4.414389
+    },
+    {
+      "task": "tailor_plan",
+      "model": "claude-sonnet-5",
+      "input_tokens": 5657,
+      "output_tokens": 2159,
+      "cost": 0.032904,
+      "cumulative": 4.447293
+    },
+    {
+      "task": "tailor_draft",
+      "model": "claude-sonnet-5",
+      "input_tokens": 6535,
+      "output_tokens": 6763,
+      "cost": 0.08070000000000001,
+      "cumulative": 4.527993
+    },
+    {
+      "task": "tailor_review",
+      "model": "claude-opus-5",
+      "input_tokens": 4204,
+      "output_tokens": 1538,
+      "cost": 0.05947000000000001,
+      "cumulative": 4.587463,
+      "outcome": "billed, failed validation"
+    },
+    {
+      "task": "tailor_plan",
+      "model": "claude-sonnet-5",
+      "input_tokens": 5624,
+      "output_tokens": 3793,
+      "cost": 0.049178000000000006,
+      "cumulative": 4.636641
+    },
+    {
+      "task": "tailor_draft",
+      "model": "claude-sonnet-5",
+      "input_tokens": 6520,
+      "output_tokens": 11047,
+      "cost": 0.12351000000000001,
+      "cumulative": 4.7601510000000005
+    },
+    {
+      "task": "tailor_review",
+      "model": "claude-opus-5",
+      "input_tokens": 4372,
+      "output_tokens": 2165,
+      "cost": 0.075985,
+      "cumulative": 4.836136
+    },
+    {
+      "task": "tailor_revise",
+      "model": "claude-sonnet-5",
+      "input_tokens": 5991,
+      "output_tokens": 1509,
+      "cost": 0.027072,
+      "cumulative": 4.863208
+    },
+    {
+      "task": "tailor_review",
+      "model": "claude-opus-5",
+      "input_tokens": 4339,
+      "output_tokens": 1620,
+      "cost": 0.062195,
+      "cumulative": 4.925403
+    }
+  ],
+  "model_calls": 20,
+  "actual_spend_usd": 4.925403,
+  "remaining_under_ceiling_usd": 5.074597,
+  "stopped_early": null
+}
