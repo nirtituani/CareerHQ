@@ -54,6 +54,49 @@ _BACKEND = pathlib.Path(__file__).resolve().parents[2]
 #: rest on a transitive dependency — see the Dockerfile comment and T049.
 _REQUIRED_FONT_PACKAGE = "fonts-dejavu-core"
 
+#: The system packages the rendered bytes actually depend on (T055).
+#:
+#: **Not "what the Dockerfile installs"** — that list also carries `curl`, which the
+#: healthcheck needs and rendering does not. This is the render contract specifically, so
+#: an unrelated addition to either file does not have to be mirrored in the other.
+#:
+#: WeasyPrint binds Pango, Cairo and HarfBuzz through cffi **at import**, and resolves the
+#: family the template names through fontconfig. Which font resolves decides the rendered
+#: bytes — measured at T032 as an 8,885-byte document becoming 11,499 when the family
+#: changed — so an environment that asserts anything about a rendered document has to
+#: declare these, or it is asserting against whatever its base image happened to ship.
+_RENDER_PACKAGES = frozenset(
+    {
+        _REQUIRED_FONT_PACKAGE,
+        "libpango-1.0-0",
+        "libpangoft2-1.0-0",
+        "libharfbuzz0b",
+        "libcairo2",
+    }
+)
+
+#: The repository root — `ci.yml` is above `backend/`, unlike everything else here.
+_REPO = _BACKEND.parent
+
+
+def _declared_packages(path: pathlib.Path) -> set[str]:
+    """Package names that appear as their own instruction line in an install list.
+
+    **Comments are stripped first, and the drill is why** — the same trap
+    `test_the_image_declares_the_font_the_template_depends_on` documents. A search of the
+    whole file passes after a package is deleted, because the comment above the list still
+    names it. A test that a *word appears somewhere in a file* is not a test that a
+    package is installed.
+
+    Line-oriented rather than a YAML or Dockerfile parse: both files write one package per
+    continued line, and a real parser would still have to make exactly this judgement
+    about which shell words are package names.
+    """
+    lines = path.read_text().splitlines()
+    instructions = [line for line in lines if not line.strip().startswith("#")]
+    assert len(instructions) > 10, f"{path.name} parsed to almost nothing; the scan is empty"
+    return {line.strip().rstrip("\\").strip() for line in instructions}
+
 
 def _sample() -> ResumeDocument:
     return ResumeDocument(
@@ -312,3 +355,42 @@ def test_the_renderer_pins_the_font_timestamp_on_import() -> None:
         "the embedded font with the current time"
     )
     assert renderer.PINNED_SOURCE_DATE_EPOCH == "0"
+
+
+def test_ci_installs_the_same_render_dependencies_as_the_production_image() -> None:
+    """T055. The environment that asserts about rendered documents must render like production.
+
+    **The gap this closes.** `ci.yml` installed no system packages at all, so WeasyPrint
+    bound whatever Pango, Cairo and fontconfig `ubuntu-latest` happened to ship and
+    resolved whatever fonts happened to be present. The six ATS assertions and the
+    byte-determinism assertion were therefore green against a document production does not
+    produce — and a runner base-image change could have altered CI's output without
+    touching anything this repository declares, which is the exact failure mode declaring
+    the font in the Dockerfile was meant to prevent.
+
+    **Asserted as an equality between two files, not as a list in one.** Installing the
+    packages in CI is only half a fix: two lists that must stay in step will not, and the
+    drift is silent because both environments keep working. This makes the drift a test
+    failure in whichever direction it happens.
+
+    **This is not FR-031.** Determinism is a claim about two renders on *one* runtime and
+    is already satisfied everywhere by the timestamp pin. This is about *which* runtime CI
+    is making its other assertions on.
+    """
+    in_image = _declared_packages(_BACKEND / "Dockerfile")
+    in_ci = _declared_packages(_REPO / ".github" / "workflows" / "ci.yml")
+
+    missing_from_image = _RENDER_PACKAGES - in_image
+    assert not missing_from_image, (
+        f"the production image no longer declares {sorted(missing_from_image)} — every "
+        "exported document's bytes depend on these, and dropping one makes the output "
+        "depend on an undeclared transitive dependency"
+    )
+
+    missing_from_ci = _RENDER_PACKAGES - in_ci
+    assert not missing_from_ci, (
+        f"CI does not install {sorted(missing_from_ci)}, which `backend/Dockerfile` "
+        "declares for production. The export tests would then assert against a document "
+        "rendered with different libraries and possibly a different font than the one an "
+        "employer receives."
+    )
