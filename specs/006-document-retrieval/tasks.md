@@ -1974,10 +1974,10 @@ belongs; T050 is here.*
       start, retrieval quality) and belongs with **T048**. A guard that fails loudly when the
       ingested corpus and the query embedder disagree would be worth more than the choice itself.
 
-- [ ] **T054** **The tailor screen offers dead controls on a locked version, fails silently, and
+- [x] **T054** **The tailor screen offers dead controls on a locked version, fails silently, and
       hides the one action it tells you to take.**
       *(Appended 2026-08-29 at T047, found in the browser. Three related frontend defects on one
-      screen. Not started — T047 is verification and owns no fix.)*
+      screen. **Done 2026-08-29** — all three fixed, five tests added, each fix drilled.)*
       **All three are frontend-only. The backend is correct throughout**: it refuses with 409 and
       the exact T039 message, the item does not change, and the submission is untouched. Nothing
       about data integrity is at stake — what is at stake is a person believing they changed a
@@ -2007,6 +2007,40 @@ belongs; T050 is here.*
       three; the revision affordance is a product decision about what the submitted view should
       offer, and it is the one that actually matters.
 
+      ***What was done (2026-08-29).*** All three, in `tailor-tab.tsx`, plus one docstring in
+      `tailor-diff-item.tsx`. Frontend only; **no backend change and no API change**, which the
+      task predicted — the server was already right about every one of these.
+      1. **Gated on `locked`, which is `exported || submitted`, not on `approved`.**
+         `TailorDiffItem` already had a `disabled` prop and **no caller had ever passed it**, so
+         its docstring — *"true once the version is `ready`"* — named the wrong set and had never
+         been exercised. That set is the plausible over-fix: it passes any test written only
+         against `submitted` and silently removes FR-029's *"an approved version MUST remain
+         editable"*. `test_keeps_them_on_an_approved_version` exists to catch exactly that, and
+         **drilled**: switching the gate to `approved` fails it by name.
+      2. **`decide()` now catches**, matching `exportPdf` and `markSubmitted`. Tested against a
+         `ready` version rather than a locked one — after fix 1 a locked version offers no button
+         to click, so the refusal that stays reachable is the one arriving when the version was
+         locked somewhere else while this screen was open. **Drilled**: swallowing the cause fails
+         on the missing `tailor-error`.
+      3. **`Tailor this job again` on both locked states**, wired to the existing `tailor()`.
+         Offered on `exported` as well as `submitted` because an exported version's content is
+         frozen too — the same dead end, and `immutability.py` answers both with that same
+         sentence. Not offered on `ready`, where the action wanted is Edit rather than a second
+         paid run.
+         ***And a fourth defect found while fixing the third, of the same family as (2).***
+         `tailor()` sets `refusal`, not `error`, and **only the start view rendered it** — so a
+         re-tailor refused with `stale_analysis` would have set state nobody displayed and left
+         the screen still. A stale analysis is the *likely* refusal here, not an edge case: this
+         version was written against a match several actions old. The diff view now renders
+         `refusal` from the same state and the same `REFUSAL` map — no new state, no new concept.
+         **Drilled**: removing that block fails on the missing `refusal` testid.
+      **Scope held deliberately.** Starting a new run moves the tab to the new version and the sent
+      one stops being reachable, because the tab renders `versions[0]` and there is no version
+      history anywhere. That behaviour is **unchanged** and is **not** a T054 defect — the sent
+      version is untouched in the database, which is what FR-025 requires. Recorded as **T056**.
+      **Verified:** `npm test` **181 passed** (was 176; five added), `npm run typecheck` and
+      `npm run lint` clean. Four drills, each failing by name and restored.
+
 - [ ] **T055** **CI renders with different system libraries and a different font than production.**
       *(Appended 2026-08-29 while fixing FR-031. Not started — deliberately out of that fix's
       scope, which changed no CI or Docker configuration.)*
@@ -2030,3 +2064,21 @@ belongs; T050 is here.*
       one that cannot drift.
       **Not a blocker for FR-031**, which is now satisfied on every runtime — the timestamp
       pin is environment-independent.
+
+- [ ] **T056** **The résumé a person sent stops being reachable once a newer version exists.**
+      *(Appended 2026-08-29 at T054, which made the situation reachable rather than creating it.
+      Not started — the affordance was T054's scope; the history is a product decision of its own.)*
+      `TailorTab.load()` reads `listVersions` and renders **`versions[0]`**, the newest, and
+      nothing offers a way back. Before T054 this was almost unreachable by hand, because a locked
+      version offered no control that produced a newer one. It now has a button that does exactly
+      that, and the submitted view's own words — *"leaves this one as it was sent"* — are true of
+      the database and no longer true of the screen.
+      **Nothing is lost and no requirement is broken.** FR-025 is about not mutating the submitted
+      version, and it does not; FR-023 holds; the `SubmittedResume` record and its document are
+      intact, and `submission_for(application_id)` still answers what was sent. This is an
+      interface gap, not a data one.
+      **`listVersions` already returns every version with its status**, so the missing piece is a
+      way to choose one — which is a design question this task deliberately does not answer:
+      whether the tab gets a switcher, whether the sent version is pinned beside the current one,
+      or whether it belongs on the application rather than the tailor tab. **Do not build it as a
+      side effect of another task.**
