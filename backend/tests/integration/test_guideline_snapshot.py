@@ -31,6 +31,11 @@ import pytest
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from careerhq.application.agents.tailoring.prompts import (
+    build_draft_prompt,
+    build_plan_prompt,
+)
+from careerhq.application.agents.tailoring.state import TailoringState
 from careerhq.application.guidelines import GuidelineQuery, StaticGuidelines
 from careerhq.application.ingest_corpus import ingest_corpus
 from careerhq.application.retrieved_guidelines import RetrievedGuidelines
@@ -510,3 +515,101 @@ async def test_a_failed_runs_snapshot_survives_a_later_corpus_edit(
     )
     assert surviving == 0
     assert hashlib.sha256(cited["text"].encode()).hexdigest() == cited["content_hash"]
+
+
+# -- T052: the prompt and the record carry different things, on purpose -------
+
+
+async def test_the_prompt_omits_the_citation_the_record_keeps_in_full(
+    db_session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
+    corpus_dir: pathlib.Path,
+) -> None:
+    """**T052's decoupling, asserted as one fact rather than two.**
+
+    The prompt sends rule text; the record keeps the whole citation. Splitting these into
+    separate tests would let one drift while the other stayed green — and the whole
+    argument for removing the citation from the prompt is that the *record* is where
+    FR-012 and SC-002 actually live, so the two claims have to be checked together
+    against **one real retrieval**.
+
+    Measured cause: the citation was 667 of the retrieval block's 2,190 tokens (30%) on
+    every guidance-consuming call, and nothing read it — no output schema has a citation
+    field, no prompt mentions the bracket, nothing renders `guidelines_used`.
+    """
+    embedder = LexicalEmbedder()
+    await ingest_corpus(db_session, embedder=embedder, root=corpus_dir)
+    await db_session.commit()
+
+    run = await _run(
+        db_session,
+        session_factory,
+        sub="t052-decoupled",
+        guidelines=RetrievedGuidelines(db_session, embedder=embedder, token_ceiling=1500),
+    )
+
+    recorded = run.guidelines_used
+    assert recorded, "the run recorded no guidance to check"
+
+    # The record: complete, and resolvable by re-hashing its own text.
+    for entry in recorded:
+        assert _CITATION_FIELDS <= set(entry)
+        assert len(entry["content_hash"]) == 64, "the record must keep the FULL hash"
+        assert hashlib.sha256(entry["text"].encode()).hexdigest() == entry["content_hash"]
+
+    # The prompt: the same guidance, rendered without any of that.
+    state = TailoringState(
+        job={"title": "Senior Backend Engineer"},
+        master="[id: 11111111-1111-1111-1111-111111111111] BULLET: Ran payments.",
+        match={},
+        plan={"strategy": "x"},
+        guidelines=[{"text": e["text"], "source": e["source"]} for e in recorded],
+    )
+    for name, prompt in (
+        ("plan", build_plan_prompt(state)),
+        ("draft", build_draft_prompt(state)),
+    ):
+        for entry in recorded:
+            assert entry["text"] in prompt, f"{name} lost a rule"
+            assert entry["content_hash"][:12] not in prompt, f"{name} still carries a hash"
+            assert entry["source"] not in prompt, f"{name} still carries a citation"
+            assert entry["document_slug"] not in prompt, f"{name} still carries a slug"
+
+
+async def test_retrieval_selection_and_the_ceiling_are_unchanged_by_the_prompt_change(
+    db_session: AsyncSession,
+    corpus_dir: pathlib.Path,
+) -> None:
+    """**The scope gate.** T052 changed rendering only.
+
+    Selection is still driven by the query and the ceiling is still spent on
+    `KnowledgeChunk.token_count` — the rule text — which is exactly the accounting T052
+    chose *not* to change. A ceiling that started counting the rendered form would
+    retrieve roughly a third fewer rules, which is a retrieval-quality change wearing a
+    bookkeeping disguise, and it is not what was done.
+    """
+    embedder = LexicalEmbedder()
+    await ingest_corpus(db_session, embedder=embedder, root=corpus_dir)
+    await db_session.commit()
+
+    query = GuidelineQuery(role_title="Senior Backend Engineer", requirements=())
+    generous = await RetrievedGuidelines(
+        db_session, embedder=embedder, token_ceiling=1500
+    ).guidelines_for(context=query)
+
+    assert generous, "the fixture corpus must yield guidance"
+    # Still budgeted against the rule text, not the rendered line.
+    hashes = [g.content_hash for g in generous]
+    counts = list(
+        await db_session.scalars(
+            sa.select(KnowledgeChunk.token_count).where(KnowledgeChunk.content_hash.in_(hashes))
+        )
+    )
+    assert len(counts) == len(generous)
+    assert sum(counts) <= 1500, "the ceiling is still enforced on token_count"
+
+    # A ceiling small enough to bind still binds, and on the same quantity.
+    tight = await RetrievedGuidelines(
+        db_session, embedder=embedder, token_ceiling=min(counts)
+    ).guidelines_for(context=query)
+    assert len(tight) < len(generous), "a binding ceiling must still reduce the selection"

@@ -1985,7 +1985,9 @@ belongs; T050 is here.*
       snapshot columns, and measure the prompt delta before committing to either.
 
 - [ ] **T052** **The token ceiling budgets rule text; the prompt carries citations too.**
-      *(Appended 2026-08-29 at T046, from T045's measurement. Design not decided; not started.)*
+      *(Appended 2026-08-29 at T046, from T045's measurement. **Option 2 implemented 2026-08-29.
+      Stays open**: SC-008's recorded verdict was measured against the old prompt and re-measuring
+      needs a paid arm — see "What is done and what is not" below.)*
       **This is why SC-008 is missed**, and it is an accounting discrepancy rather than a
       retrieval defect. `KnowledgeChunk.token_count` counts the **rule text**, and
       `_retrieve`'s budget is spent against it — but `prompts.py::_guidelines` renders
@@ -1999,17 +2001,53 @@ belongs; T050 is here.*
       1. **Count the rendered form.** Budget `len(text) + len(citation)` so 1,500 means 1,500 at
          the model. Honest, and it *reduces the guidance* — roughly a third fewer rules for the
          same ceiling, which is a retrieval-quality change, not a bookkeeping one.
-      2. **Shorten the citation.** `content_hash` is rendered at 12 characters already; the slug
-         and locator are what a person reads. **FR-012 needs the citation to be resolvable**, and
-         T028 snapshots the full identity in `guidelines_used` *separately from the prompt* — so
-         the prompt's copy could in principle be shorter than the snapshot's. That is a real
-         option and a real risk: the two would no longer be the same string.
+      2. **Shorten or remove the prompt's citation.** *(Corrected 2026-08-29 — the premise below
+         was wrong when this task was written.)* This originally read *"FR-012 needs the citation
+         to be resolvable"*, implying the **prompt's** citation was load-bearing. **It is not.**
+         **FR-012 governs the citations *recorded* by earlier runs** — *"re-ingestable without
+         invalidating the citations recorded by earlier runs"* — and **SC-002 governs items
+         *"shown or recorded"***. Both mean `guidelines_used`, which `citation_snapshot()` writes
+         **from the retrieved objects, never from the prompt state**, carrying `document_slug`,
+         `document_version`, the **full 64-character `content_hash`**, `locator` and `market` as
+         **structured fields**. Resolvability rests on those, and is untouched by what the prompt
+         renders. Verified: no output schema has a citation field (every `source_*` in
+         `domain/schemas/tailoring.py` is `source_item_id`, a *profile* item), no prompt instructs
+         the model about the bracket, no test asserted it, and nothing in the frontend renders
+         `guidelines_used`. So this option costs **no** citation integrity — the risk this task
+         attributed to it did not exist.
       3. **Raise the ceiling to match reality** and accept SC-008 as missed. Changes nothing
          about cost; only stops the number being surprising.
       4. **Accept it.** SC-008 stays missed at 2.12%, recorded, with the cause measured.
-      **Do not pick one to make a threshold pass.** Options 1 and 2 both trade retrieval quality
-      or citation integrity for 0.12 percentage points, and FR-012's resolvability and T028's
-      snapshot are load-bearing. **The measurement is the deliverable; the fix is a decision.**
+      **Do not pick one to make a threshold pass.** Option 1 trades retrieval quality for 0.12
+      percentage points and should not be taken for that reason. Option 2 was thought to trade
+      citation integrity and **does not** — resolvability lives in the recorded snapshot, not in
+      the prompt. **The measurement is the deliverable; the fix is a decision.**
+
+      ***Option 2 implemented 2026-08-29 — the prompt and the record are now decoupled.***
+      `prompts.py::_guidelines` renders `- {text}` instead of `- {text}  [{source}]`. One line of
+      production code; `citation_snapshot`, `_citation`, retrieval selection, the FR-014 ceiling
+      and SC-008's definition and target are **all unchanged**.
+      **Measured on the real recorded selections** with `cl100k_base` (the tokenizer
+      `corpus/loader.py` counts `token_count` with): retrieval **2,190 → 1,523 tokens, 667 saved,
+      30%**; static 492 → 358, 134 saved. Applies to both guidance-consuming calls, twice a run.
+      **The FR-014 ceiling now means what it says**: a 1,500-token ceiling reaches the model at
+      1,523 rather than ~2,190, and that came from removing an uncounted addend, not from changing
+      what the ceiling counts.
+      ***Why this is right independently of SC-008.*** Nothing consumed those tokens — the model
+      was sent a content hash per rule and asked to do nothing with it. Removing waste is the
+      project's stated priority order (Correctness → Simplicity → **Efficiency**), and this would
+      be correct with SC-008 already passing.
+      ***What is done and what is not.*** Done: the waste is gone, the saving is measured, the
+      ceiling is honest. **Not done: SC-008's recorded verdict still reads 2.12% MISSED**, measured
+      against the old prompt. The projected ~1.46% is a **projection** — it scales a `cl100k_base`
+      proportion onto the provider's authoritative token delta, which R15 explicitly warns against
+      for anything but proportions. **Re-measuring needs a third paid arm** (retrieval, citations
+      stripped, same session and application). Until then SC-008's number stays as measured; do not
+      update it from a projection.
+      ***One thing this does not resolve.*** SC-008 divides a **fixed** per-run retrieval overhead
+      by a denominator that varies 2.7× on whether the Reviewer revised. The same overhead reads
+      1.73%–4.58% across the six successful runs, ordered by revision count. That is a property of
+      the metric, not of retrieval, and it is **not** grounds to redefine the metric.
 
 - [ ] **T053** **The configured embedding model is not the one baked into the image.**
       *(Appended 2026-08-29 at T046, from T044's measurement. Not started.)*
