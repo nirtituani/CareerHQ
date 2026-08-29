@@ -31,10 +31,27 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from careerhq.application.embeddings import EmbeddingSource
+from careerhq.config import get_settings
 from careerhq.domain.models.knowledge import KnowledgeChunk, KnowledgeDocument
 from careerhq.infrastructure.corpus import ParsedDocument, load_corpus
 
 logger = logging.getLogger("careerhq.corpus")
+
+
+class CorpusEmbeddingModelMismatch(RuntimeError):
+    """The stored corpus was embedded by a different model than the one configured (T053).
+
+    **A distinct type, raised before anything is read or written.** `run()` in
+    `careerhq.ingest` catches broadly and returns 1, so this blocks a deploy with the
+    cause in the operator's output, which is the whole point: without it the same
+    situation is a silent `0/0/0/0` success.
+
+    **It refuses and repairs nothing.** Not by re-embedding, which would rewrite a corpus
+    the operator may not have meant to change and spend the embedding budget to hide a
+    configuration error; and not by overwriting the recorded model, which would launder
+    the drift into a row that then looks verified. The resolution is the operator's:
+    restore the previous `EMBEDDING_MODEL`, or drop the corpus and re-ingest deliberately.
+    """
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,17 +95,71 @@ def _metadata_differs(existing: KnowledgeDocument, parsed: ParsedDocument) -> bo
     )
 
 
+async def _ensure_model_matches(session: AsyncSession, model: str) -> None:
+    """Refuse if the stored corpus was embedded by a different model (T053).
+
+    **Checked once, up front, before anything is embedded or written**, because the
+    failure it prevents is precisely an ingestion that proceeds and reports `0/0/0/0`.
+    `bge-small` and MiniLM are both 384-dimension, so `EMBEDDING_DIMENSIONS`, the
+    `vector(384)` column and the adapter's registry width check all pass for either;
+    nothing else in the schema can tell them apart. Measured on the real corpus:
+    re-embedding a stored chunk gives cosine **1.000000** for the model that wrote it and
+    **0.345992** for the other.
+
+    **NULL is not a mismatch.** A corpus ingested before this column existed records
+    nothing, and nothing can recover which model wrote those vectors. Refusing on NULL
+    would strand a working deployment on a fact nobody has; stamping the configured model
+    onto it would be worse. So an unrecorded corpus proceeds, and says so once.
+    """
+    # The SQL filters NULL and the comprehension narrows the type, which are the same
+    # claim stated to two different checkers rather than a cast asserting one at the other.
+    recorded = {
+        value
+        for value in await session.scalars(
+            sa.select(KnowledgeDocument.embedding_model)
+            .where(KnowledgeDocument.embedding_model.is_not(None))
+            .distinct()
+        )
+        if value is not None
+    }
+    mismatched = recorded - {model}
+    if mismatched:
+        raise CorpusEmbeddingModelMismatch(
+            f"the stored corpus was embedded with {', '.join(sorted(mismatched))} but "
+            f"{model} is configured. Both models may share a vector width, so nothing "
+            "else will catch this: queries would run against vectors a different model "
+            "produced. Restore the previous EMBEDDING_MODEL, or drop the corpus and "
+            "re-ingest it deliberately with the new one."
+        )
+
+    if not recorded:
+        unrecorded = await session.scalar(sa.select(sa.func.count()).select_from(KnowledgeDocument))
+        if unrecorded:
+            logger.warning(
+                "corpus predates embedding-model recording; drift cannot be detected "
+                "for these documents until they are re-ingested",
+                extra={"documents": unrecorded, "configured_embedding_model": model},
+            )
+
+
 async def ingest_corpus(
     session: AsyncSession,
     *,
     embedder: EmbeddingSource,
     root: pathlib.Path | None = None,
+    embedding_model: str | None = None,
 ) -> IngestionReport:
     """Bring the database in line with the authored corpus. Safe to re-run.
 
     The session is committed by the caller, so an ingestion that raises part-way leaves
     nothing behind — the same transaction discipline the tailoring use case follows.
     """
+    # **Passed in rather than asked of the embedder** (T053). `EmbeddingSource`
+    # deliberately carries no model name, so the identity travels as a plain string from
+    # the caller, which builds the embedder from the same setting.
+    model = embedding_model or get_settings().embedding_model
+    await _ensure_model_matches(session, model)
+
     documents_created = documents_updated = chunks_created = chunks_deleted = 0
 
     for parsed in load_corpus(root):
@@ -108,6 +179,9 @@ async def ingest_corpus(
                 trust_level=parsed.trust_level,
                 origin_source_ids=list(parsed.origin_source_ids),
                 is_active=True,
+                # Known first-hand: every chunk of a document created now is
+                # embedded now, by this model. An existing document is left alone.
+                embedding_model=model,
                 # Assigned at construction. A lazy load on a freshly added object
                 # raises MissingGreenlet under async SQLAlchemy, which this project
                 # has hit twice.

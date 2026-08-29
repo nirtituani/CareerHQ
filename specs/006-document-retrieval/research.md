@@ -87,6 +87,30 @@ API key.
 
 **Consequence.** Vector dimension is a schema commitment — MiniLM-L6-v2 is **384**.
 
+***Superseded during implementation, 2026-08-29 (recorded at T053).*** The decision above
+— local embedding behind an application port — **stands unchanged**. What changed is the
+model and the runtime behind it: `1cf9a70` moved from `sentence-transformers/all-MiniLM-L6-v2`
+to **`BAAI/bge-small-en-v1.5` through fastembed/ONNX**, and `config.py` records the reason
+— *"67 MB instead of a 527 MB torch wheel on top of a 1 GB image, for a component whose
+whole job is embedding ~95-130 short rules and one query"*. The weights are baked into the
+image at build time so a cold container makes no network call, which is what D3 actually
+requires.
+
+**The width did not change**, which is why no migration followed and why the paragraph
+above still reads correctly about the schema: bge-small-en-v1.5 is **also 384**.
+
+**That is precisely the hazard.** Two 384-dimension models are indistinguishable to
+`EMBEDDING_DIMENSIONS`, to `vector(384)` and to the adapter's registry width check, and
+ingestion's identity is `content_hash` over the rule text — so swapping the model leaves
+every hash matching, embeds nothing, reports `0/0/0/0` and exits 0 while queries run
+against vectors a different model produced. Measured on the real corpus: re-embedding a
+stored chunk gives cosine **1.000000** for the model that wrote it and **0.345992** for
+the other. Migration `0018` records the model on `knowledge_documents` and ingestion
+refuses on a mismatch; that guard, rather than the choice of model, is what T053 delivered.
+
+*(The original text is left as written rather than edited, because it records what was
+decided at the time and why. `.env.example` carried MiniLM until T053 corrected it.)*
+
 ---
 
 ## R5 — Chunking: one rule, one chunk, qualifications included *(decision D4)*

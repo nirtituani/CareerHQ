@@ -22,7 +22,11 @@ import pytest
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from careerhq.application.ingest_corpus import IngestionReport, ingest_corpus
+from careerhq.application.ingest_corpus import (
+    CorpusEmbeddingModelMismatch,
+    IngestionReport,
+    ingest_corpus,
+)
 from careerhq.domain.models.knowledge import KnowledgeChunk, KnowledgeDocument
 
 pytestmark = pytest.mark.asyncio
@@ -222,3 +226,141 @@ async def test_ingesting_the_real_corpus_matches_the_authored_rule_count(
     second: IngestionReport = await ingest_corpus(db_session, embedder=again)
     assert second.chunks_created == 0 and second.chunks_deleted == 0
     assert again.calls == 0
+
+
+# -- T053: the corpus records which model embedded it -------------------------
+#
+# **The failure this exists to make impossible to miss.** Both `bge-small` and MiniLM are
+# 384-dimension, so `EMBEDDING_DIMENSIONS`, `vector(384)` and the adapter's registry width
+# check all pass for either. Ingestion's identity is `content_hash` over the **rule text**,
+# so changing only the model leaves every hash matching: ingestion embeds nothing, reports
+# 0/0/0/0 and exits 0, while every query then runs a different model against the stored
+# vectors. Measured on the real local corpus: re-embedding a stored chunk gives cosine
+# **1.000000** for the model that wrote it and **0.345992** for the other one.
+
+
+async def test_first_ingestion_records_the_configured_embedding_model(
+    db_session: AsyncSession, corpus_dir: pathlib.Path
+) -> None:
+    """A document created now was embedded now, so its model is known first-hand."""
+    await ingest_corpus(
+        db_session, embedder=CountingEmbedder(), root=corpus_dir, embedding_model="model-a"
+    )
+
+    recorded = list(await db_session.scalars(sa.select(KnowledgeDocument.embedding_model)))
+    assert recorded == ["model-a"]
+
+
+async def test_an_unchanged_corpus_on_the_same_model_is_still_a_no_op(
+    db_session: AsyncSession, corpus_dir: pathlib.Path
+) -> None:
+    """**The property T026 is built around must survive the guard.** A check that made
+    every re-run re-embed would have destroyed the thing it was added to protect."""
+    await ingest_corpus(
+        db_session, embedder=CountingEmbedder(), root=corpus_dir, embedding_model="model-a"
+    )
+
+    second = CountingEmbedder()
+    report = await ingest_corpus(
+        db_session, embedder=second, root=corpus_dir, embedding_model="model-a"
+    )
+
+    assert (report.documents_created, report.documents_updated) == (0, 0)
+    assert (report.chunks_created, report.chunks_deleted) == (0, 0)
+    assert second.calls == 0, f"re-ingestion embedded {second.embedded}"
+
+
+async def test_a_changed_model_is_refused_and_names_both_models(
+    db_session: AsyncSession, corpus_dir: pathlib.Path
+) -> None:
+    """**The whole point.** Without this the run is a silent 0/0/0/0.
+
+    The message must name **both** models: an operator seeing only "mismatch" has to go
+    and find what the corpus was built with, and the answer is in a column they do not
+    know exists.
+    """
+    await ingest_corpus(
+        db_session, embedder=CountingEmbedder(), root=corpus_dir, embedding_model="model-a"
+    )
+
+    after = CountingEmbedder()
+    with pytest.raises(CorpusEmbeddingModelMismatch) as caught:
+        await ingest_corpus(db_session, embedder=after, root=corpus_dir, embedding_model="model-b")
+
+    message = str(caught.value)
+    assert "model-a" in message, "the refusal must name what the corpus was embedded with"
+    assert "model-b" in message, "the refusal must name what is now configured"
+    assert "re-ingest" in message.lower(), "the refusal must say what resolves it"
+
+
+async def test_a_refused_ingestion_embeds_nothing_and_changes_nothing(
+    db_session: AsyncSession, corpus_dir: pathlib.Path
+) -> None:
+    """**It refuses; it does not repair.** Re-embedding on mismatch would silently rewrite
+    a corpus an operator may not have meant to change, and stamping the new model over the
+    old rows would launder the drift into a record that then looks verified."""
+    await ingest_corpus(
+        db_session, embedder=CountingEmbedder(), root=corpus_dir, embedding_model="model-a"
+    )
+    before = await _counts(db_session)
+
+    after = CountingEmbedder()
+    with pytest.raises(CorpusEmbeddingModelMismatch):
+        await ingest_corpus(db_session, embedder=after, root=corpus_dir, embedding_model="model-b")
+
+    assert after.calls == 0, "a refused ingestion must not embed"
+    assert (await _counts(db_session)) == before, "a refused ingestion must not write rows"
+    still = set(await db_session.scalars(sa.select(KnowledgeDocument.embedding_model)))
+    assert still == {"model-a"}, "the recorded model must not be overwritten by the refusal"
+
+
+async def test_a_corpus_predating_the_column_is_not_falsely_accused(
+    db_session: AsyncSession, corpus_dir: pathlib.Path
+) -> None:
+    """**NULL means unknown, not mismatched.**
+
+    The corpus ingested before migration 0018 records no model, and nothing can recover
+    which one wrote those vectors. Refusing would strand a working deployment on a fact
+    nobody has; **stamping the configured model onto it would be worse** — asserting, in a
+    column built to be trusted, something never verified. So NULL is left alone and
+    ingestion proceeds.
+    """
+    await ingest_corpus(
+        db_session, embedder=CountingEmbedder(), root=corpus_dir, embedding_model="model-a"
+    )
+    await db_session.execute(sa.update(KnowledgeDocument).values(embedding_model=None))
+    await db_session.flush()
+
+    later = CountingEmbedder()
+    report = await ingest_corpus(
+        db_session, embedder=later, root=corpus_dir, embedding_model="model-b"
+    )
+
+    assert report.chunks_created == 0, "an unchanged corpus is still unchanged"
+    assert later.calls == 0
+    recorded = set(await db_session.scalars(sa.select(KnowledgeDocument.embedding_model)))
+    assert recorded == {None}, "an unverifiable corpus must not be stamped as verified"
+
+
+async def test_the_model_is_not_part_of_chunk_identity(
+    db_session: AsyncSession, corpus_dir: pathlib.Path
+) -> None:
+    """`content_hash` stays a hash of the **rule text only** (FR-012).
+
+    Folding the model into it would make every citation recorded by an earlier run
+    unresolvable the moment the model changed, which is the exact thing FR-012 forbids.
+    The guard is a separate recorded fact precisely so identity can stay textual.
+    """
+    await ingest_corpus(
+        db_session, embedder=CountingEmbedder(), root=corpus_dir, embedding_model="model-a"
+    )
+    before = sorted(await db_session.scalars(sa.select(KnowledgeChunk.content_hash)))
+
+    await db_session.execute(sa.update(KnowledgeDocument).values(embedding_model="model-b"))
+    await db_session.flush()
+    await ingest_corpus(
+        db_session, embedder=CountingEmbedder(), root=corpus_dir, embedding_model="model-b"
+    )
+
+    after = sorted(await db_session.scalars(sa.select(KnowledgeChunk.content_hash)))
+    assert after == before, "content_hash changed with the embedding model"

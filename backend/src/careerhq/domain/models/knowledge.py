@@ -164,6 +164,26 @@ class KnowledgeDocument(Base):
     #: corpus is authored, so this records derivation rather than quotation.
     origin_source_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
     #: Archived documents are excluded from retrieval by default.
+    #: Which embedding model produced this document's vectors (T053).
+    #:
+    #: **Nullable, and NULL means unknown rather than mismatched.** A corpus ingested
+    #: before this column existed records nothing, and nothing can recover which model
+    #: wrote those vectors. Refusing on NULL would strand a working deployment on a fact
+    #: nobody has; stamping the configured model onto it would be worse, asserting in a
+    #: column built to be trusted something that was never verified.
+    #:
+    #: **Not part of chunk identity.** `KnowledgeChunk.content_hash` stays a hash of the
+    #: rule text alone (FR-012) — folding the model in would make every citation recorded
+    #: by an earlier run unresolvable the moment the model changed, which is precisely
+    #: what FR-012 forbids. This is a separate recorded fact so identity can stay textual.
+    #:
+    #: **Why a column at all**: `bge-small` and MiniLM are both 384-dimension, so
+    #: `EMBEDDING_DIMENSIONS`, `vector(384)` and the adapter's registry width check all
+    #: pass for either. Nothing else in the schema can tell them apart, and ingesting with
+    #: one while querying with the other returns confident nonsense — measured at cosine
+    #: **0.346** against **1.000** for the model that actually wrote the vector.
+    embedding_model: Mapped[str | None] = mapped_column(String(128), nullable=True)
+
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
