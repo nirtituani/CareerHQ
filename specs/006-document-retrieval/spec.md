@@ -300,6 +300,21 @@ universal rule where no Israeli distinction is evidenced (see FR-038 for the pre
   reported before the slice is called done. **Baseline and retrieval measurements MUST be taken
   under the same pricing and model conditions**, or the comparison means nothing (see the note
   below).
+  **MISSED — re-measured 2026-08-29 on current code (T052). 3.22% against a 2% threshold.**
+  Two fresh paid arms, both citation-free: static `aae6f565` **$0.233124** and retrieval
+  `1070657e` **$0.245262**, one application, one process, one pricing window, neither revising.
+  The attributable cost is **+3,754 input tokens** — `tailor_plan` +1,715 (the clean control) and
+  `tailor_draft` +2,039 — at $2.00/MTok, **$0.007508**, or **3.22%** of the same-session baseline.
+  **The 1.68% obtained against the older `$0.446391` baseline is NOT the same-session measurement
+  and must not be recorded as a pass**: that run revised (5 calls) and these did not (3 calls).
+  **T052's implementation is complete and it worked** — the numerator fell from +4,727 to +3,754
+  tokens, 21%, and is now provider-measured on both arms rather than reconstructed. **SC-008
+  nonetheless remains missed and unresolved**, because it divides a fixed per-run overhead by a
+  total run cost that varies 2.7× with revision behaviour, so it cannot establish whether the
+  overhead is above or below the threshold independently of revision count. **The target is not
+  adjusted and the metric is not redefined.**
+
+  *The original measurement, superseded but kept because it is what the citation finding rests on:*
   **MISSED — measured 2026-08-28/29 (T045). 2.12% against a 2% threshold.**
   Two paid arms, one process, one application, one pricing window: static $0.446391 (5 calls,
   revised) and retrieval $0.206268 (3 calls, first-pass clear). The attributable cost is

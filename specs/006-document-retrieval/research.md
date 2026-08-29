@@ -413,6 +413,13 @@ though both are 384-dimension models of similar size and the figure is dominated
 
 **Result: SC-008 is MISSED at 2.12%, against a ≤2% threshold. The target was not adjusted.**
 
+> **Superseded for the verdict, not for the reasoning — see *"Re-measured on current code"* at
+> the end of this section.** The 2.12% below was measured against the **old prompt**, which
+> carried a citation per guideline. T052 removed that, and the re-measurement of 2026-08-29 puts
+> SC-008 at **3.22%, still MISSED**. Everything between here and that section stands: the method,
+> the two-arm design, the denominator table and the citation-overhead finding are what the fix was
+> built on. Only the headline number is out of date.
+
 ### The two arms
 
 One application (`2c36feee`, Senior Backend Engineer), **one process**, one pricing window —
@@ -499,3 +506,63 @@ verdict is reported against all of them. Total spend: **$0.652659**.
 No prompt, model, ceiling or citation format was changed. Reducing the delta means changing what
 the citation renders or what the ceiling counts, and both are decisions with retrieval-integrity
 consequences (FR-012 rests on the citation being resolvable) that T045 has no mandate to take.
+
+### Re-measured on current code *(T052, measured 2026-08-29)*
+
+**Result: SC-008 is MISSED at 3.22%, against the same ≤2% threshold. The target was again not
+adjusted.**
+
+**Two fresh arms, not one, and the second is why the number is trustworthy.** The plan was a
+single retrieval arm compared against the existing static baseline `e70ecd76`. That would have
+been wrong: T052 removed the citation from the **static** rubric too, so `e70ecd76` sent guidance
+the current code does not. Measured: its `tailor_plan` was **7,221** on current code against
+**7,428** before — a 207-token provider-measured difference. A one-arm comparison would have
+credited retrieval with that saving.
+
+| | static | retrieval |
+|---|---|---|
+| run | `aae6f565` | `1070657e` |
+| calls | 3 — first pass clear | 3 — first pass clear |
+| **total cost** | **$0.233124** | **$0.245262** |
+
+| call | static input | retrieval input | delta |
+|---|---|---|---|
+| `tailor_plan` | 7,221 | 8,936 | **+1,715** |
+| `tailor_draft` | 7,816 | 9,855 | +2,039 |
+| | | **total** | **+3,754** |
+
+`+3,754 × $2.00/MTok = **$0.007508**` → **3.22%** of the same-session baseline `$0.233124`.
+One application (`2c36feee`), one process, one pricing window. Total paid: **$0.478386**.
+
+**The 1.68% against `e70ecd76` is not a pass and is not recorded as one.** Dividing the same
+$0.007508 by the older `$0.446391` gives 1.68%, but that is **not the same-session measurement**:
+`e70ecd76` was a five-call run that revised, and both arms here were three-call runs that did not.
+The method above pairs against the same-session baseline, and by that method the answer is 3.22%.
+Choosing the other denominator would be selecting the flattering one.
+
+**The fix worked and the metric still does not resolve.** The numerator fell **+4,727 → +3,754
+tokens, 21%**, and is now provider-measured on both sides rather than reconstructed. Against the
+*same* denominator as before, the figure moves 2.12% → 1.68%. Yet the same-session verdict got
+**worse**, 2.12% → 3.22%, because the denominator nearly halved when this session's static arm did
+not revise.
+
+**That is confirmation rather than contradiction, and it is the conclusion to carry forward.**
+SC-008 divides a **fixed** per-run overhead by a **total run cost that varies 2.7× with revision
+behaviour**, so the measurement cannot establish whether retrieval's overhead sits above or below
+the threshold **independently of revision count**. Section *"Why the total-cost ratio is not the
+answer"* above said a 2% threshold cannot be resolved through an 85% spread; this measurement is
+that prediction coming true from the other direction — the numerator improved and the ratio
+worsened. **The target is not adjusted and the metric is not redefined**; both are outside T052's
+mandate, and SC-004 and SC-001 set the precedent for leaving a missed target standing.
+
+**One caveat on the numerator.** `tailor_draft` corroborates `tailor_plan` to within **18.9%**
+here, against 0.6% in the T045 pair — the draft prompt carries the plan's output, which differed
+between arms (2,657 vs 3,194 tokens). `tailor_plan` remains the clean control at **+1,715**, since
+only the guidance block differs there.
+
+### Not done *(T052)*
+
+No target was changed, no metric redefined, no code touched by the measurement, and no evaluation
+evidence altered — the two runs are additions. Whether SC-008 should be expressed against
+something less volatile than total run cost is a metric-definition question, deliberately left
+open.
