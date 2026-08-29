@@ -143,11 +143,28 @@ def test_ai_configuration_seam_has_working_defaults(monkeypatch: pytest.MonkeyPa
     for key, value in TEST_ENV.items():
         monkeypatch.setenv(key, value)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    # **Removed for exactly the reason the key above is** — and the docstring's own words
+    # apply unchanged: the property under test is now actually being tested rather than
+    # assumed. Importing `litellm` calls `load_dotenv()`, which walks up from the working
+    # directory and injects the developer's `.env` as real environment variables;
+    # `_env_file=None` does not stop that. Left in place, this test asserts whatever the
+    # machine happens to be configured for, and passes or fails on whether some earlier
+    # test imported `litellm` first.
+    monkeypatch.delenv("EMBEDDING_MODEL", raising=False)
 
     settings = Settings(_env_file=None)  # type: ignore[call-arg]
 
     assert settings.llm_provider_model == "anthropic/claude-opus-5"
-    assert settings.embedding_model.startswith("sentence-transformers/")
+    # **The committed default, exactly.** It is `BAAI/bge-small-en-v1.5` — the model
+    # `backend/Dockerfile` bakes into the image, so a container never downloads weights
+    # at run time. This used to assert `sentence-transformers/`, and passed locally for a
+    # reason worth knowing: importing `litellm` calls `load_dotenv()`, which walks up from
+    # the working directory and injects the developer's `.env` — where `EMBEDDING_MODEL`
+    # names a different model — into `os.environ`. `_env_file=None` above does not stop
+    # that, because the value arrives as a real environment variable. So the assertion
+    # held whenever some earlier test had imported `litellm`, and failed on a clean
+    # checkout and in CI, where there is no `.env` to load.
+    assert settings.embedding_model == "BAAI/bge-small-en-v1.5"
     assert settings.anthropic_api_key is None
 
 
