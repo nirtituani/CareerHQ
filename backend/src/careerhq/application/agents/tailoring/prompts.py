@@ -223,7 +223,33 @@ def _json(value: Any) -> str:
 
 
 def _guidelines(state: TailoringState) -> str:
-    return "\n".join(f"- {g['text']}  [{g['source']}]" for g in state.guidelines)
+    """The rule text, and **not** the citation (T052).
+
+    This used to render `- {text}  [{slug} v{n} · {locator} · {hash12}]`. Measured on the
+    real recorded snapshot with `cl100k_base` — the tokenizer `corpus/loader.py` counts
+    `token_count` with — the retrieval block was **2,190 tokens, of which 667 were
+    citation**: 30% of the block, on every guidance-consuming call, twice a run.
+
+    **Nothing consumed them.** No output schema has a citation field — every `source_*`
+    in `domain/schemas/tailoring.py` is `source_item_id`, a *profile* item. No prompt
+    instructs the model about the bracket. Nothing renders `guidelines_used` in the
+    frontend. The model was sent a content hash per rule and asked to do nothing with it.
+
+    **Resolvability was never the prompt's job, and is untouched.** FR-012 governs *"the
+    citations **recorded** by earlier runs"* and SC-002 governs items *"**shown or
+    recorded**"*. Both mean `guidelines_used`, which `citation_snapshot()` writes from the
+    retrieved objects — never from this state — with `document_slug`, `document_version`,
+    the **full** `content_hash`, `locator` and `market` as structured fields.
+
+    **`state.guidelines` still carries `source`.** Narrowing that key would push a shape
+    change through every node to save nothing, which is the compounding node-input change
+    the 005/006 boundary exists to prevent. What changed is only whether it is rendered.
+
+    **This removes waste; it does not move a threshold.** SC-008's definition and its 2%
+    target are unchanged, and the effect on the measured 2.12% is unverified until a paid
+    pair is run — see T052.
+    """
+    return "\n".join(f"- {g['text']}" for g in state.guidelines)
 
 
 def build_plan_prompt(state: TailoringState) -> str:

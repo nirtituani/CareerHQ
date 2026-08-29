@@ -8,7 +8,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TailorDiffItem } from "@/components/applications/tailor-diff-item";
 import { TailorTab } from "@/components/applications/tailor-tab";
 import { ApiError } from "@/lib/api";
-import type { ResumeVersion, ReviewerFinding, VersionItem } from "@/lib/api";
+import type {
+  ExportedVersion,
+  ResumeVersion,
+  ReviewerFinding,
+  SubmittedVersion,
+  VersionItem,
+} from "@/lib/api";
 
 /**
  * The Tailor tab, at the surface where Principle II is actually enforced.
@@ -38,6 +44,8 @@ vi.mock("@/lib/api", async (importOriginal) => {
     startTailoring: vi.fn(),
     decideItem: vi.fn(),
     approveVersion: vi.fn(),
+    exportVersion: vi.fn(),
+    submitVersion: vi.fn(),
   };
 });
 
@@ -108,8 +116,9 @@ async function renderTab(value: ResumeVersion | null) {
   if (value) mocked.getVersion.mockResolvedValue(value);
   mocked.getTailoringRun.mockRejectedValue(new ApiError(404, "No run for this version."));
 
-  render(<TailorTab applicationId="app-1" />);
+  const rendered = render(<TailorTab applicationId="app-1" />);
   await waitFor(() => expect(screen.queryByText("Loading…")).toBeNull());
+  return rendered;
 }
 
 beforeEach(() => {
@@ -574,5 +583,306 @@ describe("correcting a proposal by hand", () => {
     const field = screen.getByLabelText(/edit experience/i);
     expect(field.tagName).toBe("TEXTAREA");
     expect(field).not.toHaveAttribute("contenteditable");
+  });
+});
+
+/**
+ * T037 — the export affordance.
+ *
+ * Export and download are separate controls on purpose: downloading again must not
+ * export again, because a second export is a second stored copy and a second record,
+ * which is not what someone pressing "download" is asking for.
+ */
+describe("exporting an approved version", () => {
+  const exported = (overrides: Partial<ResumeVersion> = {}) =>
+    ({
+      ...version({ status: "exported", ...overrides }),
+      export: {
+        checksum_sha256: "a".repeat(64),
+        byte_size: 10096,
+        exported_at: "2026-08-28T10:00:00+00:00",
+      },
+    }) as ExportedVersion;
+
+  it("offers no export until the version is approved", async () => {
+    await renderTab(version({ status: "awaiting_approval" }));
+
+    expect(screen.queryByTestId("export-controls")).toBeNull();
+  });
+
+  it("exports an approved version through the API and shows the download", async () => {
+    mocked.exportVersion.mockResolvedValue(exported());
+    await renderTab(version({ status: "ready" }));
+
+    // Approved but not yet exported: nothing to download.
+    expect(screen.queryByTestId("download-pdf")).toBeNull();
+
+    await userEvent.click(screen.getByRole("button", { name: "Export as PDF" }));
+
+    expect(mocked.exportVersion).toHaveBeenCalledWith("version-1");
+    await waitFor(() => expect(screen.getByTestId("download-pdf")).toBeTruthy());
+    expect(screen.getByTestId("download-pdf").getAttribute("href")).toBe(
+      "/api/versions/version-1/document",
+    );
+  });
+
+  it("keeps export available for an already-exported version", async () => {
+    await renderTab(exported());
+
+    expect(screen.getByRole("button", { name: "Export again" })).toBeTruthy();
+    expect(screen.getByTestId("download-pdf")).toBeTruthy();
+  });
+
+  it("shows the refusal instead of pretending the export happened", async () => {
+    mocked.exportVersion.mockRejectedValue(
+      new ApiError(409, "This version was already submitted and cannot be exported again."),
+    );
+    await renderTab(version({ status: "ready" }));
+
+    await userEvent.click(screen.getByRole("button", { name: "Export as PDF" }));
+
+    await waitFor(() =>
+      expect(screen.getByText(/already submitted/)).toBeTruthy(),
+    );
+    expect(screen.queryByTestId("download-pdf")).toBeNull();
+  });
+});
+
+/**
+ * T043 — the submit affordance.
+ *
+ * Submission is the one action in this slice that cannot be taken back: it freezes what
+ * was sent (FR-021), locks the version (FR-022), and a change of mind afterwards means a
+ * **new** version rather than an edit to this one (FR-025). So the two things worth
+ * proving here are that it is not offered where it is not possible, and that a refusal is
+ * visible — a 409 that leaves the screen looking unchanged reads as success, which on
+ * this button means a person believes a résumé is on record when none is.
+ */
+describe("submitting an exported version", () => {
+  const exported = (overrides: Partial<ResumeVersion> = {}) =>
+    ({
+      ...version({ status: "exported", ...overrides }),
+      export: {
+        checksum_sha256: "a".repeat(64),
+        byte_size: 10096,
+        exported_at: "2026-08-28T10:00:00+00:00",
+      },
+    }) as ExportedVersion;
+
+  const submitted = () =>
+    ({
+      ...version({ status: "submitted" }),
+      submission: {
+        resume_version_id: "version-1",
+        checksum_sha256: "b".repeat(64),
+        byte_size: 10096,
+        submitted_at: "2026-08-28T12:00:00+00:00",
+      },
+    }) as SubmittedVersion;
+
+  it("does not offer submission for a version that has not been exported", async () => {
+    await renderTab(version({ status: "ready" }));
+
+    expect(screen.getByTestId("export-controls")).toBeTruthy();
+    expect(screen.queryByTestId("submit-version")).toBeNull();
+  });
+
+  it("submits an exported version through the API", async () => {
+    mocked.submitVersion.mockResolvedValue(submitted());
+    await renderTab(exported());
+
+    await userEvent.click(screen.getByTestId("submit-version"));
+
+    expect(mocked.submitVersion).toHaveBeenCalledWith("version-1");
+    await waitFor(() => expect(screen.getByTestId("submitted-note")).toBeTruthy());
+  });
+
+  it("offers no further submission or export once the version is submitted", async () => {
+    await renderTab(submitted());
+
+    expect(screen.queryByTestId("submit-version")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Export/ })).toBeNull();
+    // The document is still readable — downloading is not exporting, and a person is
+    // entitled to a copy of what they sent.
+    expect(screen.getByTestId("download-pdf")).toBeTruthy();
+  });
+
+  it("shows the refusal instead of pretending the submission happened", async () => {
+    mocked.submitVersion.mockRejectedValue(
+      new ApiError(409, "This version is ready and has not been exported."),
+    );
+    await renderTab(exported());
+
+    await userEvent.click(screen.getByTestId("submit-version"));
+
+    await waitFor(() => expect(screen.getByTestId("tailor-error")).toBeTruthy());
+    expect(screen.getByText(/has not been exported/)).toBeTruthy();
+    expect(screen.queryByTestId("submitted-note")).toBeNull();
+  });
+
+  it("does not report success while the request is still in flight", async () => {
+    let settle: (value: SubmittedVersion) => void = () => {};
+    mocked.submitVersion.mockReturnValue(
+      new Promise<SubmittedVersion>((resolve) => {
+        settle = resolve;
+      }),
+    );
+    await renderTab(exported());
+
+    await userEvent.click(screen.getByTestId("submit-version"));
+
+    // **The claim being tested.** A button that says "Submitted" the moment it is
+    // pressed is indistinguishable from one that worked, and this is the action where
+    // that matters most: the person stops thinking about the job.
+    expect(screen.queryByTestId("submitted-note")).toBeNull();
+    expect(screen.getByTestId("submit-version").textContent).toContain("Marking");
+
+    settle(submitted());
+    await waitFor(() => expect(screen.getByTestId("submitted-note")).toBeTruthy());
+  });
+
+  it("shows no internal storage address anywhere on the screen", async () => {
+    const { container } = await renderTab(submitted());
+
+    expect(container.textContent ?? "").not.toContain("exports/");
+  });
+});
+
+// -- T054: a locked version must not offer controls that are guaranteed 409s --
+
+describe("a version whose content is locked", () => {
+  /**
+   * `application/immutability.py` freezes content at `exported` and `submitted`
+   * and nowhere else. Every `Accept`, `Reject` and `Edit` on such a version is
+   * a guaranteed 409, and a button whose only outcome is a refusal is the
+   * import reviewer's old `Keep` button by another name.
+   *
+   * **`ready` is deliberately not in this set.** FR-029 requires an approved
+   * version to stay editable, and gating on `approved` — the flag the export
+   * controls use — is the plausible over-fix that would pass a test written
+   * only against `submitted`. The third case below is what catches it.
+   */
+  const controls = () =>
+    within(screen.getByTestId("diff-item")).queryAllByRole("button", {
+      name: /^(Accept|Accepted|Reject|Rejected|Edit)$/,
+    });
+
+  it("offers no decision controls on an exported version", async () => {
+    await renderTab(version({ status: "exported" }));
+
+    expect(controls()).toHaveLength(0);
+    // The diff itself stays. Hiding what the document says would be a
+    // different claim from "this can no longer be changed".
+    expect(screen.getByTestId("proposed-text")).toBeTruthy();
+  });
+
+  it("offers no decision controls on a submitted version", async () => {
+    await renderTab(version({ status: "submitted" }));
+
+    expect(controls()).toHaveLength(0);
+    expect(screen.getByTestId("proposed-text")).toBeTruthy();
+  });
+
+  it("keeps them on an approved version, which FR-029 requires", async () => {
+    await renderTab(version({ status: "ready" }));
+
+    expect(controls()).toHaveLength(3);
+  });
+
+  /**
+   * The defect T037 fixed for the export path, on the one path that never got
+   * it: `decide()` had no `catch`, so a refused decision set no state, rendered
+   * nothing, and left the row exactly as it was. Silence after a click reads as
+   * success.
+   *
+   * Rendered against a `ready` version on purpose — after the gating above, a
+   * locked version offers no button to click, and the refusal that remains
+   * reachable is the one that arrives when the version was locked somewhere
+   * else while this screen was open.
+   */
+  it("shows a refused decision instead of leaving the screen still", async () => {
+    mocked.decideItem.mockRejectedValue(
+      new ApiError(409, "This version has been submitted and can no longer be changed."),
+    );
+    await renderTab(version({ status: "ready" }));
+
+    await userEvent.click(screen.getByRole("button", { name: "Reject" }));
+
+    await waitFor(() => expect(screen.getByTestId("tailor-error")).toBeTruthy());
+    expect(screen.getByText(/can no longer be changed/)).toBeTruthy();
+    expect(screen.queryByTestId("decision-label")).toBeNull();
+  });
+});
+
+// -- T054.3: FR-025 works and was unreachable through the interface ----------
+
+describe("starting a new version from a locked one", () => {
+  /**
+   * FR-025 — a revision after submission is a **new** version — is implemented
+   * and tested on the backend (`create_pending_version` reuses only a `draft`),
+   * and through the UI there was no way to ask for it. The submitted view said
+   * *"tailor this job again"* and offered `Download PDF` and three controls
+   * that could only 409.
+   *
+   * Offered on both locked states, because an `exported` version's content is
+   * frozen too: its owner has the same dead end, and `immutability.py` answers
+   * both with the same sentence.
+   *
+   * **Not offered on `ready`.** That version is still editable, so the action
+   * it wants is Edit, not a second paid run.
+   */
+  const retailor = () => screen.queryByTestId("retailor");
+
+  it("offers it on a submitted version", async () => {
+    await renderTab(version({ status: "submitted" }));
+    expect(retailor()).toBeTruthy();
+  });
+
+  it("offers it on an exported version", async () => {
+    await renderTab(version({ status: "exported" }));
+    expect(retailor()).toBeTruthy();
+  });
+
+  it("does not offer it while the version is still editable", async () => {
+    await renderTab(version({ status: "ready" }));
+    expect(retailor()).toBeNull();
+  });
+
+  it("starts a run and moves the screen to the new version", async () => {
+    mocked.startTailoring.mockResolvedValue({
+      version_id: "version-2",
+      status: "tailoring",
+      run_id: "run-2",
+    });
+    await renderTab(version({ status: "submitted" }));
+
+    mocked.getVersion.mockResolvedValue(version({ id: "version-2", status: "tailoring" }));
+    await userEvent.click(screen.getByTestId("retailor"));
+
+    expect(mocked.startTailoring).toHaveBeenCalledWith("app-1");
+    // The new version is a different row; the submitted one was not mutated.
+    await waitFor(() => expect(screen.getByTestId("working-step")).toBeTruthy());
+  });
+
+  /**
+   * The same defect as the silent decision, one action along. `tailor()` sets
+   * `refusal` rather than `error`, and until now only the start view rendered
+   * it — so a re-tailor refused because the profile moved since the match would
+   * have set state nobody displayed and left the screen exactly as it was.
+   * A stale analysis is the *likely* case here, not an edge one: this version
+   * was written against a match that is by now several actions old.
+   */
+  it("says why a refused run was refused, rather than nothing", async () => {
+    mocked.startTailoring.mockRejectedValue(
+      new ApiError(422, "Re-score this job first.", { reason: "stale_analysis" }),
+    );
+    await renderTab(version({ status: "submitted" }));
+
+    await userEvent.click(screen.getByTestId("retailor"));
+
+    await waitFor(() => expect(screen.getByTestId("refusal")).toBeTruthy());
+    expect(screen.getByTestId("refusal").getAttribute("data-reason")).toBe("stale_analysis");
+    // Still the sent version. A refused run changes nothing about it.
+    expect(screen.getByTestId("tailor-diff").getAttribute("data-status")).toBe("submitted");
   });
 });

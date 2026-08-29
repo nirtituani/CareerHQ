@@ -17,16 +17,21 @@ that are specific to this surface:
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Response, status
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from careerhq.api.deps import CompletionClient, CurrentUser, DbSession
-from careerhq.application.guidelines import StaticGuidelines
+from careerhq.application.export import ExportRefused, latest_export
+from careerhq.application.export_resume import export_version
+from careerhq.application.guidelines import GuidelineSource, StaticGuidelines
+from careerhq.application.immutability import VersionLocked, ensure_version_mutable
 from careerhq.application.plan_adherence import (
     FindingFacts,
     ItemFacts,
@@ -34,6 +39,12 @@ from careerhq.application.plan_adherence import (
     plan_execution,
 )
 from careerhq.application.ports import StructuredCompletion
+from careerhq.application.retrieved_guidelines import RetrievedGuidelines
+from careerhq.application.submit_resume import (
+    ExportChecksumMismatch,
+    SubmissionRefused,
+    submit_version,
+)
 from careerhq.application.tailor_resume import (
     TailoringInFlight,
     TailoringRefused,
@@ -42,16 +53,22 @@ from careerhq.application.tailor_resume import (
     decide_item,
     run_tailoring,
 )
+from careerhq.config import Settings, get_settings
 from careerhq.domain.models import (
     Application,
     ProposalDecision,
     ResumeVersion,
     ResumeVersionItem,
     ReviewerFinding,
+    SubmittedResume,
     TailoringRun,
     VersionStatus,
 )
+from careerhq.infrastructure import storage
 from careerhq.infrastructure.database import get_session_factory
+from careerhq.infrastructure.embeddings import get_embedding_source
+
+logger = logging.getLogger("careerhq.tailoring")
 
 router = APIRouter(tags=["tailoring"])
 
@@ -148,6 +165,27 @@ def _item_out(item: ResumeVersionItem) -> dict[str, Any]:
     }
 
 
+def submission_out(record: SubmittedResume) -> dict[str, Any]:
+    """What a submission looks like to a client. **Public, and shared on purpose.**
+
+    `applications.py` renders the same object on the application it belongs to, and the
+    "no storage key" rule below is exactly the kind that decays when it is written twice.
+    One function, imported, rather than two that agree until one of them is edited.
+
+    **No `document_storage_key`.** It is an internal address: publishing it hands a client
+    something that only means anything to the bucket, invites it to be treated as a
+    document reference, and outlives the route that returned it. The document is reached
+    through `GET /versions/{id}/document`, which checks ownership. The same rule `export`
+    and `read_original` follow.
+    """
+    return {
+        "resume_version_id": str(record.resume_version_id),
+        "checksum_sha256": record.checksum_sha256,
+        "byte_size": record.byte_size,
+        "submitted_at": _iso(record.submitted_at),
+    }
+
+
 async def _version_out(
     session: DbSession, version: ResumeVersion, run: TailoringRun | None
 ) -> dict[str, Any]:
@@ -198,19 +236,47 @@ async def _version_out(
     }
 
 
+def build_guideline_source(session: AsyncSession, settings: Settings) -> GuidelineSource:
+    """Choose the implementation behind the port. **This is the 005/006 seam** (T030).
+
+    One `if`, and it is the whole of what slice 006 changes about the workflow: no node,
+    no state key, no finalisation rule (FR-002). The workflow cannot tell which branch
+    ran, which is the property the boundary exists to preserve.
+
+    `static` stays reachable and is not dead code. It is the documented FR-009 fallback,
+    and it is the only way to take SC-008's cost baseline **in the same session** as the
+    retrieval measurement — which is what makes that comparison mean anything.
+
+    The ceiling comes from configuration. Hard-coding 1,500 here would leave FR-014's
+    limit looking configurable while quietly not being.
+    """
+    if settings.guideline_source == "static":
+        return StaticGuidelines()
+    return RetrievedGuidelines(
+        session,
+        embedder=get_embedding_source(),
+        token_ceiling=settings.retrieval_token_ceiling,
+    )
+
+
 async def _tailor_in_background(version_id: uuid.UUID, completion: StructuredCompletion) -> None:
     """Own session: the request's is closed by the time this runs.
 
     Lives in the API layer so `application/` imports no infrastructure, and the
     guideline source is chosen here — which is the 005/006 seam. Slice 006
     swaps `StaticGuidelines` for retrieval and changes nothing else.
+
+    **The source is built per run and holds this task's session**, which is not a
+    lifetime a startup singleton could have. The expensive object — the embedding model —
+    *is* process-wide (`get_embedding_source`); `RetrievedGuidelines` around it is a
+    handful of attributes.
     """
     async with get_session_factory()() as session:
         await run_tailoring(
             session,
             version_id=version_id,
             completion=completion,
-            guidelines=StaticGuidelines(),
+            guidelines=build_guideline_source(session, get_settings()),
         )
         await session.commit()
 
@@ -315,6 +381,17 @@ async def patch_item(
     for, on the one action that means "stop".
     """
     version = await _owned_version(session, user, version_id)
+    # **The lock is asked first, and it is asked rather than restated.** Both answers
+    # are 409, so the only thing separating them is what the person is told: a locked
+    # version is finished, and "not ready for review yet" would describe it as a state
+    # still to come. `decide_item` refuses again at the point of mutation — this is not
+    # a second copy of the rule but the same function, called early enough to say the
+    # accurate thing.
+    try:
+        ensure_version_mutable(version.status)
+    except VersionLocked as locked:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(locked)) from locked
+
     if version.status not in DECIDABLE_STATUSES:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -365,6 +442,14 @@ async def approve(version_id: uuid.UUID, session: DbSession, user: CurrentUser) 
     precisely why the workflow needs no durable pause and resume.
     """
     version = await _owned_version(session, user, version_id)
+    # Asked before the wrong-state check for the same reason as `patch_item`: an
+    # exported version can never be awaiting approval, so "not awaiting approval" would
+    # be true and useless.
+    try:
+        ensure_version_mutable(version.status)
+    except VersionLocked as locked:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(locked)) from locked
+
     # `!=` rather than `is not`: `status` is a `String` column, so a row loaded
     # in a session that did not create it comes back as a plain `str` and an
     # identity comparison never matches. Slice 004 shipped exactly that and left
@@ -378,6 +463,130 @@ async def approve(version_id: uuid.UUID, session: DbSession, user: CurrentUser) 
     await approve_version(session, version=version)
     await session.commit()
     return await _version_out(session, version, await _run_of(session, version))
+
+
+@router.post("/versions/{version_id}/export", summary="Export this version as a PDF")
+async def export(version_id: uuid.UUID, session: DbSession, user: CurrentUser) -> dict[str, Any]:
+    """FR-015, FR-016, FR-019 — and the route owns none of those rules.
+
+    `ensure_exportable` decides refusal (T033) and `export_version` owns render → store →
+    record → transition (T036). This translates the refusal into **409** — the status
+    `approve` already uses for a wrong-state request — and commits, which is the
+    transaction boundary every use case here leaves to its caller.
+
+    **The refusal's message is returned verbatim, and that is safe by construction.**
+    It is authored user-facing text ("Approve the tailored resume before exporting it"),
+    not an exception stringified from a driver. The rule this project follows is that the
+    *detail* of an infrastructure failure goes to the log and the *type* to the browser;
+    a message written for the person is the case that rule exempts.
+    """
+    version = await _owned_version(session, user, version_id)
+
+    try:
+        record = await export_version(session, version_id=version.id)
+    except ExportRefused as refused:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(refused)) from refused
+
+    await session.commit()
+    await session.refresh(version)
+
+    body = await _version_out(session, version, await _run_of(session, version))
+    # **No `document_storage_key`.** The key is an internal address; the document is
+    # reached by its own route, the same rule `read_original` follows for an upload.
+    body["export"] = {
+        "checksum_sha256": record.checksum_sha256,
+        "byte_size": record.byte_size,
+        "exported_at": _iso(record.exported_at),
+    }
+    return body
+
+
+@router.post("/versions/{version_id}/submit", summary="Mark this version as submitted")
+async def submit(version_id: uuid.UUID, session: DbSession, user: CurrentUser) -> dict[str, Any]:
+    """FR-020, FR-021 — and the route owns none of those rules.
+
+    `submit_version` decides submittability, picks the export, **re-reads the stored bytes
+    and re-hashes them** before anything is written, inserts the record and moves the
+    status (T038). This translates and commits, exactly as `export` does.
+
+    **Two 409s that mean different things.** A wrong-state refusal is the person's to
+    resolve — export it first, or revise as a new version. A checksum mismatch is not:
+    the stored document is not the document its record describes, and pressing the button
+    again cannot fix that. The status code cannot separate them, so the message does. The
+    two exception types are deliberately unrelated (T038) precisely so this handler cannot
+    collapse them by accident.
+
+    **A mismatch is also logged, and that is not decoration.** An integrity failure whose
+    only trace is a 409 in somebody's browser is invisible to whoever has to explain it.
+    The identifiers go in `extra` fields because Railway blanks the message of a parsed
+    JSON log and keeps the structured ones.
+
+    **The status and `date_applied` of the application are not touched.** `docs/03` §10.2
+    runs the dependency the other way — *"Moving to `Applied` requires a Submitted
+    Resume"* — `date_applied` is a field the person fills in, and the status label is
+    their own words. Deciding either for them here would overwrite what they said about
+    their own history.
+    """
+    version = await _owned_version(session, user, version_id)
+
+    try:
+        record = await submit_version(session, version_id=version.id)
+    except SubmissionRefused as refused:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(refused)) from refused
+    except ExportChecksumMismatch as mismatch:
+        logger.error(
+            "submission refused: the stored document no longer matches its checksum",
+            extra={"version_id": str(version.id), "profile_id": str(version.profile_id)},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=str(mismatch)
+        ) from mismatch
+
+    await session.commit()
+    await session.refresh(version)
+
+    body = await _version_out(session, version, await _run_of(session, version))
+    body["submission"] = submission_out(record)
+    return body
+
+
+@router.get("/versions/{version_id}/document", summary="The exported PDF")
+async def read_document(version_id: uuid.UUID, session: DbSession, user: CurrentUser) -> Response:
+    """Serve the stored bytes. **Never renders, and never exports.**
+
+    Separate from the POST so that *downloading again* is not *exporting again*:
+    re-export is legitimate, but it writes a new row and a new object, and a person
+    clicking download twice should not accumulate export records.
+
+    Serves the most recent export of this version. Under FR-031 the repeats are
+    byte-identical anyway, so "most recent" and "any" differ only in bookkeeping.
+
+    Always an attachment: unlike the retained upload there is no viewer to frame it in,
+    and the content type is ours rather than attacker-supplied because we rendered it.
+    """
+    await _owned_version(session, user, version_id)
+
+    # The shared query, not a local one: the submit use case freezes whichever export
+    # this returns, and two `ORDER BY` clauses that merely happen to agree would let a
+    # person download one document and send a record of another.
+    record = await latest_export(session, version_id)
+    if record is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="This version has not been exported yet.",
+        )
+
+    data = await storage.get_object(record.document_storage_key)
+
+    return Response(
+        content=data,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": 'attachment; filename="resume.pdf"',
+            # One person's résumé: never held by a shared proxy.
+            "Cache-Control": "private, no-store",
+        },
+    )
 
 
 @router.get("/versions/{version_id}/run", summary="The audit record for this version's run")

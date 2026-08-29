@@ -26,11 +26,13 @@ from careerhq.application.agents.tailoring import build_tailoring_graph
 from careerhq.application.agents.tailoring.state import TailoringState
 from careerhq.application.finalisation_rules import FINALISATION_RULES_VERSION, finalise
 from careerhq.application.guidelines import GuidelineQuery, GuidelineSource
+from careerhq.application.immutability import ensure_version_mutable
 from careerhq.application.ports import (
     StructuredCompletion,
     UsageRecorder,
     safe_validation_errors,
 )
+from careerhq.application.retrieved_guidelines import citation_snapshot
 from careerhq.application.scoreability import scoreable_posting
 from careerhq.config import get_settings
 from careerhq.domain.models import (
@@ -337,6 +339,13 @@ async def _render_master(
             await session.execute(
                 select(WorkExperience)
                 .where(WorkExperience.profile_id == profile_id)
+                # **Ordered explicitly (T051).** There was no `order_by` here, so role
+                # order was whatever Postgres happened to return — which decided both the
+                # order roles appear in the prompt and, now, the order they appear in the
+                # exported document. `ordinal` is the profile's own explicit order field;
+                # it is snapshotted onto each item below so a frozen version keeps this
+                # order even if the profile is later reordered.
+                .order_by(WorkExperience.ordinal)
                 .options(selectinload(WorkExperience.bullets))
             )
         )
@@ -355,6 +364,15 @@ async def _render_master(
                     "source_item_id": bullet.id,
                     "position": position,
                     "text": bullet.text,
+                    # **Snapshotted here, at version creation** (T051). The export must
+                    # never reach back into the profile for these: a locked version would
+                    # then re-render differently after a profile edit, changing an
+                    # approved document underneath its recorded checksum.
+                    "role_employer": experience.company,
+                    "role_title": experience.title,
+                    "role_start_date": experience.start_date,
+                    "role_end_date": experience.end_date,
+                    "role_ordinal": experience.ordinal,
                 }
             )
             position += 1
@@ -488,6 +506,30 @@ async def _record_usage(session: AsyncSession, run: TailoringRun, recorder: Usag
         )
 
 
+#: The market every V1 run is tailored for (OQ-006-B, decided 2026-08-28).
+#:
+#: **A stated product decision, not an inference.** FR-038's precedence is scoped *"for
+#: Israeli-market CVs"*, so retrieval that cannot tell which market it serves cannot
+#: apply it — and before this constant existed, `market` was never populated, defaulted
+#: to `global`, and the precedence pass T027 built never fired outside its own tests.
+#:
+#: **Nothing derives this from the posting, the company's location or the profile.** An
+#: Israeli distinction invented where the evidence does not support one is what FR-038
+#: and S-001's disposition note both forbid, and a heuristic doing it would be invisible
+#: once shipped. A wrong constant is a line someone can read; a wrong inference is not.
+#:
+#: **The extension path is a real product-level selection** — a market on the profile or
+#: the application, chosen by the person whose CV it is — at which point this constant
+#: becomes that field's default and the call site below reads it instead. It is one name
+#: in one place precisely so that change is small.
+#:
+#: `GuidelineQuery.market` still defaults to `global`, deliberately: that is the
+#: conservative answer for a caller that has not decided, and expressing this decision by
+#: moving a default would make every future caller Israeli by omission — the same
+#: invisible inference, relocated one layer down.
+V1_TARGET_MARKET = "israel"
+
+
 async def run_tailoring(
     session: AsyncSession,
     *,
@@ -547,8 +589,30 @@ async def run_tailoring(
             context=GuidelineQuery(
                 role_title=application.job_title,
                 requirements=[r.text_ for r in requirements],
+                market=V1_TARGET_MARKET,
             )
         )
+
+        # **Written here, not at the end (OQ-006-A, decided 2026-08-28).** These
+        # guidelines are an input to the run, and Principle V requires every
+        # WorkflowExecution to preserve its inputs — not every successful one.
+        # `match_analysis_id`, `finalisation_rules_version` and
+        # `model_config_used` already survive a failure because they are written
+        # at run creation; this was the only input written at the end, on the
+        # success path alone, which was an accident of when the field was added.
+        #
+        # A failure from here on leaves this row intact, because the caller
+        # commits after `run_tailoring` returns and this function never raises.
+        # **A failure *before* this line leaves the column NULL**, which is the
+        # honest record: nothing was retrieved. `[]` would assert the run was
+        # advised nothing — a claim about a retrieval that never happened, and a
+        # different statement from not knowing (`review_confidences` sets the
+        # same convention two fields away).
+        #
+        # The precedent is `UsageRecorder`: a run that reads as free is worse
+        # than one that reads as unrecorded, because nobody investigates a free
+        # run. A failed run that reads as *unguided* is the same defect.
+        run.guidelines_used = citation_snapshot(guidance)
 
         state = TailoringState(
             # `master_items` is the same list used below to build version rows,
@@ -637,6 +701,13 @@ async def run_tailoring(
                 # without this the master's ordering is gone for exactly the
                 # items the draft touched (T095, FR-030).
                 displaced_position=master_item["position"] if proposal else None,
+                # Null for every kind but an experience bullet, and for any master item
+                # built before T051 — `_compose` renders those in one unlabelled group.
+                role_employer=master_item.get("role_employer"),
+                role_title=master_item.get("role_title"),
+                role_start_date=master_item.get("role_start_date"),
+                role_end_date=master_item.get("role_end_date"),
+                role_ordinal=master_item.get("role_ordinal"),
                 original_text=original,
                 proposed_text=proposal.text if proposal else None,
                 # Materialised rather than derived, so no later reader — the PDF
@@ -670,7 +741,10 @@ async def run_tailoring(
             )
 
         run.plan = result["plan"]
-        run.guidelines_used = state.guidelines
+        # `guidelines_used` is **not** written here. It was, until OQ-006-A moved it to
+        # the moment after retrieval — see the comment there. Re-assigning it on success
+        # would restore the success/failure divergence that move removed, and it is the
+        # divergence `_record_usage` exists to prevent for the neighbouring columns.
         run.attempts = result["attempt"]
         # Every review pass's confidence, in pass order. The final element is
         # what `confidence_score` below records; the earlier ones are what a
@@ -750,7 +824,19 @@ async def decide_item(
     Rejecting **triggers no AI work**. The version keeps what the master said,
     and re-running the whole tailoring is still available if the draft is
     broadly wrong.
+
+    **Refuses before touching anything when the version is locked** (FR-022).
+    The version is loaded rather than reached through `item.version`: a lazy
+    relationship load on an item whose parent this session did not fetch is
+    answered by async SQLAlchemy with `MissingGreenlet`, and an awaited `get`
+    is a cheap identity-map hit in the one path that matters — a route that
+    already loaded the version in order to find this item.
     """
+    version = await session.get(ResumeVersion, item.resume_version_id)
+    if version is None:
+        raise LookupError(f"resume version {item.resume_version_id} does not exist")
+    ensure_version_mutable(version.status)
+
     # `==` throughout, never `is`. `decision` is an enum member when a route
     # passes one, but these columns are `String`, so anything read back from the
     # database is a plain `str` and the identity comparison silently never
@@ -778,7 +864,14 @@ async def approve_version(session: AsyncSession, *, version: ResumeVersion) -> R
 
     **Starts nothing.** No AI work follows approval in this slice, which is
     precisely why the workflow needs no durable pause/resume.
+
+    **Refuses a locked version before any of it happens** (FR-022). On an
+    exported version this call would be two violations at once: it rewrites
+    approved content, and it walks the status back to `READY` — out of a state
+    `docs/03` §10.1 draws no edge out of.
     """
+    ensure_version_mutable(version.status)
+
     for item in version.items:
         # `==`, not `is`. `decision` is a `String(16)` column, so an item loaded
         # by a route — a session that did not create the row — returns a plain

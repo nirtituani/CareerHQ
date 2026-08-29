@@ -807,3 +807,102 @@ describe("the Active tile", () => {
     expect(screen.queryByText("Pre-Applied")).not.toBeInTheDocument();
   });
 });
+
+// -- T056: the résumé this application actually sent --------------------------
+
+describe("the submitted résumé on the Details tab", () => {
+  /**
+   * **FR-024's own scenario, on the surface it names**: *"given an application, when I
+   * inspect it, then it references a submitted resume"*. The backend already answers —
+   * `GET /api/applications/{id}` carries `submission`, and its route docstring says it is
+   * served there rather than on the list precisely because inspection is the scenario.
+   * The detail page fetches that payload and passed it straight through; nothing rendered
+   * it.
+   *
+   * **Why it started mattering.** The Tailor tab shows `versions[0]`, the newest. Once
+   * T054 added "Tailor this job again" to a submitted version, pressing it produces a
+   * newer version and the sent résumé leaves the screen — while the submitted view's own
+   * words, *"leaves this one as it was sent"*, stay true of the database. This block is
+   * where it remains reachable, and it does not depend on which version is newest.
+   */
+  const submission = {
+    resume_version_id: "11111111-2222-3333-4444-555555555555",
+    checksum_sha256: "a".repeat(64),
+    byte_size: 12085,
+    // **21:26Z on purpose, copied from the real record.** A midday timestamp is the
+    // same calendar date in every plausible offset, so a fixture using one cannot tell
+    // a UTC-pinned formatter from a local one — the test would pass either way and gate
+    // nothing. This instant is the 28th in UTC and the 29th east of it.
+    submitted_at: "2026-08-28T21:26:21+00:00",
+  };
+
+  it("links to the document that was sent, by its own version id", () => {
+    render(<DetailTabs application={application({ submission })} match={NO_MATCH} />);
+
+    const link = screen.getByRole("link", { name: /résumé you sent/i });
+    // The existing document endpoint, addressed by the submission's **own** version —
+    // never the application's latest, which is the whole point.
+    expect(link).toHaveAttribute(
+      "href",
+      `/api/versions/${submission.resume_version_id}/document`,
+    );
+  });
+
+  it("says when it was sent and how large the document is", () => {
+    render(<DetailTabs application={application({ submission })} match={NO_MATCH} />);
+
+    const block = screen.getByTestId("submitted-resume");
+    expect(block).toHaveTextContent(/2026/);
+    expect(block).toHaveTextContent(/11\.8 KB/);
+  });
+
+  it("renders the sent date in UTC, so the server and the browser agree", () => {
+    /**
+     * **A hydration error, found in a browser and not by this suite.**
+     * `submitted_at` is `21:26Z` — the 28th in UTC, the 29th anywhere east of it. The
+     * page is server-rendered in the container's zone (UTC) and hydrated in the user's,
+     * so an unpinned `toLocaleDateString` produced two different strings for one
+     * timestamp and React threw, regenerating the tree.
+     *
+     * This assertion catches it **only where the runner is not UTC** — on this machine
+     * (`Asia/Jerusalem`) it fails without the fix; on a UTC runner local and UTC agree
+     * and it is inert. The definitive gate is the browser check, and this is the cheap
+     * guard beside it. The suite's other dates never tripped it because they sit at
+     * 10:00Z, which no plausible offset moves across midnight.
+     */
+    render(<DetailTabs application={application({ submission })} match={NO_MATCH} />);
+
+    const block = screen.getByTestId("submitted-resume");
+    // The 28th is the UTC date of record. The 29th is the same instant read locally.
+    expect(block.textContent).toContain("28");
+    expect(block.textContent).not.toContain("29/08/2026");
+    expect(block.textContent).not.toContain("08/29/2026");
+  });
+
+  it("does not show the checksum, which is operator evidence rather than a fact for a candidate", () => {
+    const { container } = render(
+      <DetailTabs application={application({ submission })} match={NO_MATCH} />,
+    );
+
+    expect(container.textContent ?? "").not.toContain(submission.checksum_sha256);
+    expect(container.textContent ?? "").not.toContain("a".repeat(16));
+  });
+
+  it("renders nothing when the application sent nothing through CareerHQ", () => {
+    // `null` is the truthful answer for every imported row that reached Applied
+    // elsewhere. A fallback to "the latest version" would name a document no
+    // employer received.
+    render(<DetailTabs application={application({ submission: null })} match={NO_MATCH} />);
+
+    expect(screen.queryByTestId("submitted-resume")).toBeNull();
+  });
+
+  it("renders nothing when the field was never loaded", () => {
+    // `undefined` is the list response, which does not carry it. Collapsing the two
+    // would make an unloaded field read as "sent nothing" — the distinction the
+    // `Application` type documents.
+    render(<DetailTabs application={application()} match={NO_MATCH} />);
+
+    expect(screen.queryByTestId("submitted-resume")).toBeNull();
+  });
+});

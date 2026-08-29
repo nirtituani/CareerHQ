@@ -191,6 +191,17 @@ export type Application = {
   normalized_status: NormalizedStatus;
   date_added: string;
   date_applied: string | null;
+  /** The résumé this application sent, if it sent one through CareerHQ (FR-024).
+   *
+   *  **`null` is an answer, not a gap.** An application that reached `Applied` outside
+   *  this system — every imported row — has no document here, and naming the nearest
+   *  available one would describe something the employer never received.
+   *
+   *  **Optional, and the three states are distinct.** `undefined` means the list response,
+   *  which does not carry it — resolving a reference per row would cost a query per row
+   *  for something only the detail view shows. `null` means it was asked and the answer
+   *  was none. Collapsing those two would make an unloaded field read as "sent nothing". */
+  submission?: SubmissionSummary | null;
   source: string | null;
   /** Free text: the source stores "90-110k" and "competitive" alike. */
   salary_text: string | null;
@@ -413,7 +424,20 @@ export function deleteApplication(id: string): Promise<void> {
  * it is your turn* — a machine working for tens of seconds against a human
  * queue that may last days (FR-040).
  */
-export type VersionStatus = "draft" | "tailoring" | "reviewing" | "awaiting_approval" | "ready";
+export type VersionStatus =
+  | "draft"
+  | "tailoring"
+  | "reviewing"
+  | "awaiting_approval"
+  | "ready"
+  /** Rendered to a PDF and stored (FR-019). Re-exportable: the same approved content
+   *  renders to identical bytes, so a second export is a second copy, not a change. */
+  | "exported"
+  /** Sent, and frozen (FR-021). Terminal: nothing edits it again, and revising the
+   *  résumé for this job produces a **new** version rather than moving this one
+   *  (FR-025). Added at T043, which gave the interface a way to reach it — until then
+   *  a state the UI could name was a claim the code did not support. */
+  | "submitted";
 
 /** What the owner did with one proposal. `pending` is the initial state, not a
  *  choice, and there is no way back to it. */
@@ -591,6 +615,64 @@ export function decideItem(
  *  and nothing further is started (FR-028). */
 export function approveVersion(versionId: string): Promise<ResumeVersion> {
   return request<ResumeVersion>(`/api/versions/${versionId}/approve`, { method: "POST" });
+}
+
+/** What one export recorded. **No storage key**: that is an internal address, and the
+ *  document is reached through `versionDocumentUrl` rather than by object path. */
+export type ExportSummary = {
+  /** SHA-256 over the exact stored bytes, which is what makes FR-021's later
+   *  re-verification a comparison rather than a re-render. */
+  checksum_sha256: string;
+  byte_size: number;
+  exported_at: string;
+};
+
+export type ExportedVersion = ResumeVersion & { export: ExportSummary };
+
+/** What one submission recorded. **No storage key**, for the same reason as the export
+ *  above: it is an internal address, and the document is reached through
+ *  `versionDocumentUrl`. */
+export type SubmissionSummary = {
+  /** The version this names — the one that was sent, which a later revision does not
+   *  displace (FR-025). */
+  resume_version_id: string;
+  /** SHA-256 over the stored bytes, re-verified against them at submission (FR-021). */
+  checksum_sha256: string;
+  byte_size: number;
+  submitted_at: string;
+};
+
+export type SubmittedVersion = ResumeVersion & { submission: SubmissionSummary };
+
+/** Record that this exported PDF is what was sent (FR-020/FR-021).
+ *
+ *  Refused with 409 in two different situations that the status code cannot tell apart:
+ *  the version was never exported or was already sent, and — separately — the stored
+ *  document no longer matches the checksum recorded for it. The **message** is the
+ *  difference, which is why it has to be shown rather than replaced with one of ours.
+ *
+ *  This changes nothing about the application: its status and the date the person said
+ *  they applied are theirs, and are edited on the application itself. */
+export function submitVersion(versionId: string): Promise<SubmittedVersion> {
+  return request<SubmittedVersion>(`/api/versions/${versionId}/submit`, { method: "POST" });
+}
+
+/** Render an approved version to a PDF and store it (FR-015/FR-019).
+ *
+ *  Refused with 409 for a version that has not been approved, or that was already
+ *  submitted. Calling it again on an exported version is legitimate and produces a
+ *  second copy — the download link below does not need it. */
+export function exportVersion(versionId: string): Promise<ExportedVersion> {
+  return request<ExportedVersion>(`/api/versions/${versionId}/export`, { method: "POST" });
+}
+
+/** Where the browser fetches the stored PDF.
+ *
+ *  A plain URL rather than a `request` call: this is a navigation the browser performs
+ *  itself, so the response becomes a download instead of a string this code would have
+ *  to turn back into one. */
+export function versionDocumentUrl(versionId: string): string {
+  return `/api/versions/${versionId}/document`;
 }
 
 /** The audit record — plan, models, tokens, cost, timings (FR-034). */
