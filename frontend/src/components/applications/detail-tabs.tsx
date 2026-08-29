@@ -5,7 +5,8 @@ import { Tabs } from "radix-ui";
 import { MatchTab } from "@/components/applications/match-tab";
 import { TailorTab } from "@/components/applications/tailor-tab";
 import { NotBuiltYet } from "@/components/not-built-yet";
-import type { Application, MatchResult } from "@/lib/api";
+import { versionDocumentUrl } from "@/lib/api";
+import type { Application, MatchResult, SubmissionSummary } from "@/lib/api";
 
 /**
  * The tabbed application detail — docs/09 §6.3.
@@ -127,6 +128,87 @@ function formatDate(value: string | null): string | null {
   return date.toLocaleDateString(undefined, { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
+/**
+ * The résumé this application actually sent, when it sent one (T056, FR-024).
+ *
+ * **Here rather than on the Tailor tab, and that is where the requirement points.**
+ * FR-024's scenario is *"given an application, when I **inspect** it"*, and the backend
+ * already serves the answer on `GET /api/applications/{id}` for exactly that reason — its
+ * route docstring says so. The detail page fetches that payload and passed `submission`
+ * straight through; nothing rendered it.
+ *
+ * **Why it stopped being academic.** The Tailor tab renders `versions[0]`, the newest.
+ * Once T054 gave a submitted version a "Tailor this job again" button, pressing it creates
+ * a newer version and the sent résumé leaves that screen — while the submitted view's own
+ * sentence, *"leaves this one as it was sent"*, stays true of the database. This block is
+ * addressed by the submission's **own** `resume_version_id`, so it does not move when a
+ * newer version appears.
+ *
+ * **Nothing is rendered when there is no submission**, and both absent states mean that:
+ * `null` is "asked, and it sent nothing" — true of every imported row that reached
+ * `Applied` elsewhere — and `undefined` is the list response, which does not carry the
+ * field. A fallback to the latest version would name a document no employer received.
+ *
+ * **The checksum is deliberately not shown.** It is evidence for an operator verifying
+ * stored bytes (FR-021), not a fact a candidate can act on, and printing 64 hex characters
+ * beside a download link invites it to be read as an identifier for the document.
+ */
+function SubmittedResume({ submission }: { submission: SubmissionSummary }) {
+  const sent = formatUtcDate(submission.submitted_at);
+  return (
+    <div className="mt-6" data-testid="submitted-resume">
+      <h3 className="text-xs font-medium tracking-wide uppercase" style={{ color: "var(--muted)" }}>
+        Submitted résumé
+      </h3>
+      <p className="mt-2 text-sm" style={{ color: "var(--muted)" }}>
+        This is the document on record for this job
+        {sent ? ` — sent ${sent}` : ""}, {formatBytes(submission.byte_size)}. Tailoring this
+        job again produces a new version and leaves this one as it was sent.
+      </p>
+      <p className="mt-2 text-sm">
+        <a
+          href={versionDocumentUrl(submission.resume_version_id)}
+          className="text-brand-700 underline underline-offset-4"
+        >
+          Download the résumé you sent
+        </a>
+      </p>
+    </div>
+  );
+}
+
+/**
+ * A timestamp's date, **pinned to UTC so the server and the browser agree**.
+ *
+ * `formatDate` above renders in the runtime's own timezone, which is correct for the
+ * date-only fields it serves. `submitted_at` carries a **time of day**, and the real
+ * record is `2026-08-28T21:26:21Z` — which is the 28th in UTC and the 29th anywhere east
+ * of it. Next renders this page on the server (UTC in the container) and hydrates it in
+ * the browser (the user's zone), so the unpinned formatter produced two different strings
+ * for one timestamp and React threw a hydration error, regenerating the tree.
+ *
+ * **Found in a browser, not by the suite** — the fixtures' other dates sit at 10:00Z,
+ * which no plausible offset moves across midnight. Pinning to UTC makes both renders
+ * agree and shows the date the record actually stores, which is also the date the audit
+ * trail and the `SubmittedResume` row report.
+ */
+function formatUtcDate(value: string): string | null {
+  if (!value) return null;
+  return new Date(value).toLocaleDateString(undefined, {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+/** Bytes as a person reads them. The API records an exact count; this is presentation. */
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} bytes`;
+  return `${(bytes / 1024).toFixed(1)} KB`;
+}
+
+
 export function DetailTabs({
   application,
   match,
@@ -215,6 +297,8 @@ export function DetailTabs({
             </a>
           </p>
         )}
+
+        {application.submission && <SubmittedResume submission={application.submission} />}
 
         {application.notes && (
           <div className="mt-6">
