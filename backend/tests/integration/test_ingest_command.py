@@ -25,8 +25,10 @@ from __future__ import annotations
 import ast
 import os
 import pathlib
+import shlex
 import subprocess
 import sys
+import tomllib
 from collections.abc import AsyncIterator, Sequence
 
 import pytest
@@ -353,20 +355,41 @@ def test_the_module_exits_non_zero_when_run_for_real() -> None:
 
 
 def test_the_pre_deploy_command_migrates_before_it_ingests() -> None:
-    """`&&`, and the order, because `knowledge_chunks` must exist before anything writes.
+    """The order, the `&&`, and the shell that makes the `&&` mean anything.
 
     Read out of the file rather than trusted: this is the whole of the deployment
     behaviour, it lives in one string, and a reordering would fail on the first deploy
     against a fresh database — with an error naming a missing table, which reads as a
     migration problem rather than an ordering one.
-    """
-    toml = (BACKEND / "railway.toml").read_text()
-    line = next(row for row in toml.splitlines() if row.startswith("preDeployCommand"))
-    command = line.split("=", 1)[1].strip().strip('"')
 
-    assert command == "alembic upgrade head && python -m careerhq.ingest", command
-    assert command.index("alembic upgrade head") < command.index("careerhq.ingest")
-    assert "&&" in command, "a separator that runs both regardless is not an ordering"
+    **Parsed with `tomllib`, not by stripping quotes** (T048). The previous version did
+    `line.split("=", 1)[1].strip().strip('"')`, which silently cannot unwrap a TOML
+    *literal* (single-quoted) string — so it was reading the quoting as part of the
+    command. Asking the TOML parser what the value is means this test checks the command
+    Railway is actually configured with rather than a substring of the file.
+
+    **The `/bin/sh -c` wrapper is asserted because it is load-bearing, not stylistic.**
+    `preDeployCommand` is a *single* command — Railway's schema types it as a string or a
+    one-element array — and under `builder = "DOCKERFILE"` nothing interprets an operator,
+    so an unwrapped `a && b` runs only `a`. That is not hypothetical: deployment `75cd8ea`
+    migrated cleanly, reported SUCCESS, and never ran ingestion, leaving production with an
+    empty corpus while every health check passed. Dropping the wrapper would restore
+    exactly that silent half-failure, which is why it is a guarantee rather than a detail.
+    """
+    config = tomllib.loads((BACKEND / "railway.toml").read_text())
+    command = config["deploy"]["preDeployCommand"]
+    assert isinstance(command, str), f"expected a string command, got {type(command)}"
+
+    # The shell is invoked explicitly, and the whole chain is one argument to it —
+    # `shlex` rather than a substring search, so `/bin/sh` mentioned in a comment or
+    # appended after the chain could not satisfy this.
+    argv = shlex.split(command)
+    assert argv[:2] == ["/bin/sh", "-c"], f"the pre-deploy command invokes no shell: {argv}"
+    assert len(argv) == 3, f"the chain must be one argument to the shell, got {argv}"
+
+    chain = argv[2]
+    assert "&&" in chain, "a separator that runs both regardless is not an ordering"
+    assert chain.index("alembic upgrade head") < chain.index("careerhq.ingest"), chain
 
 
 def test_ingestion_is_not_in_the_entrypoint() -> None:

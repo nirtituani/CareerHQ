@@ -17,10 +17,21 @@ dockerfilePath = "Dockerfile"
 # one crash-looping against a schema it cannot use (research.md R3, FR-021).
 # The second run finds nothing to apply; alembic is idempotent.
 #
-# **Corpus ingestion runs here too, and the `&&` is the ordering** (T050, OQ-006-C).
-# `knowledge_chunks` has to exist before anything writes to it, so a separator that ran
-# both regardless would fail on the first deploy against a fresh database — with an error
-# naming a missing table, which reads as a migration problem rather than an ordering one.
+# **Corpus ingestion runs here too, and the explicit `/bin/sh -c` is what makes the `&&`
+# mean anything** (T050, OQ-006-C; corrected at T048).
+#
+# `knowledge_chunks` has to exist before anything writes to it, so the ordering matters —
+# but **a bare `&&` in this field does not provide it on Railway.** `preDeployCommand` is
+# a *single* command: Railway's own JSON schema types it as a string or a **one-element**
+# array, and with `builder = "DOCKERFILE"` there is no shell to interpret an operator, so
+# only the first command runs. Railway's documentation says so and their staff give this
+# exact remedy — wrap the command in a shell.
+#
+# **This was not theoretical.** Deployment `75cd8ea` ran with the unwrapped string,
+# migrated cleanly `0014 -> 0018`, reported SUCCESS, and **never ran ingestion**: zero
+# `careerhq.ingest` log lines and an empty corpus in production, while every health check
+# passed. A pre-deploy that silently does half its job is worse than one that fails, which
+# is why the wrapper is explicit rather than implied.
 #
 # **Pre-deploy means once per deploy, not once per replica.** A startup hook is ruled out:
 # it would pay a model load on every container start, and two replicas booting together
@@ -35,7 +46,7 @@ dockerfilePath = "Dockerfile"
 # are baked into the image at build time, so this makes no network call. A failure exits
 # non-zero and Railway does not proceed, which is the point: a corpus that failed to load
 # must not reach production silently.
-preDeployCommand = "alembic upgrade head && python -m careerhq.ingest"
+preDeployCommand = '/bin/sh -c "alembic upgrade head && python -m careerhq.ingest"'
 
 # Readiness, not liveness. Liveness touches no dependency, so a backend that
 # cannot reach Postgres would be declared healthy and take traffic. Railway
