@@ -1908,8 +1908,9 @@ belongs; T050 is here.*
       ***T044/T045 are now measurable*** — and were **not** started. The next measurement runs
       against a populated corpus rather than the fallback path.
 
-- [ ] **T051** **Role context in the exported résumé — employer, job title and dates.**
-      *(Appended 2026-08-28 at T036. Design not decided; not started.)*
+- [x] **T051** **Role context in the exported résumé — employer, job title and dates.**
+      *(Appended 2026-08-28 at T036. **Decided and done 2026-08-29.** Ordering decided by the
+      author; Education/Project/Certification deliberately excluded — see the scope note below.)*
       `ResumeDocument` carries a name, a contact line and ordered sections of text. It carries **no
       employer, job title or date for any role**, so an exported résumé lists experience bullets
       with nothing saying where or when — and the corpus's own ATS rule, sourced to a vendor,
@@ -1929,6 +1930,59 @@ belongs; T050 is here.*
       change underneath its own checksum. Either the version carries the role context too, or the
       export accepts that part of the document is not snapshotted.
       **Do not implement before that is decided.**
+
+      ***Decided and implemented 2026-08-29.*** The version carries the role context; the export
+      never reads the profile. Migration `0017_role_context_snapshot` adds five **nullable**
+      columns to `resume_version_items` — `role_employer`, `role_title`, `role_start_date`,
+      `role_end_date`, `role_ordinal` — populated in `_render_master`, which already had the role
+      in hand for the prompt and simply never passed it on.
+
+      ***The authoritative order was found, not invented.*** `work_experiences.ordinal` already
+      exists and is populated (the real profile: C++ role 4, AI role 9). Role order is that
+      column, snapshotted. **Within a role, order stays `position`** — the owner's approved order.
+      The split is forced by the data: `position` **collides across roles**, because the draft
+      reorders one flat list with no notion of a role boundary. The real submitted document has
+      two different jobs both at position 0, and ordering by it interleaves them. Within a single
+      role `position` is unique, so within-role order is unambiguous.
+
+      ***A latent defect found and fixed on the way.*** The work-experience query had **no
+      `order_by` at all**, so role order was whatever Postgres returned — in the prompt then, and
+      in the exported document now. It is `ordinal` now, and a test asserts it.
+
+      ***What the real data showed.*** The submitted PDF (`1bd5f20f`, checksum `d77926480e3c…`)
+      listed seven bullets from **two roles at one employer** with no employer, title or dates —
+      an ATS parses that into an empty employment history. Verified in Docker against that exact
+      document: content re-renders **identical**, and it still exports because its snapshot is
+      NULL.
+
+      ***FR-031 measured, not assumed.*** Re-rendering the real submitted version differs from the
+      stored bytes by **2 bytes** — and that is `bf4bbcd`'s font-timestamp pin, not this task.
+      **Proved by isolation**: rendering a role-less document with and without T051's CSS gives
+      the *same* SHA-256, so this change contributes zero bytes to a document that has no role.
+      Determinism itself holds: two renders in one process are byte-identical, and the determinism
+      test now carries a role group so the new structure is covered.
+
+      ***Scope held.*** Education, Project and Certification were **not** touched. They have a
+      different root cause — the item's *text* is lossy at creation (`(row.id, row.institution)`
+      drops the degree, so the profile's "B.Sc. in Computer Science" is invisible to the exporter
+      **and to the model**) — and fixing it changes prompt content and cost. Appended as **T057**.
+
+      **19 tests, 5 drills.** See `tests/unit/test_export_role_context.py` and
+      `tests/integration/test_role_context_snapshot.py`.
+
+- [ ] **T057** **Education, Project and Certification items capture one field and drop the rest.**
+      *(Appended 2026-08-29 at T051, which deliberately did not fix it. Not started.)*
+      `_render_master` builds these as `(row.id, row.institution)`, `(row.id, row.name)` and
+      `(row.id, row.name)`. The real profile stores `qualification = "B.Sc. in Computer Science"`,
+      `field_of_study`, dates and `grade`; the exported PDF says only **"Ben-Gurion University"**.
+      **This is not T051's defect and the fix is not T051's shape.** T051's information existed on
+      the version's *source* and merely never reached the item; here the item's own text is lossy,
+      so the degree is invisible to the exporter **and to the tailoring model and the Reviewer** —
+      the agent cannot emphasise a credential it is never shown, and AI-008 forbids it inventing
+      one.
+      **It changes the prompt, so it changes cost**, which is why it is separate: T051 touched no
+      prompt content. Decide whether the extra fields join the item text or become their own
+      snapshot columns, and measure the prompt delta before committing to either.
 
 - [ ] **T052** **The token ceiling budgets rule text; the prompt carries citations too.**
       *(Appended 2026-08-29 at T046, from T045's measurement. Design not decided; not started.)*

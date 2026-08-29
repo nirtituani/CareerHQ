@@ -115,6 +115,18 @@ h2 {
   margin-bottom: 4pt;
 }
 p.line { margin-bottom: 3pt; }
+/* **A role block, and the reason it is three elements rather than one** (T051). The
+   corpus's ATS rule requires the employer and the job title to be separate readable
+   text, because a parser extracts "current employer" and "current title" as distinct
+   fields and a combined line hands it one string where it expects two. Separation is
+   therefore structural — three block elements — and not merely visual.
+
+   Weight and space do the visual work, as they do for `h2`: no rule, no border, no
+   background. `test_export_template.py` asserts the document is text and nothing else,
+   and a border-bottom here would paint filled rectangles and break that. */
+p.role-employer { font-weight: bold; margin-top: 7pt; }
+p.role-title { margin-bottom: 1pt; }
+p.role-dates { font-size: 9.5pt; margin-bottom: 3pt; }
 """
 
 
@@ -135,8 +147,16 @@ def _render_html(document: ResumeDocument) -> str:
         parts.append(f"<div class='contact'>{joined}</div>")
     for section in document.sections:
         parts.append(f"<h2>{html.escape(section.heading)}</h2>")
-        for line in section.lines:
-            parts.append(f"<p class='line'>{html.escape(line)}</p>")
+        for group in section.groups:
+            # A group with no role is a plain run of lines — every section but
+            # Experience, and every version predating the T051 snapshot.
+            if group.role is not None:
+                parts.append(f"<p class='role-employer'>{html.escape(group.role.employer)}</p>")
+                parts.append(f"<p class='role-title'>{html.escape(group.role.title)}</p>")
+                if group.role.dates:
+                    parts.append(f"<p class='role-dates'>{html.escape(group.role.dates)}</p>")
+            for line in group.lines:
+                parts.append(f"<p class='line'>{html.escape(line)}</p>")
     parts.append("</body></html>")
     return "".join(parts)
 

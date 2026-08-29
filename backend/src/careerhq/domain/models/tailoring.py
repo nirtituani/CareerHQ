@@ -493,6 +493,33 @@ class ResumeVersionItem(Base):
 
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
+    # -- Role context, snapshotted (T051) -------------------------------------
+    #
+    # **Snapshotted rather than read live, and that is the whole design.** A version
+    # freezes its items so a later profile edit cannot change an approved document
+    # (Principle IV, FR-023). Role context read live from `work_experiences` at render
+    # time would sit outside that freeze: a locked `EXPORTED` or `SUBMITTED` version
+    # would re-render differently after the owner renamed a job, changing a document
+    # underneath its own recorded checksum. Copying the five values here is what keeps
+    # re-rendering a frozen version byte-identical for ever.
+    #
+    # **Nullable, and it must stay nullable.** Six versions predate this — one of them
+    # submitted — and they carry no role context at all. A NOT NULL column would make
+    # every one of them unexportable, which is a worse failure than the gap it closes.
+    # They render exactly as they did before: one unlabelled group in position order.
+    # Null is also correct for every non-experience kind, which has no role.
+    #
+    # **`role_ordinal` is `work_experiences.ordinal`** — the profile's own explicit order
+    # field, not a new rule invented here. It is snapshotted for the same reason as the
+    # rest: ordering a locked document by a number that can move is the same defect.
+    role_employer: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    role_title: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    #: Stored as text because `work_experiences` stores them as text — "10/2017", and
+    #: empty when the owner recorded none. Never parsed and never inferred.
+    role_start_date: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    role_end_date: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    role_ordinal: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     #: The master position a proposal displaced — **NULL when no proposal
     #: arrived for this item**, which is the only record that the draft named
     #: it at all.

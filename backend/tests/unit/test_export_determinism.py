@@ -40,7 +40,12 @@ import zlib
 import pdfplumber
 import pytest
 
-from careerhq.domain.schemas.document import ResumeDocument, ResumeSection
+from careerhq.domain.schemas.document import (
+    ResumeDocument,
+    ResumeGroup,
+    ResumeRole,
+    ResumeSection,
+)
 from careerhq.infrastructure.documents.render import render_resume_pdf
 
 _BACKEND = pathlib.Path(__file__).resolve().parents[2]
@@ -55,15 +60,27 @@ def _sample() -> ResumeDocument:
         full_name="Dana Levi",
         contact=("dana@example.com", "+972 50 000 0000", "Tel Aviv"),
         sections=(
-            ResumeSection(
-                heading="Summary",
-                lines=("Senior Backend Engineer with six years on payment platforms.",),
+            ResumeSection.of_lines(
+                "Summary",
+                ("Senior Backend Engineer with six years on payment platforms.",),
             ),
+            # **Carries a role group on purpose (T051).** Determinism has to hold for the
+            # structure that actually ships, and role context added three new block
+            # elements per job to the rendered document.
             ResumeSection(
                 heading="Experience",
-                lines=(
-                    "Owned the settlement service end to end, from schema to on-call.",
-                    "Cut reconciliation time from six hours to twenty minutes.",
+                groups=(
+                    ResumeGroup(
+                        role=ResumeRole(
+                            employer="Sapiens",
+                            title="C++ Developer",
+                            dates="10/2017 – 01/2026",  # noqa: RUF001
+                        ),
+                        lines=(
+                            "Owned the settlement service end to end, from schema to on-call.",
+                            "Cut reconciliation time from six hours to twenty minutes.",
+                        ),
+                    ),
                 ),
             ),
         ),
@@ -120,14 +137,22 @@ def render_script(tmp_path: pathlib.Path) -> pathlib.Path:
     script.write_text(
         "import json, sys\n"
         "sys.path.insert(0, 'src')\n"
-        "from careerhq.domain.schemas.document import ResumeDocument, ResumeSection\n"
+        "from careerhq.domain.schemas.document import (\n"
+        "    ResumeDocument, ResumeGroup, ResumeRole, ResumeSection,\n"
+        ")\n"
         "from careerhq.infrastructure.documents.render import render_resume_pdf\n"
         "raw = json.loads(sys.argv[1])\n"
         "document = ResumeDocument(\n"
         "    full_name=raw['full_name'],\n"
         "    contact=tuple(raw['contact']),\n"
         "    sections=tuple(\n"
-        "        ResumeSection(heading=s['heading'], lines=tuple(s['lines']))\n"
+        "        ResumeSection(heading=s['heading'], groups=tuple(\n"
+        "            ResumeGroup(\n"
+        "                role=(ResumeRole(**g['role']) if g['role'] else None),\n"
+        "                lines=tuple(g['lines']),\n"
+        "            )\n"
+        "            for g in s['groups']\n"
+        "        ))\n"
         "        for s in raw['sections']\n"
         "    ),\n"
         ")\n"
@@ -149,7 +174,27 @@ def test_rendering_the_same_document_twice_is_byte_identical(
         {
             "full_name": document.full_name,
             "contact": list(document.contact),
-            "sections": [{"heading": s.heading, "lines": list(s.lines)} for s in document.sections],
+            "sections": [
+                {
+                    "heading": s.heading,
+                    "groups": [
+                        {
+                            "role": (
+                                {
+                                    "employer": g.role.employer,
+                                    "title": g.role.title,
+                                    "dates": g.role.dates,
+                                }
+                                if g.role
+                                else None
+                            ),
+                            "lines": list(g.lines),
+                        }
+                        for g in s.groups
+                    ],
+                }
+                for s in document.sections
+            ],
         }
     )
 
