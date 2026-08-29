@@ -176,8 +176,29 @@ it waits on every GitHub check suite reporting on the commit, not only this repo
 third-party check that never completes leaves a merge permanently undeployed while Actions looks
 entirely green.
 
-Database migrations run as a pre-deploy step (`alembic upgrade head`). If a migration fails, the
-deployment does not proceed and the previous version keeps serving.
+Database migrations and corpus ingestion both run as a pre-deploy step:
+
+```toml
+preDeployCommand = "alembic upgrade head && python -m careerhq.ingest"
+```
+
+If either fails, the deployment does not proceed and the previous version keeps serving.
+
+**The `&&` is the ordering, not a separator**: `knowledge_chunks` has to exist before ingestion
+writes to it. **Pre-deploy, not startup**, so the model is loaded once per deploy rather than once
+per replica — and so two replicas booting together cannot race the corpus's unique constraint.
+Re-running an unchanged corpus creates nothing and embeds nothing, and the embedding weights are
+baked into the image, so the step makes no network call.
+
+Locally, the same command by hand:
+
+```bash
+docker compose exec backend python -m careerhq.ingest
+```
+
+Run it after editing anything under `backend/corpus/`. Without it the files and the database
+disagree about what guidance exists, retrieval falls back to the static rubric, and every run
+records that it did — which looks entirely healthy.
 
 ### Reading logs
 
@@ -270,7 +291,24 @@ BACKEND_URL=http://backend.railway.internal:8000
 NEXT_PUBLIC_LOGO_DEV_TOKEN=…   # optional; logos fall back to initials without it
 ```
 
-Four things about that list are easy to get wrong:
+**`EMBEDDING_MODEL` is deliberately *not* in that list, and should stay out of it.** Leaving it
+unset means the backend uses `config.py`'s default, `BAAI/bge-small-en-v1.5`, which is the model
+`backend/Dockerfile` bakes into the image — so a cold container makes no network call, as spec.md
+D3 requires. **Setting it to anything else is a silent way to break retrieval.** The corpus is
+embedded with whichever model is configured and queries use the same one, so the two must agree;
+the previous default (`sentence-transformers/all-MiniLM-L6-v2`) is *also* 384-dimension, which
+means the vector column, `EMBEDDING_DIMENSIONS` and the adapter's width check all accept either.
+Measured: re-embedding a stored chunk gives cosine 1.000 for the model that wrote it and **0.346**
+for the other one.
+
+Since T053 the corpus records which model embedded it, and `python -m careerhq.ingest` **refuses**
+to run against a corpus built with a different model, naming both. That refusal exits non-zero and
+so blocks the deploy, which is the intended behaviour: changing the embedding model is a
+re-ingestion, not a variable edit. To change it deliberately, change `EMBEDDING_MODEL` *and* the
+model baked in `backend/Dockerfile`, then drop the `knowledge_documents` / `knowledge_chunks` rows
+so the pre-deploy ingestion rebuilds them.
+
+Five things about that list are easy to get wrong:
 
 - **`REDIS_URL` is deliberately unset.** It is optional, and readiness reports it as
   `not_configured`. A placeholder would make the application believe it has a cache and fail at

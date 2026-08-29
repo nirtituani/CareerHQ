@@ -161,9 +161,18 @@ export function TailorDiffItem({
     decision: Exclude<ProposalDecision, "pending">,
     text?: string,
   ) => Promise<void> | void;
-  /** True once the version is `ready` and nothing more should be changed from
-   *  here. The item still renders in full — FR-029 keeps an approved version
-   *  editable, and hiding what it says would be a different claim. */
+  /**
+   * True once the version's **content is locked** — `exported` or `submitted`,
+   * the two states in `application/immutability.py`'s `LOCKED_STATUSES`.
+   *
+   * **Not `ready`**, which this comment used to say while no caller passed the
+   * prop at all, so the wrong set was never exercised. FR-029 requires an
+   * approved version to remain editable; locking it here would be the stricter
+   * reading that removes the ability to fix a typo before exporting.
+   *
+   * The item still renders in full either way — hiding what the document says
+   * would be a different claim from saying it can no longer be changed.
+   */
   disabled?: boolean;
 }) {
   const [editing, setEditing] = useState(false);

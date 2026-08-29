@@ -38,7 +38,12 @@ from careerhq.application.agents.tailoring.prompts import (
 from careerhq.application.agents.tailoring.state import RaisedFinding, TailoringState
 from careerhq.application.finalisation_rules import should_revise, task_for_revision
 from careerhq.application.ports import StructuredCompletion
-from careerhq.domain.schemas.tailoring import ReviewResult, TailoredDraft, TailoringPlan
+from careerhq.domain.schemas.tailoring import (
+    ReviewFinding,
+    ReviewResult,
+    TailoredDraft,
+    TailoringPlan,
+)
 
 #: Task names. Declared here rather than inline so `test_task_model_config.py`
 #: can find them by AST and require each to have an `llm_model_<task>` entry —
@@ -48,6 +53,30 @@ TASK_DRAFT = "tailor_draft"
 TASK_REVIEW = "tailor_review"
 
 Node = Callable[[TailoringState], Awaitable[dict[str, Any]]]
+
+
+def active_findings(state: TailoringState) -> list[ReviewFinding]:
+    """The findings that describe the draft **as it now stands**.
+
+    `state.findings` accumulates across passes on purpose: it is the evidence
+    the guardrail ran, and persistence needs all of it. The revision decision
+    needs something narrower. `clears_review` fails on any `ungrounded`
+    finding, so feeding it the whole history made a fabrication caught on pass
+    0 permanently unclearable — the gate could never be passed again however
+    well the Reviser fixed it, and the run spent its entire budget every time.
+
+    Selecting the current pass is sound because of what the Reviewer is shown:
+    `_REVIEW` is built from `compose_resume`, the **resulting resume**, not
+    from a diff. Every pass is therefore a complete re-judgement of the whole
+    document. A claim that is still unsupported is re-reported and still
+    blocks; one the Reviser fixed is simply absent, which is the Reviewer
+    saying so rather than this function assuming it.
+
+    Note this is deliberately *not* in `finalisation_rules`: those rules judge
+    findings and have no business reading the pass label, which is state
+    bookkeeping. The unwrapping has always happened on this side of the call.
+    """
+    return [raised.finding for raised in state.findings if raised.attempt == state.attempt]
 
 
 def build_tailoring_graph(completion: StructuredCompletion) -> Any:
@@ -122,7 +151,15 @@ def build_tailoring_graph(completion: StructuredCompletion) -> Any:
             confidence=state.confidence,
             # Unwrapped here: the rules judge the Reviewer's findings, and the
             # pass label is state bookkeeping they have no business reading.
-            findings=[raised.finding for raised in state.findings],
+            #
+            # **The current pass only.** `state.findings` accumulates for the
+            # audit record, but `clears_review` fails on any `ungrounded`
+            # finding — so passing the history made a fabrication caught on
+            # pass 0 permanently unclearable, and every such run spent its
+            # whole budget on revisions with nothing left to fix. The Reviewer
+            # re-judges the composed resume each pass, so a claim that is
+            # still unsupported is re-reported and still blocks (T096).
+            findings=active_findings(state),
             attempt=state.attempt,
         ):
             return "revise"
@@ -145,4 +182,10 @@ def build_tailoring_graph(completion: StructuredCompletion) -> Any:
     return graph.compile()
 
 
-__all__ = ["TASK_DRAFT", "TASK_PLAN", "TASK_REVIEW", "build_tailoring_graph"]
+__all__ = [
+    "TASK_DRAFT",
+    "TASK_PLAN",
+    "TASK_REVIEW",
+    "active_findings",
+    "build_tailoring_graph",
+]

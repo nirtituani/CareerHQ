@@ -4,8 +4,14 @@
 value when none does, which meant the master's ordering was destroyed for
 exactly the items the Draft touched. `displaced_position` records what the
 proposal displaced, so the master's ordering at creation is
-`COALESCE(displaced_position, position)` for **every** item — the FR-030
-obligation that is currently unmet for any item carrying a proposal.
+`COALESCE(displaced_position, position)` for **every** item.
+
+**Written red first, and this paragraph used to say the obligation was
+"currently unmet".** It is met — the column exists, `run_tailoring` populates
+it, and the assertions below pass. Left as a note rather than deleted because a
+docstring that still describes the bug is worse than one that describes the
+fix: the next reader cannot tell whether they are looking at a known gap or at
+prose nobody updated.
 
 NULL means no proposal arrived. Nothing is backfilled: rows written before the
 column existed keep NULL and are read as unknown, never as untouched.

@@ -169,9 +169,58 @@ class Settings(BaseSettings):
     #: is a separate task NAME rather than a branch on attempt count, which is
     #: what keeps the escalation in configuration (contracts O4).
     llm_model_tailor_revise_escalated: str = "anthropic/claude-opus-5"
+    # -- Slice 008: company research -----------------------------------------
+    #
+    #: Sonnet. Layer 1 summarises retrieved pages and quotes them; it is
+    #: output-heavy but the judgement is shallow — no grounding decision, no
+    #: release-blocking verdict. Opus is reserved for the nodes whose failure is
+    #: a blocker, which here is nothing: the citation guarantee is a
+    #: deterministic string check, not a model's opinion (FR-032).
+    #:
+    #: Layer 2's tasks are not registered yet — that layer is not built.
+    llm_model_research_synthesise_company: str = "anthropic/claude-sonnet-5"
     # Local by default so the stack runs with no API key. Anthropic has no
     # embeddings endpoint, which is why this is not an Anthropic model.
-    embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
+    #
+    # Run through **fastembed/ONNX**, not sentence-transformers. Same 384
+    # dimensions, so `vector(384)` is unchanged and no migration is needed —
+    # but 67 MB instead of a 527 MB torch wheel on top of a 1 GB image, for a
+    # component whose whole job is embedding ~95-130 short rules and one query.
+    # The Hugging Face Inference API is deliberately NOT used: embeddings stay
+    # local, need no key, and put no network call in the retrieval path
+    # (spec.md D3).
+    embedding_model: str = "BAAI/bge-small-en-v1.5"
+    #: Where the ONNX model is cached. Baked into the image at build time so a
+    #: cold container does not download from Hugging Face on first request —
+    #: which would put a network call in exactly the path D3 keeps local.
+    embedding_cache_dir: str = "/app/.model-cache"
+
+    #: Ceiling on retrieved guidance injected into a prompt (FR-014, D5).
+    #: 1,500 tokens ≈ 3x the 507-token static rubric, and ~15% of the Draft
+    #: prompt's input. Sized so integrity rules — which are always retrieved —
+    #: can never be crowded out by a close semantic match.
+    #:
+    #: **This is a budget per run, not a corpus size.** It holds **≈19 rules**
+    #: at the measured 76 tokens/rule (2026-08-28) — the corpus itself is
+    #: 95-130 rules. An earlier comment here said "≈ 35 rules", derived at 42
+    #: tokens/rule from the rubric, whose rules carry no qualifications; a
+    #: corpus rule carries its own (FR-037) and is 1.8x longer.
+    #:
+    #: **Do not change this number on arithmetic.** D5's floor-upward sizing no
+    #: longer fits inside it, which is recorded as an open consequence in
+    #: `research.md` R6 and answered by T044's measurement, not by a guess.
+    retrieval_token_ceiling: int = 1500
+    #: Which `GuidelineSource` implementation is wired in. `static` is the
+    #: slice-005 rubric and remains the documented fallback (FR-009), so it is
+    #: not dead code.
+    #:
+    #: **A closed set, tightened at T030 from a bare `str`.** The seam is a
+    #: two-way branch, so an unrecognised value would land on one side of it
+    #: silently — and `statik` selecting *retrieval* is the worse direction:
+    #: it is how SC-008's static baseline would be taken against retrieval and
+    #: reported as a comparison. Refused here, where every other configuration
+    #: error in this project surfaces.
+    guideline_source: Literal["retrieval", "static"] = "retrieval"
 
     @property
     def is_production(self) -> bool:
