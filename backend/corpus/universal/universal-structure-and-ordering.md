@@ -47,5 +47,3 @@ unresolved; a length rule would be an assertion this corpus cannot support.
 - Include volunteer work, temporary positions and youth-movement or community leadership as
   experience where they demonstrate something this posting asks for. Where they demonstrate nothing
   the posting asks for, they are candidates for dropping like any other item.
-
-
