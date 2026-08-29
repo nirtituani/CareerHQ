@@ -586,9 +586,16 @@ Recorded so they are not rediscovered. Every one of these passed a green suite o
 - **The retrieval token ceiling budgets rule text, not the rendered block.**
   `KnowledgeChunk.token_count` counts the rule; `prompts.py` renders `- {text}  [{source}]`, and
   the citation (`slug · locator · hash`) is uncounted. Measured: a ceiling configured at 1,500
-  reaches the model at **~2,190 tokens**, of which **667 are citations**. This is the whole of why
-  SC-008 is missed at 2.12%, and it is an accounting discrepancy rather than a retrieval defect —
-  see T052 before changing either side, because FR-012's resolvability rests on the citation.
+  reaches the model at **~2,190 tokens**, of which **667 are citations**. This was the whole of why
+  **SC-008 (006)** first missed, at 2.12%; T052 removed the citation from the prompt and the
+  numerator fell 21%, yet the criterion is **still MISSED, now at 3.22%** — because the denominator
+  nearly halved when that session's baseline did not revise. An accounting discrepancy rather than a
+  retrieval defect; see T052 before changing either side, because FR-012's resolvability rests on
+  the citation.
+  **Write it `SC-008 (006)`.** Slice 007 has an `SC-008` of its own asking a different question —
+  whether the measurement can resolve its own threshold — and the two are one careless sentence
+  away from reading as an old figure and a corrected one. Slice 006's threshold is unchanged at
+  ≤2% and its result is 3.22% MISSED.
 - **Run cost is dominated by whether the Reviewer revises**, which is a step function worth an
   extra Sonnet call plus an extra Opus call — roughly a third of a run. Measured spread across
   runs of the same pipeline: **$0.295 to $0.548, 85%**. **A single A/B on total cost cannot

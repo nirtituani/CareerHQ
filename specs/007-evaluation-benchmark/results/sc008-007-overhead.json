@@ -1,0 +1,43 @@
+{
+  "sc008_006": {
+    "criterion": "SC-008 (006)",
+    "question": "does retrieval increase tailoring cost per run by no more than 2%?",
+    "threshold_percent": 2.0,
+    "result_percent": 3.22,
+    "verdict": "MISSED",
+    "note": "Unchanged by slice 007. Re-measured at T052 on current code; the target was not adjusted and the metric was not redefined."
+  },
+  "verdict": "unresolved",
+  "pairs": 5,
+  "numerator_tokens_mean": 3376.6,
+  "numerator_tokens_stdev": 225.8,
+  "numerator_tokens_per_pair": {
+    "ds-02-mle-production": 3375,
+    "ds-03-analytics-lead": 3081,
+    "fi-01-analyst-fpna": 3371,
+    "fi-02-audit-senior": 3340,
+    "fi-03-treasury-analyst": 3716
+  },
+  "numerator_is_lower_bound": false,
+  "control_tokens_mean": 1694.8,
+  "numerator_usd": 0.0067532,
+  "denominator_n": 18,
+  "denominator_mean_usd": 0.184185,
+  "denominator_min_usd": 0.104822,
+  "denominator_max_usd": 0.404111,
+  "denominator_revision_rate": 0.333,
+  "ratio_percent_at_mean": 3.667,
+  "interval_percent": [
+    1.671,
+    6.443
+  ],
+  "threshold_percent": 2.0,
+  "draft_deltas": {
+    "ds-02-mle-production": 1655,
+    "ds-03-analytics-lead": 1372,
+    "fi-01-analyst-fpna": 1698,
+    "fi-02-audit-senior": 1655,
+    "fi-03-treasury-analyst": 2029
+  },
+  "reason": "the interval [1.67%, 6.44%] straddles 2.0%, so this measurement cannot place the overhead on either side of it independently of revision behaviour. Reporting *unresolved* is the honest result and is a pass of SC-008 (this slice); it says nothing about SC-008 (006), which stands as MISSED at 3.22%."
+}

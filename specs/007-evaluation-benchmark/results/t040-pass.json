@@ -1,0 +1,1288 @@
+{
+  "phase": "t040b",
+  "benchmark_set": "v1",
+  "projection_usd": 7.587164,
+  "ceiling_usd": 10.0,
+  "already_spent_usd": 0.89,
+  "metric_version": "1.0.0",
+  "rubric_version": "v1",
+  "arms": [
+    {
+      "case_id": "ds-02-mle-production",
+      "guidance_intended": "retrieval",
+      "guidance_used": "corpus",
+      "run_id": "ec0b68e7-d3a9-448a-8ee0-f5457feea1e0",
+      "version_id": "98a0380e-71e0-4fdf-a302-c77ac9a507c1",
+      "status": "succeeded",
+      "failure_reason": null,
+      "attempts": 0,
+      "cost": 0.158992,
+      "input_tokens": 16535,
+      "output_tokens": 9315,
+      "review_confidences": [
+        82
+      ],
+      "guidelines": 27,
+      "items": 19,
+      "grounding": {
+        "traceable": {
+          "value": 1.0,
+          "n": 19,
+          "measured": true,
+          "reason": ""
+        },
+        "ungrounded_caught": 0,
+        "overstated_flagged": 0,
+        "persisted_ungrounded": 0,
+        "proposals": 3
+      },
+      "coverage": {
+        "overall": {
+          "value": 0.2,
+          "n": 5,
+          "measured": true,
+          "reason": ""
+        },
+        "must_have": {
+          "value": 0.3333333333333333,
+          "n": 3,
+          "measured": true,
+          "reason": ""
+        },
+        "unmatched_findings": 0
+      }
+    },
+    {
+      "case_id": "ds-03-analytics-lead",
+      "guidance_intended": "retrieval",
+      "guidance_used": "corpus",
+      "run_id": "111328d4-5cd4-41d8-9d53-cd96052825c1",
+      "version_id": "b2d8927b-e789-470b-862a-1c695e3bb55a",
+      "status": "succeeded",
+      "failure_reason": null,
+      "attempts": 0,
+      "cost": 0.183011,
+      "input_tokens": 16381,
+      "output_tokens": 11787,
+      "review_confidences": [
+        78
+      ],
+      "guidelines": 27,
+      "items": 19,
+      "grounding": {
+        "traceable": {
+          "value": 1.0,
+          "n": 19,
+          "measured": true,
+          "reason": ""
+        },
+        "ungrounded_caught": 0,
+        "overstated_flagged": 1,
+        "persisted_ungrounded": 0,
+        "proposals": 2
+      },
+      "coverage": {
+        "overall": {
+          "value": 0.2,
+          "n": 5,
+          "measured": true,
+          "reason": ""
+        },
+        "must_have": {
+          "value": 0.3333333333333333,
+          "n": 3,
+          "measured": true,
+          "reason": ""
+        },
+        "unmatched_findings": 0
+      }
+    },
+    {
+      "case_id": "fi-01-analyst-fpna",
+      "guidance_intended": "retrieval",
+      "guidance_used": "corpus",
+      "run_id": "6448150d-63c7-4a61-afa0-298733bf59ec",
+      "version_id": "ffa8993a-c6a7-4f88-86f9-6ccd4ee41f86",
+      "status": "succeeded",
+      "failure_reason": null,
+      "attempts": 0,
+      "cost": 0.104822,
+      "input_tokens": 14732,
+      "output_tokens": 5836,
+      "review_confidences": [
+        90
+      ],
+      "guidelines": 27,
+      "items": 13,
+      "grounding": {
+        "traceable": {
+          "value": 1.0,
+          "n": 13,
+          "measured": true,
+          "reason": ""
+        },
+        "ungrounded_caught": 0,
+        "overstated_flagged": 0,
+        "persisted_ungrounded": 0,
+        "proposals": 0
+      },
+      "coverage": {
+        "overall": {
+          "value": 1.0,
+          "n": 5,
+          "measured": true,
+          "reason": ""
+        },
+        "must_have": {
+          "value": 1.0,
+          "n": 3,
+          "measured": true,
+          "reason": ""
+        },
+        "unmatched_findings": 0
+      }
+    },
+    {
+      "case_id": "fi-02-audit-senior",
+      "guidance_intended": "retrieval",
+      "guidance_used": "corpus",
+      "run_id": "f7429ed6-4778-4817-88f0-c02e561d20b1",
+      "version_id": "4e06023d-36cf-4b7d-b182-68a5f809ccab",
+      "status": "succeeded",
+      "failure_reason": null,
+      "attempts": 0,
+      "cost": 0.115617,
+      "input_tokens": 15062,
+      "output_tokens": 6104,
+      "review_confidences": [
+        74
+      ],
+      "guidelines": 27,
+      "items": 13,
+      "grounding": {
+        "traceable": {
+          "value": 1.0,
+          "n": 13,
+          "measured": true,
+          "reason": ""
+        },
+        "ungrounded_caught": 0,
+        "overstated_flagged": 0,
+        "persisted_ungrounded": 0,
+        "proposals": 0
+      },
+      "coverage": {
+        "overall": {
+          "value": 0.0,
+          "n": 5,
+          "measured": true,
+          "reason": ""
+        },
+        "must_have": {
+          "value": 0.0,
+          "n": 3,
+          "measured": true,
+          "reason": ""
+        },
+        "unmatched_findings": 1
+      }
+    },
+    {
+      "case_id": "fi-03-treasury-analyst",
+      "guidance_intended": "retrieval",
+      "guidance_used": "corpus",
+      "run_id": "869d2a50-9234-459f-8f4e-210d7dfca322",
+      "version_id": "4329ec34-0a78-48a4-8291-ef0db272d4ba",
+      "status": "succeeded",
+      "failure_reason": null,
+      "attempts": 0,
+      "cost": 0.136026,
+      "input_tokens": 15246,
+      "output_tokens": 7383,
+      "review_confidences": [
+        82
+      ],
+      "guidelines": 27,
+      "items": 13,
+      "grounding": {
+        "traceable": {
+          "value": 1.0,
+          "n": 13,
+          "measured": true,
+          "reason": ""
+        },
+        "ungrounded_caught": 0,
+        "overstated_flagged": 1,
+        "persisted_ungrounded": 0,
+        "proposals": 1
+      },
+      "coverage": {
+        "overall": {
+          "value": 0.4,
+          "n": 5,
+          "measured": true,
+          "reason": ""
+        },
+        "must_have": {
+          "value": 0.3333333333333333,
+          "n": 3,
+          "measured": true,
+          "reason": ""
+        },
+        "unmatched_findings": 0
+      }
+    },
+    {
+      "case_id": "rn-01-icu-senior",
+      "guidance_intended": "retrieval",
+      "guidance_used": "corpus",
+      "run_id": "9f7a701d-8bb0-4731-9d4a-fd7e4d11995c",
+      "version_id": "bbe7f914-e6ee-4a7d-8beb-d4cc02bdab5f",
+      "status": "succeeded",
+      "failure_reason": null,
+      "attempts": 0,
+      "cost": 0.136781,
+      "input_tokens": 16033,
+      "output_tokens": 7803,
+      "review_confidences": [
+        86
+      ],
+      "guidelines": 27,
+      "items": 17,
+      "grounding": {
+        "traceable": {
+          "value": 1.0,
+          "n": 17,
+          "measured": true,
+          "reason": ""
+        },
+        "ungrounded_caught": 0,
+        "overstated_flagged": 0,
+        "persisted_ungrounded": 0,
+        "proposals": 1
+      },
+      "coverage": {
+        "overall": {
+          "value": 0.2,
+          "n": 5,
+          "measured": true,
+          "reason": ""
+        },
+        "must_have": {
+          "value": 0.0,
+          "n": 3,
+          "measured": true,
+          "reason": ""
+        },
+        "unmatched_findings": 0
+      }
+    },
+    {
+      "case_id": "rn-02-community",
+      "guidance_intended": "retrieval",
+      "guidance_used": "corpus",
+      "run_id": "057a48ca-683c-4a36-9119-27934e5ba6ba",
+      "version_id": "cc2074b7-cc19-445e-a5d2-c458ed51c56d",
+      "status": "succeeded",
+      "failure_reason": null,
+      "attempts": 1,
+      "cost": 0.259981,
+      "input_tokens": 25018,
+      "output_tokens": 14075,
+      "review_confidences": [
+        55,
+        82
+      ],
+      "guidelines": 27,
+      "items": 17,
+      "grounding": {
+        "traceable": {
+          "value": 1.0,
+          "n": 17,
+          "measured": true,
+          "reason": ""
+        },
+        "ungrounded_caught": 0,
+        "overstated_flagged": 2,
+        "persisted_ungrounded": 0,
+        "proposals": 2
+      },
+      "coverage": {
+        "overall": {
+          "value": 0.2,
+          "n": 5,
+          "measured": true,
+          "reason": ""
+        },
+        "must_have": {
+          "value": 0.3333333333333333,
+          "n": 3,
+          "measured": true,
+          "reason": ""
+        },
+        "unmatched_findings": 0
+      }
+    },
+    {
+      "case_id": "rn-03-theatre-scrub",
+      "guidance_intended": "retrieval",
+      "guidance_used": "corpus",
+      "run_id": "904df4fb-6ebe-4edb-9000-7f9e2ae8d940",
+      "version_id": "fd76521a-f9c5-40f6-8ea2-f2c60b2040ec",
+      "status": "succeeded",
+      "failure_reason": null,
+      "attempts": 2,
+      "cost": 0.404111,
+      "input_tokens": 36169,
+      "output_tokens": 17967,
+      "review_confidences": [
+        58,
+        68,
+        72
+      ],
+      "guidelines": 26,
+      "items": 17,
+      "grounding": {
+        "traceable": {
+          "value": 1.0,
+          "n": 17,
+          "measured": true,
+          "reason": ""
+        },
+        "ungrounded_caught": 0,
+        "overstated_flagged": 6,
+        "persisted_ungrounded": 0,
+        "proposals": 4
+      },
+      "coverage": {
+        "overall": {
+          "value": 0.2,
+          "n": 5,
+          "measured": true,
+          "reason": ""
+        },
+        "must_have": {
+          "value": 0.3333333333333333,
+          "n": 3,
+          "measured": true,
+          "reason": ""
+        },
+        "unmatched_findings": 1
+      }
+    },
+    {
+      "case_id": "ds-02-mle-production",
+      "guidance_intended": "static",
+      "guidance_used": "static",
+      "run_id": "014a6318-35c1-4a21-828f-42aa30870e60",
+      "version_id": "ed83234d-6f2d-4ff7-8056-1ac5da5740e5",
+      "status": "succeeded",
+      "failure_reason": null,
+      "attempts": 1,
+      "cost": 0.215102,
+      "input_tokens": 22449,
+      "output_tokens": 10247,
+      "review_confidences": [
+        46,
+        76
+      ],
+      "guidelines": 12,
+      "items": 19,
+      "grounding": {
+        "traceable": {
+          "value": 1.0,
+          "n": 19,
+          "measured": true,
+          "reason": ""
+        },
+        "ungrounded_caught": 1,
+        "overstated_flagged": 3,
+        "persisted_ungrounded": 0,
+        "proposals": 1
+      },
+      "coverage": {
+        "overall": {
+          "value": 0.2,
+          "n": 5,
+          "measured": true,
+          "reason": ""
+        },
+        "must_have": {
+          "value": 0.3333333333333333,
+          "n": 3,
+          "measured": true,
+          "reason": ""
+        },
+        "unmatched_findings": 0
+      }
+    },
+    {
+      "case_id": "ds-03-analytics-lead",
+      "guidance_intended": "static",
+      "guidance_used": "static",
+      "run_id": "cde1d9d5-e4d6-48fb-898c-0c31caa9c5d8",
+      "version_id": "c7f2a402-feca-412e-95a0-6fd248a9c362",
+      "status": "succeeded",
+      "failure_reason": null,
+      "attempts": 1,
+      "cost": 0.22071,
+      "input_tokens": 22287,
+      "output_tokens": 10704,
+      "review_confidences": [
+        62,
+        78
+      ],
+      "guidelines": 12,
+      "items": 19,
+      "grounding": {
+        "traceable": {
+          "value": 1.0,
+          "n": 19,
+          "measured": true,
+          "reason": ""
+        },
+        "ungrounded_caught": 0,
+        "overstated_flagged": 3,
+        "persisted_ungrounded": 0,
+        "proposals": 1
+      },
+      "coverage": {
+        "overall": {
+          "value": 0.0,
+          "n": 5,
+          "measured": true,
+          "reason": ""
+        },
+        "must_have": {
+          "value": 0.0,
+          "n": 3,
+          "measured": true,
+          "reason": ""
+        },
+        "unmatched_findings": 0
+      }
+    },
+    {
+      "case_id": "fi-01-analyst-fpna",
+      "guidance_intended": "static",
+      "guidance_used": "static",
+      "run_id": "824fabfa-2923-45e7-9cc7-30977701c798",
+      "version_id": "5e776369-0098-412e-b8f9-adf705a2aae0",
+      "status": "succeeded",
+      "failure_reason": null,
+      "attempts": 1,
+      "cost": 0.160723,
+      "input_tokens": 19029,
+      "output_tokens": 7861,
+      "review_confidences": [
+        58,
+        90
+      ],
+      "guidelines": 12,
+      "items": 13,
+      "grounding": {
+        "traceable": {
+          "value": 1.0,
+          "n": 13,
+          "measured": true,
+          "reason": ""
+        },
+        "ungrounded_caught": 1,
+        "overstated_flagged": 1,
+        "persisted_ungrounded": 0,
+        "proposals": 1
+      },
+      "coverage": {
+        "overall": {
+          "value": 1.0,
+          "n": 5,
+          "measured": true,
+          "reason": ""
+        },
+        "must_have": {
+          "value": 1.0,
+          "n": 3,
+          "measured": true,
+          "reason": ""
+        },
+        "unmatched_findings": 0
+      }
+    },
+    {
+      "case_id": "fi-02-audit-senior",
+      "guidance_intended": "static",
+      "guidance_used": "static",
+      "run_id": "d5499713-9050-44eb-a8c1-be4d4276cb02",
+      "version_id": "e9f0e4e4-9ede-44d3-824c-70484158c137",
+      "status": "succeeded",
+      "failure_reason": null,
+      "attempts": 0,
+      "cost": 0.134082,
+      "input_tokens": 11646,
+      "output_tokens": 7803,
+      "review_confidences": [
+        74
+      ],
+      "guidelines": 12,
+      "items": 13,
+      "grounding": {
+        "traceable": {
+          "value": 1.0,
+          "n": 13,
+          "measured": true,
+          "reason": ""
+        },
+        "ungrounded_caught": 0,
+        "overstated_flagged": 2,
+        "persisted_ungrounded": 0,
+        "proposals": 2
+      },
+      "coverage": {
+        "overall": {
+          "value": 0.0,
+          "n": 5,
+          "measured": true,
+          "reason": ""
+        },
+        "must_have": {
+          "value": 0.0,
+          "n": 3,
+          "measured": true,
+          "reason": ""
+        },
+        "unmatched_findings": 0
+      }
+    },
+    {
+      "case_id": "fi-03-treasury-analyst",
+      "guidance_intended": "static",
+      "guidance_used": "static",
+      "run_id": "f5a3ed2e-fe43-4f0f-8e55-fcd17678f38f",
+      "version_id": "fa364462-1853-491c-aaa2-f9158f2214dd",
+      "status": "succeeded",
+      "failure_reason": null,
+      "attempts": 1,
+      "cost": 0.204222,
+      "input_tokens": 19552,
+      "output_tokens": 10093,
+      "review_confidences": [
+        68,
+        72
+      ],
+      "guidelines": 12,
+      "items": 13,
+      "grounding": {
+        "traceable": {
+          "value": 1.0,
+          "n": 13,
+          "measured": true,
+          "reason": ""
+        },
+        "ungrounded_caught": 0,
+        "overstated_flagged": 2,
+        "persisted_ungrounded": 0,
+        "proposals": 2
+      },
+      "coverage": {
+        "overall": {
+          "value": 0.0,
+          "n": 5,
+          "measured": true,
+          "reason": ""
+        },
+        "must_have": {
+          "value": 0.0,
+          "n": 3,
+          "measured": true,
+          "reason": ""
+        },
+        "unmatched_findings": 0
+      }
+    }
+  ],
+  "judged": [
+    {
+      "case_id": "ds-02-mle-production",
+      "version_id": "98a0380e-71e0-4fdf-a302-c77ac9a507c1",
+      "rubric_version": "v1",
+      "overall": 2,
+      "dimensions": {
+        "relevance": 2,
+        "coverage": 2,
+        "specificity": 4,
+        "plausibility": 4,
+        "presentation": 3
+      },
+      "justifications": {
+        "relevance": "Prominent content is demand forecasting, pricing bandits, feature stores and no-show risk \u2014 nothing addresses the posting's core of \"a trained artefact to a versioned endpoint with a rollback\", and only the summary phrase \"models that ship to production\" gestures at the job.",
+        "coverage": "Kubernetes, Triton/TorchServe/KServe or equivalent serving infrastructure, evaluation harnesses, and the \"you write tests, you review code\" software practice requirement are each entirely absent, while PyTorch appears only as a skill-list token with no bullet showing graph-level debugging.",
+        "specificity": "Bullets carry real scale and outcome \u2014 \"replenishment for 1,900 stores, reducing stockouts by 23 percent year over year\" and \"eleven clinics\" \u2014 though the feature-store and de-identification bullets assert adoption and lawfulness without numbers.",
+        "plausibility": "The nine-year summary matches the 2016\u2013present dates and Staff title, and the only claim a reader might probe is sole attribution of a 23 percent stockout reduction to one model.",
+        "presentation": "Readable but uneven: section headers read as raw field names (\"EXPERIENCE BULLET\", \"SKILL\"), the current role shows \"(01/2020)\" with no end marker unlike the prior role's range, and education duplicates the field (\"M.Sc. in Statistics \u00b7 Statistics\")."
+      },
+      "strongest": "Quantified, concrete achievement bullets with real scale (1,900 stores, 23 percent stockout reduction, eleven clinics) that show outcomes rather than duties.",
+      "weakest": "The three most explicitly essential engineering requirements \u2014 model serving infrastructure, Kubernetes, and demonstrated software engineering practice (tests, code review) \u2014 appear nowhere, and PyTorch is claimed only as an unsupported skill-list entry.",
+      "cost": 0.04852000000000001
+    },
+    {
+      "case_id": "ds-03-analytics-lead",
+      "version_id": "b2d8927b-e789-470b-862a-1c695e3bb55a",
+      "rubric_version": "v1",
+      "overall": 2,
+      "dimensions": {
+        "relevance": 2,
+        "coverage": 2,
+        "specificity": 4,
+        "plausibility": 4,
+        "presentation": 3
+      },
+      "justifications": {
+        "relevance": "The summary leads with \"turning operational data into deployed models\" and PyTorch/bandit work, while the posting explicitly wants a reporting-layer owner where \"a model nobody can explain is a model we cannot use\" \u2014 only the board-presentation bullet bears on what is asked.",
+        "coverage": "The essential \"experience leading a small analytics team\" is nowhere in the document (the closest, \"Wrote the feature store the analytics team uses,\" describes a user relationship, not leadership), and SQL and dbt appear only as bare skill-list entries with no bullet showing either in use against anything like a 400-table warehouse.",
+        "specificity": "Bullets give scale and result \u2014 \"1,900 stores, reducing stockouts by 23 percent year over year\" and \"no-show risk across eleven clinics\" \u2014 though \"the documentation that got it adopted outside my team\" asserts an outcome without any measure.",
+        "plausibility": "Nine years in the summary reconciles with the 09/2016 start and the 2014\u20132016 M.Sc., and the claims sit proportionately at Staff level; only \"Owned and ran the pricing experiment programme\" invites a probe on how much was owned versus contributed.",
+        "presentation": "It is readable, but the machine-like headings \"EXPERIENCE BULLET\" and \"SKILL\", the open-ended \"(01/2020)\" with no end date or \"Present\", and the duplicated education fields (\"M.Sc. in Statistics \u00b7 Statistics\") make it uneven to scan."
+      },
+      "strongest": "Quantified, outcome-bearing achievement bullets \u2014 1,900 stores, 23 percent stockout reduction, eleven clinics \u2014 that show scale and result rather than duties.",
+      "weakest": "The posting's first stated requirement, leading a small analytics team, is not addressed at all, and the two technical essentials (advanced SQL, dbt) appear only as skill-list words with no supporting bullet.",
+      "cost": 0.048215
+    },
+    {
+      "case_id": "fi-01-analyst-fpna",
+      "version_id": "ffa8993a-c6a7-4f88-86f9-6ccd4ee41f86",
+      "rubric_version": "v1",
+      "overall": 4,
+      "dimensions": {
+        "relevance": 4,
+        "coverage": 4,
+        "specificity": 3,
+        "plausibility": 5,
+        "presentation": 3
+      },
+      "justifications": {
+        "relevance": "The bullets map directly onto the posting's core tasks \u2014 \"Prepare the monthly management pack for four business units, covering variance analysis against budget\" mirrors the four-plant management pack and variance work \u2014 though \"Support the annual audit by preparing reconciliations and answering sampling requests\" points at the technical-accounting direction the posting explicitly says it is not hiring for.",
+        "coverage": "All five stated requirements are touched (two years' experience, an Excel model rebuild, a Business Administration/Finance degree, professional-working English), but month-end close \u2014 named as an essential \u2014 appears only in the summary line and is never evidenced by any experience bullet.",
+        "specificity": "The cash-flow model bullet is genuinely concrete (rebuilt after the prior model \"silently double-counted intercompany transfers\"), but the other two current-role bullets are present-tense duty statements with no scale, outcome or timeframe attached.",
+        "plausibility": "Dates line up cleanly \u2014 degree to 2023, internship 06/2022\u201308/2023, analyst role from 09/2023 giving the claimed \"two years out of university\" \u2014 and no claim exceeds what a junior analyst preparing a management pack would plausibly own.",
+        "presentation": "It is short and scannable, but the section labels are malformed (\"EXPERIENCE BULLET\", singular \"SKILL\" and \"LANGUAGE\") and the current role shows \"(09/2023)\" with no end date or \"Present\", unlike the internship's full range."
+      },
+      "strongest": "The cash-flow forecast rebuild bullet is exactly the auditable-model story the posting says it will ask about, and it shows judgement (catching a silent double-count) rather than just tool familiarity.",
+      "weakest": "Month-end close is asserted in the summary but never evidenced in any bullet, and SAP is listed as a skill with nothing behind it \u2014 a reader would want to know what the candidate actually did at close before believing the summary line.",
+      "cost": 0.051315
+    },
+    {
+      "case_id": "fi-02-audit-senior",
+      "version_id": "4e06023d-36cf-4b7d-b182-68a5f809ccab",
+      "rubric_version": "v1",
+      "overall": 2,
+      "dimensions": {
+        "relevance": 2,
+        "coverage": 1,
+        "specificity": 4,
+        "plausibility": 5,
+        "presentation": 3
+      },
+      "justifications": {
+        "relevance": "The only bullet touching audit is \"Support the annual audit by preparing reconciliations and answering sampling requests\" \u2014 from the client side, not practice \u2014 while the summary, management pack and cash-flow model bullets speak to an industry FP&A role, not an Audit Senior post.",
+        "coverage": "Not one essential is met: no ACA/ACCA or any qualification is listed, there is no external audit experience at a practice firm, no team leadership or review of others' work, no IFRS mention, and no statement about travel to client sites.",
+        "specificity": "Bullets are concrete and quantified where it matters \u2014 \"monthly management pack for four business units\", \"reconciled supplier statements across two ledgers during a systems migration\", and the rebuilt forecast model that fixed silent intercompany double-counting.",
+        "plausibility": "Everything is proportionate to a 2023 graduate two years out: intern then analyst, dates line up with the 2019\u20132023 degree, and no bullet claims scope beyond supporting an audit rather than running one.",
+        "presentation": "Readable and consistent, but the odd singular section headings (\"EXPERIENCE BULLET\", \"SKILL\", \"LANGUAGE\") and the open-ended \"(09/2023)\" date with no end marker make it uneven to scan."
+      },
+      "strongest": "The bullets show specific, verifiable-sounding work \u2014 rebuilding a cash-flow model that had been silently double-counting intercompany transfers is a real, concrete achievement rather than a responsibility statement.",
+      "weakest": "The posting states plainly that part-qualified candidates cannot be considered, yet the r\u00e9sum\u00e9 lists no ACA/ACCA progress at all and no practice-firm audit experience; audit exposure is limited to answering an external auditor's sampling requests, which does not meet the three-year external audit or fieldwork-leadership essentials.",
+      "cost": 0.0349
+    },
+    {
+      "case_id": "fi-03-treasury-analyst",
+      "version_id": "4329ec34-0a78-48a4-8291-ef0db272d4ba",
+      "rubric_version": "v1",
+      "overall": 3,
+      "dimensions": {
+        "relevance": 3,
+        "coverage": 3,
+        "specificity": 3,
+        "plausibility": 5,
+        "presentation": 3
+      },
+      "justifications": {
+        "relevance": "The Excel cash-flow forecast rebuild bullet speaks directly to the posting, but the summary leads with \"management reporting and month-end close\", and the audit-support and SAP items would suit any general finance role.",
+        "coverage": "Two years in corporate finance, cash flow forecasting and strong Excel are evidenced, but FX exposure and hedging instruments \u2014 which the posting treats as essential (\"you need to know what a forward is\") \u2014 are not mentioned anywhere, and neither Kyriba nor any TMS appears.",
+        "specificity": "The forecast bullet is genuinely concrete (\"after the previous one silently double-counted intercompany transfers\"), but \"Prepare the monthly management pack\" and \"Support the annual audit\" are duty descriptions with no scale or outcome attached.",
+        "plausibility": "Claims are modest and internally consistent: the 09/2023 analyst start supports the \"two years\" summary, the internship dates do not overlap it, and nothing asserts scope beyond a junior analyst's reach.",
+        "presentation": "Content is scannable but the headings are irregular and machine-like (\"EXPERIENCE BULLET\", \"SKILL\", \"LANGUAGE\"), and the current role carries only a start date with no end marker or \"Present\"."
+      },
+      "strongest": "The cash-flow forecast rebuild bullet is specific, diagnostic and lands squarely on the posting's forecasting requirement, showing judgement rather than just tool use.",
+      "weakest": "FX exposure and hedging instruments \u2014 a stated essential and roughly half the role's described scope \u2014 go entirely unaddressed, as does any treasury management system; even a line on currency exposure in a multi-ledger environment would have helped.",
+      "cost": 0.057595
+    },
+    {
+      "case_id": "rn-01-icu-senior",
+      "version_id": "bbe7f914-e6ee-4a7d-8beb-d4cc02bdab5f",
+      "rubric_version": "v1",
+      "overall": 3,
+      "dimensions": {
+        "relevance": 4,
+        "coverage": 3,
+        "specificity": 4,
+        "plausibility": 3,
+        "presentation": 3
+      },
+      "justifications": {
+        "relevance": "The summary leads with \"seven years in adult intensive care, including two as a shift coordinator\" and \"Preceptor for new graduates since 2022\", mirroring the posting's ask for a critical-care nurse ready to coordinate shifts and mentor, though items like \"Infection control\" and the twenty-eight-bed post-surgical caseload are generic to any nursing post.",
+        "coverage": "Critical care duration, precepting (eleven completed) and night working are all evidenced, but haemodynamic monitoring \u2014 named as essential \u2014 appears nowhere, and ventilator management appears only as a skill label with no bullet showing it in practice, while registration status (\"no restrictions\") and willingness for weekends are never stated.",
+        "specificity": "Numbers carry most claims \u2014 \"eleven completed to date\", \"twelve-bed intensive care unit\", \"training for forty staff\" \u2014 though \"Sit on the hospital's sepsis pathway review group\" is membership rather than achievement.",
+        "plausibility": "The summary's \"seven years in adult intensive care\" sits awkwardly against the dates, since the only ICU post begins 04/2019 and the preceding 2016\u20132019 role is described as a post-surgical ward at a community care provider.",
+        "presentation": "Readable and scannable, but the headings are odd and inconsistent (\"EXPERIENCE BULLET\", singular \"SKILL\" and \"CERTIFICATION\") and the current role shows only \"(04/2019)\" with no end date or \"Present\"."
+      },
+      "strongest": "Precepting is proven rather than asserted \u2014 \"Precept newly qualified nurses through their first six months, with eleven completed to date\" \u2014 directly answering an essential requirement with scale.",
+      "weakest": "The posting demands ventilator management and haemodynamic monitoring \"evidenced in practice\"; ventilators appear only in the skills list and haemodynamic monitoring not at all, so the core clinical requirement is unsupported \u2014 and the \"seven years in adult intensive care\" claim would need checking against an ICU post that starts in 04/2019.",
+      "cost": 0.06097
+    },
+    {
+      "case_id": "rn-02-community",
+      "version_id": "cc2074b7-cc19-445e-a5d2-c458ed51c56d",
+      "rubric_version": "v1",
+      "overall": 2,
+      "dimensions": {
+        "relevance": 2,
+        "coverage": 2,
+        "specificity": 4,
+        "plausibility": 2,
+        "presentation": 3
+      },
+      "justifications": {
+        "relevance": "The prominent claims \u2014 \"Coordinated a twelve-bed intensive care unit across night shifts\", ED triage, ACLS certification and preceptorship of eleven new graduates \u2014 are hospital acute-care credentials, and nothing in the document speaks to community visiting, district caseloads or the posting's emphasis on autonomous work in patients' homes.",
+        "coverage": "Of the six essentials, only \"at least two years of post-registration experience\" is clearly evidenced (seven years since 2016); wound care, long-term condition management, lone-working competence and the full driving licence with car access are entirely absent, and registration is only implied by the phrase \"Registered nurse\" with no statement that it is current and unrestricted.",
+        "specificity": "Most bullets give scale and outcome \u2014 \"twelve-bed intensive care unit\", \"eleven completed to date\", \"twenty-eight bed ward\", and a falls-risk checklist \"the ward still uses at every handover\" \u2014 though \"Managed a caseload of post-surgical patients\" is a responsibility with no result attached.",
+        "plausibility": "The summary claims \"seven years in adult intensive care\" but the experience section shows ICU only from 04/2019 with the 2016\u20132019 post being a post-surgical ward, so the headline overstates the ICU tenure by roughly three years against the r\u00e9sum\u00e9's own dates.",
+        "presentation": "Readable but uneven: headings are odd and singular (\"EXPERIENCE BULLET\", \"SKILL\", \"CERTIFICATION\"), the current role shows \"(04/2019)\" with no end date or \"present\", and tense shifts mid-role from \"Coordinated\" to \"Precept\"."
+      },
+      "strongest": "Bullets carry real numbers and a durable outcome \u2014 twelve-bed unit, eleven completed preceptees, and a falls-risk checklist still in use at every handover.",
+      "weakest": "Four of six essentials \u2014 wound care, long-term condition management, lone working, and driving licence with car access \u2014 go unmentioned, and the summary's \"seven years in adult intensive care\" contradicts the r\u00e9sum\u00e9's own dates showing ICU work only from 04/2019.",
+      "cost": 0.056265
+    }
+  ],
+  "refusals": [
+    {
+      "case_id": "rn-03-theatre-scrub",
+      "reason": "unjudged: ExtractionFailedError: The model's response did not match the expected structure."
+    }
+  ],
+  "corpus": "18/79/unknown",
+  "fingerprint": {
+    "benchmark_set": "v1",
+    "metric_version": "1.0.0",
+    "finalisation_rules_version": "v1-severity",
+    "guideline_source": "retrieval",
+    "corpus_identity": "18/79/unknown",
+    "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+    "pricing_basis": "litellm",
+    "model_config": {
+      "tailor_plan": "anthropic/claude-sonnet-5",
+      "tailor_draft": "anthropic/claude-sonnet-5",
+      "tailor_review": "anthropic/claude-opus-5"
+    }
+  },
+  "denominator_sample": {
+    "n": 25,
+    "revised": 9,
+    "min_usd": 0.104822,
+    "max_usd": 0.547891
+  },
+  "calls": [
+    {
+      "task": "tailor_plan",
+      "model": "claude-sonnet-5",
+      "input_tokens": 5735,
+      "output_tokens": 1898,
+      "cost": 0.030449999999999998,
+      "cumulative": 0.92045
+    },
+    {
+      "task": "tailor_draft",
+      "model": "claude-sonnet-5",
+      "input_tokens": 6451,
+      "output_tokens": 6102,
+      "cost": 0.073922,
+      "cumulative": 0.994372
+    },
+    {
+      "task": "tailor_review",
+      "model": "claude-opus-5",
+      "input_tokens": 4349,
+      "output_tokens": 1315,
+      "cost": 0.05462,
+      "cumulative": 1.048992
+    },
+    {
+      "task": "eval_judge",
+      "model": "claude-opus-5",
+      "input_tokens": 3534,
+      "output_tokens": 1234,
+      "cost": 0.04852000000000001,
+      "cumulative": 1.097512
+    },
+    {
+      "task": "tailor_plan",
+      "model": "claude-sonnet-5",
+      "input_tokens": 5685,
+      "output_tokens": 2897,
+      "cost": 0.04034,
+      "cumulative": 1.137852
+    },
+    {
+      "task": "tailor_draft",
+      "model": "claude-sonnet-5",
+      "input_tokens": 6248,
+      "output_tokens": 7621,
+      "cost": 0.08870600000000001,
+      "cumulative": 1.226558
+    },
+    {
+      "task": "tailor_review",
+      "model": "claude-opus-5",
+      "input_tokens": 4448,
+      "output_tokens": 1269,
+      "cost": 0.053965000000000006,
+      "cumulative": 1.280523
+    },
+    {
+      "task": "eval_judge",
+      "model": "claude-opus-5",
+      "input_tokens": 3588,
+      "output_tokens": 1211,
+      "cost": 0.048215,
+      "cumulative": 1.328738
+    },
+    {
+      "task": "tailor_plan",
+      "model": "claude-sonnet-5",
+      "input_tokens": 5289,
+      "output_tokens": 894,
+      "cost": 0.019518,
+      "cumulative": 1.3482560000000001
+    },
+    {
+      "task": "tailor_draft",
+      "model": "claude-sonnet-5",
+      "input_tokens": 5772,
+      "output_tokens": 4543,
+      "cost": 0.056974000000000004,
+      "cumulative": 1.40523
+    },
+    {
+      "task": "tailor_review",
+      "model": "claude-opus-5",
+      "input_tokens": 3671,
+      "output_tokens": 399,
+      "cost": 0.02833,
+      "cumulative": 1.43356
+    },
+    {
+      "task": "eval_judge",
+      "model": "claude-opus-5",
+      "input_tokens": 3398,
+      "output_tokens": 1373,
+      "cost": 0.051315,
+      "cumulative": 1.484875
+    },
+    {
+      "task": "tailor_plan",
+      "model": "claude-sonnet-5",
+      "input_tokens": 5348,
+      "output_tokens": 1241,
+      "cost": 0.023106,
+      "cumulative": 1.507981
+    },
+    {
+      "task": "tailor_draft",
+      "model": "claude-sonnet-5",
+      "input_tokens": 6053,
+      "output_tokens": 3965,
+      "cost": 0.051756,
+      "cumulative": 1.559737
+    },
+    {
+      "task": "tailor_review",
+      "model": "claude-opus-5",
+      "input_tokens": 3661,
+      "output_tokens": 898,
+      "cost": 0.040755,
+      "cumulative": 1.600492
+    },
+    {
+      "task": "eval_judge",
+      "model": "claude-opus-5",
+      "input_tokens": 3405,
+      "output_tokens": 715,
+      "cost": 0.0349,
+      "cumulative": 1.635392
+    },
+    {
+      "task": "tailor_plan",
+      "model": "claude-sonnet-5",
+      "input_tokens": 5314,
+      "output_tokens": 1304,
+      "cost": 0.023668,
+      "cumulative": 1.65906
+    },
+    {
+      "task": "tailor_draft",
+      "model": "claude-sonnet-5",
+      "input_tokens": 6254,
+      "output_tokens": 4701,
+      "cost": 0.059518,
+      "cumulative": 1.718578
+    },
+    {
+      "task": "tailor_review",
+      "model": "claude-opus-5",
+      "input_tokens": 3678,
+      "output_tokens": 1378,
+      "cost": 0.05284,
+      "cumulative": 1.771418
+    },
+    {
+      "task": "eval_judge",
+      "model": "claude-opus-5",
+      "input_tokens": 3404,
+      "output_tokens": 1623,
+      "cost": 0.057595,
+      "cumulative": 1.829013
+    },
+    {
+      "task": "tailor_plan",
+      "model": "claude-sonnet-5",
+      "input_tokens": 5670,
+      "output_tokens": 1933,
+      "cost": 0.03067,
+      "cumulative": 1.859683
+    },
+    {
+      "task": "tailor_draft",
+      "model": "claude-sonnet-5",
+      "input_tokens": 6223,
+      "output_tokens": 4919,
+      "cost": 0.061636,
+      "cumulative": 1.921319
+    },
+    {
+      "task": "tailor_review",
+      "model": "claude-opus-5",
+      "input_tokens": 4140,
+      "output_tokens": 951,
+      "cost": 0.044475,
+      "cumulative": 1.965794
+    },
+    {
+      "task": "eval_judge",
+      "model": "claude-opus-5",
+      "input_tokens": 3514,
+      "output_tokens": 1736,
+      "cost": 0.06097,
+      "cumulative": 2.026764
+    },
+    {
+      "task": "tailor_plan",
+      "model": "claude-sonnet-5",
+      "input_tokens": 5566,
+      "output_tokens": 2890,
+      "cost": 0.040032,
+      "cumulative": 2.066796
+    },
+    {
+      "task": "tailor_draft",
+      "model": "claude-sonnet-5",
+      "input_tokens": 6372,
+      "output_tokens": 7076,
+      "cost": 0.08350400000000001,
+      "cumulative": 2.1503
+    },
+    {
+      "task": "tailor_review",
+      "model": "claude-opus-5",
+      "input_tokens": 3948,
+      "output_tokens": 2194,
+      "cost": 0.07459,
+      "cumulative": 2.2248900000000003
+    },
+    {
+      "task": "tailor_revise",
+      "model": "claude-sonnet-5",
+      "input_tokens": 5200,
+      "output_tokens": 1072,
+      "cost": 0.02112,
+      "cumulative": 2.24601
+    },
+    {
+      "task": "tailor_review",
+      "model": "claude-opus-5",
+      "input_tokens": 3932,
+      "output_tokens": 843,
+      "cost": 0.040735,
+      "cumulative": 2.2867450000000002
+    },
+    {
+      "task": "eval_judge",
+      "model": "claude-opus-5",
+      "input_tokens": 3443,
+      "output_tokens": 1562,
+      "cost": 0.056265,
+      "cumulative": 2.34301
+    },
+    {
+      "task": "tailor_plan",
+      "model": "claude-sonnet-5",
+      "input_tokens": 5541,
+      "output_tokens": 3548,
+      "cost": 0.046562000000000006,
+      "cumulative": 2.3895720000000003
+    },
+    {
+      "task": "tailor_draft",
+      "model": "claude-sonnet-5",
+      "input_tokens": 6442,
+      "output_tokens": 6149,
+      "cost": 0.074374,
+      "cumulative": 2.463946
+    },
+    {
+      "task": "tailor_review",
+      "model": "claude-opus-5",
+      "input_tokens": 3929,
+      "output_tokens": 2006,
+      "cost": 0.069795,
+      "cumulative": 2.533741
+    },
+    {
+      "task": "tailor_revise",
+      "model": "claude-sonnet-5",
+      "input_tokens": 5590,
+      "output_tokens": 1849,
+      "cost": 0.029670000000000002,
+      "cumulative": 2.563411
+    },
+    {
+      "task": "tailor_review",
+      "model": "claude-opus-5",
+      "input_tokens": 3863,
+      "output_tokens": 2025,
+      "cost": 0.06994,
+      "cumulative": 2.633351
+    },
+    {
+      "task": "tailor_revise_escalated",
+      "model": "claude-opus-5",
+      "input_tokens": 6783,
+      "output_tokens": 1536,
+      "cost": 0.072315,
+      "cumulative": 2.705666
+    },
+    {
+      "task": "tailor_review",
+      "model": "claude-opus-5",
+      "input_tokens": 4021,
+      "output_tokens": 854,
+      "cost": 0.041455000000000006,
+      "cumulative": 2.747121
+    },
+    {
+      "task": "eval_judge",
+      "model": "claude-opus-5",
+      "input_tokens": 3479,
+      "output_tokens": 825,
+      "cost": 0.03802,
+      "cumulative": 2.785141,
+      "outcome": "billed, failed validation"
+    },
+    {
+      "task": "tailor_plan",
+      "model": "claude-sonnet-5",
+      "input_tokens": 4015,
+      "output_tokens": 1784,
+      "cost": 0.02587,
+      "cumulative": 2.811011
+    },
+    {
+      "task": "tailor_draft",
+      "model": "claude-sonnet-5",
+      "input_tokens": 4796,
+      "output_tokens": 2925,
+      "cost": 0.038842,
+      "cumulative": 2.849853
+    },
+    {
+      "task": "tailor_review",
+      "model": "claude-opus-5",
+      "input_tokens": 4018,
+      "output_tokens": 1490,
+      "cost": 0.05734,
+      "cumulative": 2.907193
+    },
+    {
+      "task": "tailor_revise",
+      "model": "claude-sonnet-5",
+      "input_tokens": 5520,
+      "output_tokens": 2646,
+      "cost": 0.0375,
+      "cumulative": 2.944693
+    },
+    {
+      "task": "tailor_review",
+      "model": "claude-opus-5",
+      "input_tokens": 4100,
+      "output_tokens": 1402,
+      "cost": 0.05555,
+      "cumulative": 3.000243
+    },
+    {
+      "task": "tailor_plan",
+      "model": "claude-sonnet-5",
+      "input_tokens": 3976,
+      "output_tokens": 2600,
+      "cost": 0.033952,
+      "cumulative": 3.034195
+    },
+    {
+      "task": "tailor_draft",
+      "model": "claude-sonnet-5",
+      "input_tokens": 4876,
+      "output_tokens": 3488,
+      "cost": 0.044632000000000005,
+      "cumulative": 3.078827
+    },
+    {
+      "task": "tailor_review",
+      "model": "claude-opus-5",
+      "input_tokens": 3970,
+      "output_tokens": 1650,
+      "cost": 0.0611,
+      "cumulative": 3.139927
+    },
+    {
+      "task": "tailor_revise",
+      "model": "claude-sonnet-5",
+      "input_tokens": 5488,
+      "output_tokens": 1599,
+      "cost": 0.026966,
+      "cumulative": 3.166893
+    },
+    {
+      "task": "tailor_review",
+      "model": "claude-opus-5",
+      "input_tokens": 3977,
+      "output_tokens": 1367,
+      "cost": 0.054060000000000004,
+      "cumulative": 3.220953
+    },
+    {
+      "task": "tailor_plan",
+      "model": "claude-sonnet-5",
+      "input_tokens": 3616,
+      "output_tokens": 1361,
+      "cost": 0.020842,
+      "cumulative": 3.241795
+    },
+    {
+      "task": "tailor_draft",
+      "model": "claude-sonnet-5",
+      "input_tokens": 4074,
+      "output_tokens": 4391,
+      "cost": 0.05205800000000001,
+      "cumulative": 3.293853
+    },
+    {
+      "task": "tailor_review",
+      "model": "claude-opus-5",
+      "input_tokens": 3647,
+      "output_tokens": 1075,
+      "cost": 0.04511,
+      "cumulative": 3.338963
+    },
+    {
+      "task": "tailor_revise",
+      "model": "claude-sonnet-5",
+      "input_tokens": 4049,
+      "output_tokens": 630,
+      "cost": 0.014398000000000001,
+      "cumulative": 3.353361
+    },
+    {
+      "task": "tailor_review",
+      "model": "claude-opus-5",
+      "input_tokens": 3643,
+      "output_tokens": 404,
+      "cost": 0.028315000000000003,
+      "cumulative": 3.381676
+    },
+    {
+      "task": "tailor_plan",
+      "model": "claude-sonnet-5",
+      "input_tokens": 3663,
+      "output_tokens": 1271,
+      "cost": 0.020036,
+      "cumulative": 3.4017120000000003
+    },
+    {
+      "task": "tailor_draft",
+      "model": "claude-sonnet-5",
+      "input_tokens": 4398,
+      "output_tokens": 5065,
+      "cost": 0.059446000000000006,
+      "cumulative": 3.461158
+    },
+    {
+      "task": "tailor_review",
+      "model": "claude-opus-5",
+      "input_tokens": 3585,
+      "output_tokens": 1467,
+      "cost": 0.054599999999999996,
+      "cumulative": 3.515758
+    },
+    {
+      "task": "tailor_plan",
+      "model": "claude-sonnet-5",
+      "input_tokens": 3627,
+      "output_tokens": 1114,
+      "cost": 0.018394,
+      "cumulative": 3.534152
+    },
+    {
+      "task": "tailor_draft",
+      "model": "claude-sonnet-5",
+      "input_tokens": 4225,
+      "output_tokens": 2552,
+      "cost": 0.03397,
+      "cumulative": 3.5681220000000002
+    },
+    {
+      "task": "tailor_review",
+      "model": "claude-opus-5",
+      "input_tokens": 3547,
+      "output_tokens": 1475,
+      "cost": 0.054610000000000006,
+      "cumulative": 3.622732
+    },
+    {
+      "task": "tailor_revise",
+      "model": "claude-sonnet-5",
+      "input_tokens": 4529,
+      "output_tokens": 3582,
+      "cost": 0.044878,
+      "cumulative": 3.6676100000000003
+    },
+    {
+      "task": "tailor_review",
+      "model": "claude-opus-5",
+      "input_tokens": 3624,
+      "output_tokens": 1370,
+      "cost": 0.05237,
+      "cumulative": 3.71998
+    }
+  ],
+  "model_calls": 61,
+  "actual_spend_usd": 3.71998,
+  "remaining_under_ceiling_usd": 6.2800199999999995,
+  "stopped_early": null
+}
