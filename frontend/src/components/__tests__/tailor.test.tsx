@@ -747,3 +747,142 @@ describe("submitting an exported version", () => {
     expect(container.textContent ?? "").not.toContain("exports/");
   });
 });
+
+// -- T054: a locked version must not offer controls that are guaranteed 409s --
+
+describe("a version whose content is locked", () => {
+  /**
+   * `application/immutability.py` freezes content at `exported` and `submitted`
+   * and nowhere else. Every `Accept`, `Reject` and `Edit` on such a version is
+   * a guaranteed 409, and a button whose only outcome is a refusal is the
+   * import reviewer's old `Keep` button by another name.
+   *
+   * **`ready` is deliberately not in this set.** FR-029 requires an approved
+   * version to stay editable, and gating on `approved` — the flag the export
+   * controls use — is the plausible over-fix that would pass a test written
+   * only against `submitted`. The third case below is what catches it.
+   */
+  const controls = () =>
+    within(screen.getByTestId("diff-item")).queryAllByRole("button", {
+      name: /^(Accept|Accepted|Reject|Rejected|Edit)$/,
+    });
+
+  it("offers no decision controls on an exported version", async () => {
+    await renderTab(version({ status: "exported" }));
+
+    expect(controls()).toHaveLength(0);
+    // The diff itself stays. Hiding what the document says would be a
+    // different claim from "this can no longer be changed".
+    expect(screen.getByTestId("proposed-text")).toBeTruthy();
+  });
+
+  it("offers no decision controls on a submitted version", async () => {
+    await renderTab(version({ status: "submitted" }));
+
+    expect(controls()).toHaveLength(0);
+    expect(screen.getByTestId("proposed-text")).toBeTruthy();
+  });
+
+  it("keeps them on an approved version, which FR-029 requires", async () => {
+    await renderTab(version({ status: "ready" }));
+
+    expect(controls()).toHaveLength(3);
+  });
+
+  /**
+   * The defect T037 fixed for the export path, on the one path that never got
+   * it: `decide()` had no `catch`, so a refused decision set no state, rendered
+   * nothing, and left the row exactly as it was. Silence after a click reads as
+   * success.
+   *
+   * Rendered against a `ready` version on purpose — after the gating above, a
+   * locked version offers no button to click, and the refusal that remains
+   * reachable is the one that arrives when the version was locked somewhere
+   * else while this screen was open.
+   */
+  it("shows a refused decision instead of leaving the screen still", async () => {
+    mocked.decideItem.mockRejectedValue(
+      new ApiError(409, "This version has been submitted and can no longer be changed."),
+    );
+    await renderTab(version({ status: "ready" }));
+
+    await userEvent.click(screen.getByRole("button", { name: "Reject" }));
+
+    await waitFor(() => expect(screen.getByTestId("tailor-error")).toBeTruthy());
+    expect(screen.getByText(/can no longer be changed/)).toBeTruthy();
+    expect(screen.queryByTestId("decision-label")).toBeNull();
+  });
+});
+
+// -- T054.3: FR-025 works and was unreachable through the interface ----------
+
+describe("starting a new version from a locked one", () => {
+  /**
+   * FR-025 — a revision after submission is a **new** version — is implemented
+   * and tested on the backend (`create_pending_version` reuses only a `draft`),
+   * and through the UI there was no way to ask for it. The submitted view said
+   * *"tailor this job again"* and offered `Download PDF` and three controls
+   * that could only 409.
+   *
+   * Offered on both locked states, because an `exported` version's content is
+   * frozen too: its owner has the same dead end, and `immutability.py` answers
+   * both with the same sentence.
+   *
+   * **Not offered on `ready`.** That version is still editable, so the action
+   * it wants is Edit, not a second paid run.
+   */
+  const retailor = () => screen.queryByTestId("retailor");
+
+  it("offers it on a submitted version", async () => {
+    await renderTab(version({ status: "submitted" }));
+    expect(retailor()).toBeTruthy();
+  });
+
+  it("offers it on an exported version", async () => {
+    await renderTab(version({ status: "exported" }));
+    expect(retailor()).toBeTruthy();
+  });
+
+  it("does not offer it while the version is still editable", async () => {
+    await renderTab(version({ status: "ready" }));
+    expect(retailor()).toBeNull();
+  });
+
+  it("starts a run and moves the screen to the new version", async () => {
+    mocked.startTailoring.mockResolvedValue({
+      version_id: "version-2",
+      status: "tailoring",
+      run_id: "run-2",
+    });
+    await renderTab(version({ status: "submitted" }));
+
+    mocked.getVersion.mockResolvedValue(version({ id: "version-2", status: "tailoring" }));
+    await userEvent.click(screen.getByTestId("retailor"));
+
+    expect(mocked.startTailoring).toHaveBeenCalledWith("app-1");
+    // The new version is a different row; the submitted one was not mutated.
+    await waitFor(() => expect(screen.getByTestId("working-step")).toBeTruthy());
+  });
+
+  /**
+   * The same defect as the silent decision, one action along. `tailor()` sets
+   * `refusal` rather than `error`, and until now only the start view rendered
+   * it — so a re-tailor refused because the profile moved since the match would
+   * have set state nobody displayed and left the screen exactly as it was.
+   * A stale analysis is the *likely* case here, not an edge one: this version
+   * was written against a match that is by now several actions old.
+   */
+  it("says why a refused run was refused, rather than nothing", async () => {
+    mocked.startTailoring.mockRejectedValue(
+      new ApiError(422, "Re-score this job first.", { reason: "stale_analysis" }),
+    );
+    await renderTab(version({ status: "submitted" }));
+
+    await userEvent.click(screen.getByTestId("retailor"));
+
+    await waitFor(() => expect(screen.getByTestId("refusal")).toBeTruthy());
+    expect(screen.getByTestId("refusal").getAttribute("data-reason")).toBe("stale_analysis");
+    // Still the sent version. A refused run changes nothing about it.
+    expect(screen.getByTestId("tailor-diff").getAttribute("data-status")).toBe("submitted");
+  });
+});

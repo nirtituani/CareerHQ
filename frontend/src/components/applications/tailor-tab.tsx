@@ -284,14 +284,25 @@ export function TailorTab({ applicationId }: { applicationId: string }) {
     text?: string,
   ) {
     if (!version) return;
-    const updated = await decideItem(version.id, itemId, decision, text);
-    // Replace the one item rather than refetching the version: a refetch here
-    // would discard any edit in progress on a neighbouring row.
-    if (live.current) {
-      setVersion({
-        ...version,
-        items: version.items.map((item) => (item.id === updated.id ? updated : item)),
-      });
+    setError(null);
+    try {
+      const updated = await decideItem(version.id, itemId, decision, text);
+      // Replace the one item rather than refetching the version: a refetch here
+      // would discard any edit in progress on a neighbouring row.
+      if (live.current) {
+        setVersion({
+          ...version,
+          items: version.items.map((item) => (item.id === updated.id ? updated : item)),
+        });
+      }
+    } catch (cause: unknown) {
+      // **The T037 fix, on the one path that never got it.** Without this the
+      // rejected promise went nowhere: the row did not move, no error rendered,
+      // and silence after a click reads as success. The controls are now hidden
+      // on a locked version, so what still arrives here is the refusal for a
+      // version locked somewhere else while this screen was open — which is
+      // exactly the case a person cannot otherwise tell from a successful one.
+      if (live.current) setError(cause instanceof Error ? cause.message : String(cause));
     }
   }
 
@@ -411,6 +422,9 @@ export function TailorTab({ applicationId }: { applicationId: string }) {
   // longer has is a way forward. Export is refused for it by `ensure_exportable` — the
   // state is terminal — so offering the button would be offering a 409.
   const approved = version.status === "ready" || exported || submitted;
+  // Content frozen — `LOCKED_STATUSES` in `application/immutability.py`, which
+  // is these two and not `ready`.
+  const locked = exported || submitted;
   const proposals = version.items.filter(
     (item) => item.proposed_text !== null || item.findings.length > 0,
   );
@@ -479,6 +493,26 @@ export function TailorTab({ applicationId }: { applicationId: string }) {
                 {busy ? "Exporting…" : exported ? "Export again" : "Export as PDF"}
               </Button>
             )}
+            {/* **The action this screen already instructs** (FR-025). A locked
+                version's content cannot change, so tailoring again is the only
+                way forward — it produces a new version and leaves this one as
+                it was sent, which is what `create_pending_version` does by
+                reusing a `draft` and nothing else. It was implemented, tested
+                and unreachable: the submitted view said these words and offered
+                no control that performed them.
+
+                Not offered while the version is still `ready`, where the action
+                a person wants is Edit rather than a second paid run. */}
+            {locked && (
+              <Button
+                data-testid="retailor"
+                variant="outline"
+                disabled={busy}
+                onClick={tailor}
+              >
+                {busy ? "Starting…" : "Tailor this job again"}
+              </Button>
+            )}
             {/* Offered only once a document exists, because a submission is a record
                 *of that document* — there is nothing to freeze before then, and the
                 endpoint refuses it. */}
@@ -515,6 +549,22 @@ export function TailorTab({ applicationId }: { applicationId: string }) {
         </p>
       )}
 
+      {/* A refused *start* sets `refusal`, not `error`, and only the start view
+          used to render it — so re-tailoring from here would have set state
+          nobody displayed. `stale_analysis` is the likely refusal at this point
+          rather than an edge case: this version was written against a match
+          that is by now several actions old. */}
+      {refusal && (
+        <p
+          data-testid="refusal"
+          data-reason={refusal}
+          className="mt-4 max-w-prose border-l-2 pl-3 text-sm"
+          style={{ borderColor: "var(--color-attention)", color: "var(--muted)" }}
+        >
+          {REFUSAL[refusal]}
+        </p>
+      )}
+
       {/* `uncovered` findings concern the draft as a whole — there is no item
           for an unaddressed requirement to attach to, and inventing one would
           demand a reference the Reviewer has no honest basis to give. */}
@@ -526,11 +576,21 @@ export function TailorTab({ applicationId }: { applicationId: string }) {
         </ul>
       )}
 
+      {/* **Locked, not merely approved.** `application/immutability.py` freezes
+          content at `exported` and `submitted` and nowhere else, so every
+          `Accept`, `Reject` and `Edit` on one of those is a guaranteed 409 —
+          the import reviewer's old `Keep` button, which changed nothing, by
+          another name. `ready` is deliberately excluded: FR-029 requires an
+          approved version to stay editable, and reusing `approved` here — the
+          flag the export controls are gated on — is the plausible stricter
+          reading that would take that away. The rows still render in full; what
+          is withdrawn is the offer to change them, not the document. */}
       <ul className="mt-5">
         {proposals.map((item) => (
           <TailorDiffItem
             key={item.id}
             item={item}
+            disabled={locked}
             onDecide={(decision, text) => decide(item.id, decision, text)}
           />
         ))}
