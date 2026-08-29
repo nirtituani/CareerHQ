@@ -2176,9 +2176,9 @@ belongs; T050 is here.*
       **Verified:** `npm test` **181 passed** (was 176; five added), `npm run typecheck` and
       `npm run lint` clean. Four drills, each failing by name and restored.
 
-- [ ] **T055** **CI renders with different system libraries and a different font than production.**
-      *(Appended 2026-08-29 while fixing FR-031. Not started — deliberately out of that fix's
-      scope, which changed no CI or Docker configuration.)*
+- [x] **T055** **CI renders with different system libraries and a different font than production.**
+      *(Appended 2026-08-29 while fixing FR-031. **Done 2026-08-29** — option 1 taken, with the
+      drift risk that option 2 was preferred for closed by a test. See the outcome note.)*
       `.github/workflows/ci.yml` installs **no system packages at all** — its only step is
       `pip install -e ".[dev]"`. WeasyPrint therefore binds whatever Pango, Cairo and
       fontconfig `ubuntu-latest` happens to ship, and resolves whatever fonts happen to be
@@ -2199,6 +2199,40 @@ belongs; T050 is here.*
       one that cannot drift.
       **Not a blocker for FR-031**, which is now satisfied on every runtime — the timestamp
       pin is environment-independent.
+
+      ***Done 2026-08-29 — option 1, and the reason option 2 was not taken.*** CI's backend job
+      now installs the same five render packages the production image declares:
+      `fonts-dejavu-core`, `libpango-1.0-0`, `libpangoft2-1.0-0`, `libharfbuzz0b`, `libcairo2`.
+      `curl` is deliberately excluded — it is the image's healthcheck dependency, not a rendering
+      one, so an unrelated addition to either file does not have to be mirrored in the other.
+
+      ***Option 2 — run the job in the built image — was rejected on evidence, not preference.***
+      The note above called it "the only one that cannot drift", and that is true in principle.
+      **`backend/.dockerignore` excludes `tests/`**, so an in-container `pytest` collects nothing
+      and reports a cheerful pass — CLAUDE.md records that as an established constraint. Taking
+      option 2 therefore means changing what ships in the production image, or building the image
+      in CI and mounting the suite into it, and rewiring the service containers. That is a large
+      change to the deployment artefact to fix a test-environment problem, and it would put test
+      files in the production image or add a second build of it to every push.
+
+      ***Option 1's only weakness is closed by a test rather than by care.*** Two package lists
+      that must stay in step will not, and the drift is silent because both environments keep
+      working. `test_ci_installs_the_same_render_dependencies_as_the_production_image` parses
+      **both** files and fails in **either** direction: dropping a package from CI, or from the
+      Dockerfile. Drilled three ways — removed from CI, removed from the image, and the
+      comment-only trap (named in a comment, absent from the instruction), which the existing
+      T032 test already documents as a real failure this project has shipped.
+
+      ***Verified against the right distribution.*** The image is Debian (`python:3.12-slim`) and
+      the runner is Ubuntu, and package names do not always match across the two. All five
+      resolve on `ubuntu:24.04` — checked with `apt-cache show` and an `apt-get --dry-run` that
+      exits 0 — so this is not a name that works in one place and breaks the build in the other.
+
+      ***What it does and does not claim.*** CI now renders with production's libraries and font,
+      so the six ATS assertions and the byte-determinism assertion run against the document an
+      employer would receive. It is **not** a claim that CI and production produce identical
+      bytes — FR-031 is scoped to one runtime and needs nothing from this. **831 backend tests
+      pass**; the change touches no production code.
 
 - [ ] **T056** **The résumé a person sent stops being reachable once a newer version exists.**
       *(Appended 2026-08-29 at T054, which made the situation reachable rather than creating it.

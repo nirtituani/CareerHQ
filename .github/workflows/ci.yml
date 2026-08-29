@@ -56,6 +56,29 @@ jobs:
           cache: pip
           cache-dependency-path: backend/pyproject.toml
 
+      # **The export tests render real PDFs, so this job needs production's renderer**
+      # (T055). WeasyPrint binds Pango, Cairo and HarfBuzz through cffi at *import*, and
+      # resolves the family the ATS template names through fontconfig. Which font
+      # resolves decides the rendered bytes — measured at T032 as an 8,885-byte document
+      # becoming 11,499 when the family changed — so without these the six ATS assertions
+      # and the byte-determinism assertion are green against a document production does
+      # not produce, and a runner base-image change could alter that silently.
+      #
+      # The same set is declared in `backend/Dockerfile`, and
+      # `test_ci_installs_the_same_render_dependencies_as_the_production_image` asserts
+      # the two agree — so dropping one here fails a test rather than quietly changing
+      # what every other export assertion runs against. `curl` is deliberately not here:
+      # it is the image's healthcheck dependency, not a rendering one.
+      - name: Install render dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            fonts-dejavu-core \
+            libpango-1.0-0 \
+            libpangoft2-1.0-0 \
+            libharfbuzz0b \
+            libcairo2
+
       - name: Install
         run: pip install -e ".[dev]"
 
