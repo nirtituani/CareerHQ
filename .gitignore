@@ -71,3 +71,9 @@ testing files/
 # `before-after-analysis.md` is the canonical artifact and is deliberately NOT
 # ignored — it stands on its own without the images.
 specs/006-document-retrieval/corpus-research/examples/
+
+# Slice 007 (D2): the real-world sanity-check benchmark set. Real postings and a
+# real profile — a home address, a phone number and an employment history. This
+# repository is PUBLIC. Only the aggregate comparison is ever committed, never
+# the data. Verify with `git check-ignore -v` before any `git add`.
+benchmark-real/
