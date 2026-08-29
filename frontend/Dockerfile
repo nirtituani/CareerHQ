@@ -55,7 +55,20 @@ RUN echo "Building with BACKEND_URL=${BACKEND_URL:-<unset — will bake in the l
 
 FROM node:24-alpine AS runner
 WORKDIR /app
+# **`HOSTNAME=0.0.0.0` is what makes the container reachable, and its absence broke
+# three consecutive deployments.** Next.js standalone binds to `process.env.HOSTNAME`,
+# and Docker sets that to the container id — which resolves to the single eth0
+# address. Measured inside the running container: the listener was bound to
+# `10.128.245.19:8080`, and `127.0.0.1:8080` and `localhost:8080` both answered
+# **connection refused**, while the container IP answered `307`.
+#
+# Railway's healthcheck then reported `failed with service unavailable` on all 14
+# attempts across its 5-minute window — a *connection* failure, never a response it
+# could reject. The mis-binding was always there and only became fatal when the probe
+# started arriving on loopback; the repository never changed, which is why three
+# deploys failed with an identical image recipe and an identical startup line.
 ENV NODE_ENV=production \
+    HOSTNAME=0.0.0.0 \
     NEXT_TELEMETRY_DISABLED=1
 RUN addgroup --system --gid 1001 nodejs \
     && adduser --system --uid 1001 nextjs
@@ -63,5 +76,10 @@ COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 USER nextjs
-EXPOSE 3000
+# 8080, not 3000: the platform injects `PORT=8080` and the server honours it, so the
+# declared port has to say the same thing the process actually does. No `PORT` is set
+# here — the application already listens on what it is given, and hard-coding one
+# would take that away. This is the frontend's version of the rule the backend
+# entrypoint already follows.
+EXPOSE 8080
 CMD ["node", "server.js"]
