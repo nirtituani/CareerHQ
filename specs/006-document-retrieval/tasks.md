@@ -2234,9 +2234,9 @@ belongs; T050 is here.*
       bytes — FR-031 is scoped to one runtime and needs nothing from this. **831 backend tests
       pass**; the change touches no production code.
 
-- [ ] **T056** **The résumé a person sent stops being reachable once a newer version exists.**
-      *(Appended 2026-08-29 at T054, which made the situation reachable rather than creating it.
-      Not started — the affordance was T054's scope; the history is a product decision of its own.)*
+- [x] **T056** **The résumé a person sent stops being reachable once a newer version exists.**
+      *(Appended 2026-08-29 at T054. **Done 2026-08-29** — Option A: the Details tab renders the
+      submission the API already served. **No version history was built**, and none was needed.)*
       `TailorTab.load()` reads `listVersions` and renders **`versions[0]`**, the newest, and
       nothing offers a way back. Before T054 this was almost unreachable by hand, because a locked
       version offered no control that produced a newer one. It now has a button that does exactly
@@ -2251,3 +2251,54 @@ belongs; T050 is here.*
       whether the tab gets a switcher, whether the sent version is pinned beside the current one,
       or whether it belongs on the application rather than the tailor tab. **Do not build it as a
       side effect of another task.**
+
+      ***Done 2026-08-29 — and the investigation changed the shape of the task.*** The third
+      option was already half-built and nobody had noticed. **`GET /api/applications/{id}` has
+      always returned `submission`**, and its route docstring says why it is served there rather
+      than on the list: *"'given an application, when I inspect it' is the scenario the
+      requirement states"* (FR-024). `submission_out` carries `resume_version_id`, which is
+      exactly what `versionDocumentUrl` needs, and `GET /versions/{id}/document` resolves the
+      export **for that version id** — not for the application's latest — so a superseded
+      submission's document was always reachable. On the frontend `Application.submission` was
+      **typed in `api.ts` and rendered nowhere**, and the detail page is a server component that
+      already fetches that payload.
+      **So the fix was rendering, not capability**: a `SubmittedResume` block on the Details tab.
+      **No endpoint, no migration, no new fetch, no new state, no version history**, and
+      `versions[0]` is untouched.
+      ***What it shows and what it refuses to show.*** Sent date and document size, both already
+      in the contract, and a download link addressed by the submission's **own** version id so it
+      does not move when a newer version appears. **Not the checksum** — that is evidence for an
+      operator verifying stored bytes (FR-021), not a fact a candidate can act on, and 64 hex
+      characters beside a download link invite being read as the document's identifier.
+      ***Both absent states render nothing, and they are different states.*** `null` is "asked,
+      and it sent nothing", true of every imported row that reached `Applied` elsewhere;
+      `undefined` is the list response, which does not carry the field. A fallback to the latest
+      version would name a document no employer received.
+      ***A nuance worth recording: the gap is not yet visible on real data.*** The submitted
+      Zipher version `1bd5f20f` is currently `versions[0]`, because it is the newest. The gap
+      appears the first time someone presses T054's "Tailor this job again" — which is why T054
+      created the condition rather than the defect.
+      ***A hydration error the suite could not have caught, found in the browser.*** The first
+      implementation reused `formatDate`, which renders in the **runtime's own** timezone. That is
+      correct for the date-only fields it serves, but `submitted_at` carries a time of day and the
+      real record is `2026-08-28T21:26:21Z` — the 28th in UTC, the 29th east of it. Next renders
+      this page on the server (UTC in the container) and hydrates it in the browser (the user's
+      zone), so one timestamp produced two strings, React threw *"Hydration failed…"* and
+      regenerated the tree. Fixed with a UTC-pinned formatter used **only** for the submission
+      timestamp; `formatDate` is untouched.
+      ***And the first regression test for it was not a gate.*** Its fixture used `12:00Z`, which
+      is the same calendar date in every plausible offset — so it passed with **and without** the
+      fix. Caught by drilling it. The fixture now uses the real `21:26Z`, and the drill fails by
+      name. Note the asymmetry, because it matters: this assertion catches the bug only where the
+      runner is **not** UTC (it does on `Asia/Jerusalem`); on a UTC CI runner it is inert, and the
+      browser check is the real gate.
+      ***`formatDate` is latently exposed to the same bug*** for any `date_applied`/`date_added`
+      near midnight. Not fixed here — pre-existing, out of scope, and changing it would move dates
+      users already see. Worth its own task.
+      **6 tests, 4 drills** (link addressed by the wrong version; the block rendered regardless of
+      `submission`; the checksum printed; the date unpinned from UTC). Frontend **187 passed**,
+      typecheck, lint and `npm run build` clean. **Verified read-only in a browser against the
+      real Zipher application**: block renders, `href` is
+      `/api/versions/1bd5f20f-…/document` — the submission's own version — checksum absent from
+      visible text, no hydration error. **Not deployment-blocking** — no requirement was violated
+      at any point; FR-023, FR-024 and FR-025 all held throughout.
