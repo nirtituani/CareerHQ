@@ -291,7 +291,24 @@ BACKEND_URL=http://backend.railway.internal:8000
 NEXT_PUBLIC_LOGO_DEV_TOKEN=…   # optional; logos fall back to initials without it
 ```
 
-Four things about that list are easy to get wrong:
+**`EMBEDDING_MODEL` is deliberately *not* in that list, and should stay out of it.** Leaving it
+unset means the backend uses `config.py`'s default, `BAAI/bge-small-en-v1.5`, which is the model
+`backend/Dockerfile` bakes into the image — so a cold container makes no network call, as spec.md
+D3 requires. **Setting it to anything else is a silent way to break retrieval.** The corpus is
+embedded with whichever model is configured and queries use the same one, so the two must agree;
+the previous default (`sentence-transformers/all-MiniLM-L6-v2`) is *also* 384-dimension, which
+means the vector column, `EMBEDDING_DIMENSIONS` and the adapter's width check all accept either.
+Measured: re-embedding a stored chunk gives cosine 1.000 for the model that wrote it and **0.346**
+for the other one.
+
+Since T053 the corpus records which model embedded it, and `python -m careerhq.ingest` **refuses**
+to run against a corpus built with a different model, naming both. That refusal exits non-zero and
+so blocks the deploy, which is the intended behaviour: changing the embedding model is a
+re-ingestion, not a variable edit. To change it deliberately, change `EMBEDDING_MODEL` *and* the
+model baked in `backend/Dockerfile`, then drop the `knowledge_documents` / `knowledge_chunks` rows
+so the pre-deploy ingestion rebuilds them.
+
+Five things about that list are easy to get wrong:
 
 - **`REDIS_URL` is deliberately unset.** It is optional, and readiness reports it as
   `not_configured`. A placeholder would make the application believe it has a cache and fail at

@@ -2049,8 +2049,9 @@ belongs; T050 is here.*
       1.73%–4.58% across the six successful runs, ordered by revision count. That is a property of
       the metric, not of retrieval, and it is **not** grounds to redefine the metric.
 
-- [ ] **T053** **The configured embedding model is not the one baked into the image.**
-      *(Appended 2026-08-29 at T046, from T044's measurement. Not started.)*
+- [x] **T053** **The configured embedding model is not the one baked into the image.**
+      *(Appended 2026-08-29 at T046, from T044's measurement. **Done 2026-08-29** — the guard
+      shipped, the model was **not** changed. See the outcome note below.)*
       `config.py` defaults to `BAAI/bge-small-en-v1.5` and the Dockerfile bakes **only** that —
       verified: the image's `/app/.model-cache` contains `bge-small` alone. But `.env` **and
       `.env.example`** set `EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2`, so the model
@@ -2065,6 +2066,48 @@ belongs; T050 is here.*
       **Fixing it means choosing one model**, which is a deployment decision (image size, cold
       start, retrieval quality) and belongs with **T048**. A guard that fails loudly when the
       ingested corpus and the query embedder disagree would be worth more than the choice itself.
+
+      ***Done 2026-08-29, and the last sentence above is what was built.*** **No model was
+      changed**: `BAAI/bge-small-en-v1.5` remains the default and the baked model, and
+      `config.py`, `backend/Dockerfile` and the Railway environment were all left alone. What
+      changed is that drift is now detectable.
+      **Migration `0018`** adds a nullable `embedding_model` to `knowledge_documents`; ingestion
+      records it on documents it creates and **refuses**, before embedding or writing anything,
+      when a stored model differs from the configured one — naming both models and the remedy.
+      `run()` catches broadly and returns 1, so a mismatch blocks a deploy instead of reporting a
+      silent `0/0/0/0`.
+      ***Where the field lives, and why not the obvious places.*** Not on `knowledge_chunks` — the
+      model is a property of the corpus, not a rule, and per-chunk storage repeats one value 79
+      times while inviting documents whose chunks disagree. Not folded into `content_hash`, which
+      stays a hash of the **rule text alone**: including the model would make every citation
+      recorded by an earlier run unresolvable the moment it changed, which is what FR-012 forbids.
+      Not on the `EmbeddingSource` port either — its docstring refuses a model name outright
+      (*"a port that carries an implementation's parameters has already chosen the
+      implementation"*), so the identity is a plain string parameter defaulting to the setting the
+      caller builds the embedder from.
+      ***NULL means unknown, not mismatched, and that is the judgement call.*** A corpus ingested
+      before `0018` records nothing and **nothing can recover which model wrote those vectors**.
+      Refusing would strand a working deployment on a fact nobody has; stamping the configured
+      model onto it would be worse — asserting in the column built to be trusted something never
+      verified. So it proceeds and warns once. Two tests and two drills hold that line in both
+      directions.
+      ***Measured, on the real corpus.*** Re-embedding a stored chunk gives cosine **1.000000**
+      for `all-MiniLM-L6-v2` and **0.345992** for `bge-small` — so the local corpus is MiniLM, the
+      image bakes bge-small, and nothing in the schema could tell them apart: both are 384, so
+      `EMBEDDING_DIMENSIONS`, `vector(384)` and the adapter's width check all pass for either.
+      ***Also corrected.*** `.env.example` named MiniLM and was the only operator-facing statement
+      of this variable — now `bge-small`, with the reason. `README.md` documents `EMBEDDING_MODEL`
+      and says it should stay **unset** in Railway. `research.md` R4/D3 recorded MiniLM as the
+      decision; a superseding note records that `1cf9a70` moved to fastembed/ONNX bge-small and
+      why, with the original text preserved rather than rewritten.
+      ***Local `.env` was deliberately not changed.*** Setting it to bge-small today would query a
+      MiniLM corpus at cosine ~0.35 — the exact bug. With the guard in place a deliberate
+      re-ingest is now safe; without it, it was not.
+      **6 tests, 4 drills.** Verified in Docker: `0018` down and up on the real database with all
+      evidence intact (6 versions, 11 runs, 79 chunks, $3.084181), and the real
+      `python -m careerhq.ingest` warns on the legacy corpus, still reports 0/0/0/0, exits 0.
+      **Not deployment-blocking**: production's corpus is empty, so its first pre-deploy ingestion
+      records bge-small and is protected from that moment.
 
 - [x] **T054** **The tailor screen offers dead controls on a locked version, fails silently, and
       hides the one action it tells you to take.**
