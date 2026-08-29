@@ -339,6 +339,13 @@ async def _render_master(
             await session.execute(
                 select(WorkExperience)
                 .where(WorkExperience.profile_id == profile_id)
+                # **Ordered explicitly (T051).** There was no `order_by` here, so role
+                # order was whatever Postgres happened to return — which decided both the
+                # order roles appear in the prompt and, now, the order they appear in the
+                # exported document. `ordinal` is the profile's own explicit order field;
+                # it is snapshotted onto each item below so a frozen version keeps this
+                # order even if the profile is later reordered.
+                .order_by(WorkExperience.ordinal)
                 .options(selectinload(WorkExperience.bullets))
             )
         )
@@ -357,6 +364,15 @@ async def _render_master(
                     "source_item_id": bullet.id,
                     "position": position,
                     "text": bullet.text,
+                    # **Snapshotted here, at version creation** (T051). The export must
+                    # never reach back into the profile for these: a locked version would
+                    # then re-render differently after a profile edit, changing an
+                    # approved document underneath its recorded checksum.
+                    "role_employer": experience.company,
+                    "role_title": experience.title,
+                    "role_start_date": experience.start_date,
+                    "role_end_date": experience.end_date,
+                    "role_ordinal": experience.ordinal,
                 }
             )
             position += 1
@@ -685,6 +701,13 @@ async def run_tailoring(
                 # without this the master's ordering is gone for exactly the
                 # items the draft touched (T095, FR-030).
                 displaced_position=master_item["position"] if proposal else None,
+                # Null for every kind but an experience bullet, and for any master item
+                # built before T051 — `_compose` renders those in one unlabelled group.
+                role_employer=master_item.get("role_employer"),
+                role_title=master_item.get("role_title"),
+                role_start_date=master_item.get("role_start_date"),
+                role_end_date=master_item.get("role_end_date"),
+                role_ordinal=master_item.get("role_ordinal"),
                 original_text=original,
                 proposed_text=proposal.text if proposal else None,
                 # Materialised rather than derived, so no later reader — the PDF

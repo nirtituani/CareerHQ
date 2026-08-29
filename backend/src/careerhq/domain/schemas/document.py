@@ -12,11 +12,23 @@ itself, and "approved order" (FR-017) would then mean something the caller could
 see or control. Given sections, the renderer's contract is exact and testable: *emit
 these lines, in this order, adding nothing*.
 
-**Deliberately minimal.** It carries what T031, T034 and T035 name — a name, a contact
-block rendered in the body, standard headings, and ordered lines — and nothing else.
-**It has no role headings, employers or dates**, which a complete résumé does need;
-those require loading work-experience context and a nested shape, and neither T034 nor
-T035 asks for them. Recorded as an open point for T036 rather than guessed at here.
+**Sections hold ordered *groups*, and only Experience uses a labelled one (T051).** A
+group with a role is one job — employer, title, dates — followed by that job's approved
+bullets; a group with `role=None` is a plain run of lines, which is every other section.
+The renderer's contract is unchanged by this: *emit these groups, in this order, adding
+nothing*. It still decides no ordering and infers no heading.
+
+**Role context reaches here already snapshotted, never read live from the profile.** A
+version freezes its items so a later profile edit cannot change an approved document
+(Principle IV, FR-023); role context read live would sit outside that freeze and let a
+locked document change underneath its own checksum. `ResumeVersionItem` therefore carries
+`role_employer`, `role_title`, `role_start_date`, `role_end_date` and `role_ordinal`, and
+this model receives their snapshotted values.
+
+**A role heading is document structure, not an item.** `lines_in_order()` deliberately
+excludes it, for the same reason the name, the contact line and the section headings are
+excluded: FR-017 is a claim about approved items, and an employer nobody approved as a
+résumé line must not be counted as one.
 """
 
 from __future__ import annotations
@@ -25,11 +37,53 @@ from dataclasses import dataclass
 
 
 @dataclass(frozen=True, slots=True)
+class ResumeRole:
+    """One job's context: where, as what, and when.
+
+    **`employer` and `title` are separate fields because they must render as separate
+    text.** The corpus's ATS rule, sourced to a vendor: *"Give each role an explicit
+    employer name and job title as separate readable text rather than combining them into
+    one styled line. Current title and current employer are extracted as distinct fields,
+    and a combined line gives the parser one string where it expects two."* Holding them
+    as one string here would make that unenforceable one layer down.
+
+    `dates` is **pre-formatted and may be empty**, and empty means the profile stores
+    none. Nothing is inferred — a role with a start and no end does not become "Present",
+    because that would be the exporter asserting something the owner never recorded.
+    """
+
+    employer: str
+    title: str
+    dates: str
+
+
+@dataclass(frozen=True, slots=True)
+class ResumeGroup:
+    """Lines that belong together, optionally under a role.
+
+    `role is None` is the ordinary case — Summary, Skills, Education — and renders as a
+    plain run of lines, exactly as before T051.
+    """
+
+    role: ResumeRole | None
+    lines: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class ResumeSection:
-    """One standard heading and the approved lines beneath it, in approved order."""
+    """One standard heading and the ordered groups beneath it."""
 
     heading: str
-    lines: tuple[str, ...]
+    groups: tuple[ResumeGroup, ...]
+
+    @classmethod
+    def of_lines(cls, heading: str, lines: tuple[str, ...]) -> ResumeSection:
+        """A section of plain lines under no role — every section except Experience.
+
+        Exists so the common case stays one call and the nesting is not repeated at every
+        construction site.
+        """
+        return cls(heading=heading, groups=(ResumeGroup(role=None, lines=lines),))
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,7 +106,9 @@ class ResumeDocument:
         Exists so a caller — and FR-017's test — can state the expected order without
         re-deriving how sections nest.
         """
-        return tuple(line for section in self.sections for line in section.lines)
+        return tuple(
+            line for section in self.sections for group in section.groups for line in group.lines
+        )
 
 
-__all__ = ["ResumeDocument", "ResumeSection"]
+__all__ = ["ResumeDocument", "ResumeGroup", "ResumeRole", "ResumeSection"]

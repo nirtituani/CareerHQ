@@ -38,10 +38,16 @@ from careerhq.domain.models import (
     ContactInformation,
     ExportedDocument,
     ResumeVersion,
+    ResumeVersionItem,
     SourceKind,
     VersionStatus,
 )
-from careerhq.domain.schemas.document import ResumeDocument, ResumeSection
+from careerhq.domain.schemas.document import (
+    ResumeDocument,
+    ResumeGroup,
+    ResumeRole,
+    ResumeSection,
+)
 from careerhq.infrastructure import storage
 from careerhq.infrastructure.documents.render import render_resume_pdf
 
@@ -66,6 +72,68 @@ _SECTIONS: tuple[tuple[str, tuple[SourceKind, ...]], ...] = (
 )
 
 
+def _dates(item: ResumeVersionItem) -> str:
+    """The role's dates, composed from **only what the profile stored** (T051).
+
+    Never inferred. A role with a start and no end does not become "Present": the owner
+    recorded no end date, and the exporter asserting one would be writing a claim into an
+    approved document that nobody approved.
+    """
+    start, end = (item.role_start_date or "").strip(), (item.role_end_date or "").strip()
+    if start and end:
+        # An en dash is the correct separator for a range. RUF001 is suppressed by code
+        # rather than blanket, exactly as `test_export_ats.py` does for its Unicode
+        # fixture: replacing it with a hyphen would be a typographic regression, and
+        # `font-variant-ligatures: none` already guarantees it survives extraction.
+        return f"{start} – {end}"  # noqa: RUF001
+    return start or end
+
+
+def _role_groups(members: list[ResumeVersionItem]) -> tuple[ResumeGroup, ...]:
+    """Experience bullets, grouped into the jobs they came from.
+
+    **Role order is `role_ordinal`, snapshotted from `work_experiences.ordinal`** — the
+    profile's own explicit order field. **Within a role, order is `position`**, the
+    owner's approved order, unchanged.
+
+    That split is the whole T051 ordering decision, and it exists because `position`
+    **collides across roles**: the draft reorders one flat list with no notion of a role
+    boundary, so the real submitted document has two different jobs both holding position
+    0. Within a single role `position` is unique and meaningful; across roles it is a
+    data-model artefact and ordering by it interleaves two jobs into one stream.
+
+    **Items with no snapshot render last, in one unlabelled group.** They are the versions
+    that predate this — including a submitted one — and dropping them would silently
+    delete approved content from a document somebody already sent.
+    """
+    snapshotted = [item for item in members if item.role_ordinal is not None]
+    legacy = [item for item in members if item.role_ordinal is None]
+
+    groups: list[ResumeGroup] = []
+    # `dict` preserves insertion order, so sorting the items once orders the roles too.
+    by_role: dict[tuple[int, str, str], list[ResumeVersionItem]] = {}
+    for item in sorted(snapshotted, key=lambda i: (i.role_ordinal or 0, i.position)):
+        key = (item.role_ordinal or 0, item.role_employer or "", item.role_title or "")
+        by_role.setdefault(key, []).append(item)
+
+    for (_, employer, title), items in by_role.items():
+        groups.append(
+            ResumeGroup(
+                role=ResumeRole(employer=employer, title=title, dates=_dates(items[0])),
+                lines=tuple(item.final_text for item in items),
+            )
+        )
+
+    if legacy:
+        groups.append(
+            ResumeGroup(
+                role=None,
+                lines=tuple(item.final_text for item in sorted(legacy, key=lambda i: i.position)),
+            )
+        )
+    return tuple(groups)
+
+
 def _compose(version: ResumeVersion, contact: ContactInformation | None) -> ResumeDocument:
     """The approved items, in approved order, as a document.
 
@@ -82,12 +150,24 @@ def _compose(version: ResumeVersion, contact: ContactInformation | None) -> Resu
         # this section, so sorting the whole list first is a crash rather than a
         # mis-ordering — found by the drill-shaped failure of the re-export test.
         members = [item for item in included if item.source_kind in kinds]
-        lines = tuple(
-            item.final_text
-            for item in sorted(members, key=lambda i: (kinds.index(i.source_kind), i.position))
+        if not members:
+            continue
+        groups = (
+            _role_groups(members)
+            if heading == "Experience"
+            else (
+                ResumeGroup(
+                    role=None,
+                    lines=tuple(
+                        item.final_text
+                        for item in sorted(
+                            members, key=lambda i: (kinds.index(i.source_kind), i.position)
+                        )
+                    ),
+                ),
+            )
         )
-        if lines:
-            sections.append(ResumeSection(heading=heading, lines=lines))
+        sections.append(ResumeSection(heading=heading, groups=groups))
 
     fragments = tuple(
         value

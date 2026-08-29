@@ -40,6 +40,26 @@ section headings — is legitimate non-item content**; what must not appear is a
 approved, and the test drills exactly that by rendering an unapproved line and confirming it is
 named. The claim was clarified, not weakened.
 
+***Approved order, for experience bullets, clarified 2026-08-29 (T051).*** A version item's
+`position` is the owner's approved order and **collides across roles**, because the draft
+reorders one flat list with no notion of a role boundary. Approved order is therefore:
+**roles by snapshotted `role_ordinal`** (`work_experiences.ordinal`), and **bullets by
+`position` within their role**. Assertion 1 is unchanged — every approved item still appears
+exactly once, and a role heading is document structure like the name, contact line and section
+headings, not an item.
+
+Measured on the real submitted document (`1bd5f20f`): seven bullets drawn from **two roles at one
+employer**, with two different jobs both holding `position` 0. Ordering by `position` alone
+interleaves them into one stream, which is why the cross-role case needs a rule and the
+within-role case does not — inside a single role `position` is unique and already meaningful.
+
+**`role_ordinal` is snapshotted onto the item, not read from the profile at render time.** A
+version freezes its items so a later profile edit cannot change an approved document (Principle
+IV, FR-023); ordering a frozen document by a number that can still move would reintroduce exactly
+the mutability the snapshot prevents. An item with no snapshot — every version predating T051,
+one of them submitted — renders in a single unlabelled group in `position` order, exactly as
+before.
+
 **Assertions 1-5 are T031; assertion 6 is T032.** The split is not arbitrary: 1-5 are things
 `pdfplumber` can see in the finished bytes, and 6 is a comparison *of* bytes, which no extractor is
 involved in. T035's metadata and timestamp pinning is what will make 6 hold.

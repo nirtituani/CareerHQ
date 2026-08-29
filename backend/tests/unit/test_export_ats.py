@@ -60,9 +60,9 @@ def _document() -> ResumeDocument:
         full_name="Dana Levi",
         contact=("dana@example.com", "+972 50 000 0000", "Tel Aviv"),
         sections=(
-            ResumeSection(heading="Summary", lines=(_APPROVED[0],)),
-            ResumeSection(heading="Experience", lines=(_APPROVED[1], _APPROVED[2], _APPROVED[3])),
-            ResumeSection(heading="Skills", lines=(_APPROVED[4],)),
+            ResumeSection.of_lines("Summary", (_APPROVED[0],)),
+            ResumeSection.of_lines("Experience", (_APPROVED[1], _APPROVED[2], _APPROVED[3])),
+            ResumeSection.of_lines("Skills", (_APPROVED[4],)),
         ),
     )
 

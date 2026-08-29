@@ -49,9 +49,9 @@ def _document() -> ResumeDocument:
         full_name=_NAME,
         contact=(_EMAIL, _PHONE, "Tel Aviv"),
         sections=(
-            ResumeSection(
-                heading=_FIRST_HEADING,
-                lines=(
+            ResumeSection.of_lines(
+                _FIRST_HEADING,
+                (
                     "Owned the settlement service end to end, from schema to on-call.",
                     _LAST_LINE,
                 ),
