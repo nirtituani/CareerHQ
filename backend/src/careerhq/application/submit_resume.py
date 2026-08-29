@@ -30,6 +30,7 @@ import hashlib
 import uuid
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from careerhq.application.export import latest_export
@@ -99,6 +100,39 @@ def ensure_submittable(status: VersionStatus | str) -> None:
     )
 
 
+#: PostgreSQL's SQLSTATE for a unique violation. A standard code rather than a driver
+#: exception class, so nothing here imports the database driver into the application layer.
+_UNIQUE_VIOLATION = "23505"
+
+
+def _is_duplicate_submission(error: IntegrityError) -> bool:
+    """Whether this is *the* race — a second submission of one version — or something else.
+
+    **Narrow on purpose.** Catching every `IntegrityError` here would turn any future
+    constraint failure on this insert into "already submitted", which is a wrong answer
+    delivered confidently.
+
+    **Two conditions, and both are exact.** The SQLSTATE must be a unique violation, and
+    PostgreSQL's diagnostic `table_name` must be *this table* — compared for equality,
+    never as a substring, and never against `constraint_name`. A substring test would
+    match a constraint merely *named* after this table, and reading `constraint_name`
+    would tie the branch to a name PostgreSQL generates from a column-level `unique=True`
+    and that is written down nowhere this code could keep in step with. `table_name` is
+    the thing PostgreSQL reports about the row it refused.
+
+    **It stays wrong for the right reason if a second unique constraint is ever added
+    here**: this predicate would classify that violation as the duplicate-submission race
+    too. There is exactly one unique constraint on the table today — `resume_version_id`,
+    the one FR-025 rests on — and adding another is the moment to give this a column test
+    as well.
+    """
+    original = error.orig
+    if getattr(original, "sqlstate", None) != _UNIQUE_VIOLATION:
+        return False
+    diagnostic = getattr(original, "diag", None)
+    return getattr(diagnostic, "table_name", None) == SubmittedResume.__tablename__
+
+
 async def submit_version(session: AsyncSession, *, version_id: uuid.UUID) -> SubmittedResume:
     """Verify the stored export and record that it was sent.
 
@@ -145,9 +179,46 @@ async def submit_version(session: AsyncSession, *, version_id: uuid.UUID) -> Sub
         checksum_sha256=checksum,
         byte_size=len(data),
     )
-    session.add(record)
-    version.status = VersionStatus.SUBMITTED
-    await session.flush()
+    # **The guard above is a read, and two clicks land in the gap after it.** Both
+    # requests see `EXPORTED`, both verify the bytes, and both arrive here. Only the
+    # unique constraint on `resume_version_id` can settle that, which is why it exists
+    # and why it is not an application-level check — but losing it must still *read* as
+    # a refusal. An `IntegrityError` escaping here reaches the route unhandled and
+    # answers **500**, telling the person the system broke when it correctly declined.
+    #
+    # The message is deliberately the one `ensure_submittable` gives a sequential second
+    # attempt: by the time anyone reads it, that is exactly what happened.
+    #
+    # **The savepoint is what keeps this a refusal rather than a wound.** A failed flush
+    # aborts the whole PostgreSQL transaction, so without it the caller's session is
+    # unusable afterwards — and this project's contract is that *the caller* owns the
+    # transaction and may span several use cases in one. Every other refusal here costs
+    # nothing; this one would have cost the caller everything it had written.
+    #
+    # ***The insert and the status change are inside the block, and that is the whole of
+    # why it works.*** Wrapping only the `flush()` does **not** help: writes registered
+    # before the savepoint belong to the outer transaction, and its failure poisons that
+    # transaction no matter where the flush was issued. Measured, not reasoned — the form
+    # with `session.add` left outside leaves the session in exactly the failed state this
+    # exists to prevent. `test_a_refusal_leaves_the_session_usable_whichever_branch_raised_it`
+    # is what fails if anyone moves them back out.
+    #
+    # **Rolling the session back here was rejected**, and also measured: it makes the
+    # session usable by destroying the caller's earlier uncommitted writes — a use case
+    # silently discarding its caller's work, which is worse than the state it fixes.
+    try:
+        async with session.begin_nested():
+            session.add(record)
+            version.status = VersionStatus.SUBMITTED
+            await session.flush()
+    except IntegrityError as clash:
+        if not _is_duplicate_submission(clash):
+            raise
+        raise SubmissionRefused(
+            "This version has already been submitted. What was sent to an employer is a "
+            "historical record; to send something different, revise it as a new version."
+        ) from clash
+
     return record
 
 
