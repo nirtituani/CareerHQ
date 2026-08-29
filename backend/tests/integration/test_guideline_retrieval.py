@@ -645,9 +645,18 @@ async def test_no_retrieval_detail_reaches_the_state_or_the_rendered_prompt(
     the boundary, not that the use case happens to project carefully today.
 
     **Scope**, per the rule this project has broken before: the forbidden-word scan runs
-    over the **citation halves only**, never over rule text. A rule may legitimately say
-    "rank"; a citation may not say "cosine". Scanning the whole prompt for words that
-    could appear innocently in authored guidance proves nothing and fails on content.
+    over what the **renderer adds** to the rule text, never over rule text itself. A rule
+    may legitimately say "rank"; the rendering around it may not say "cosine". Scanning
+    the whole prompt for words that could appear innocently in authored guidance proves
+    nothing and fails on content.
+
+    ***Tightened 2026-08-29 (T052).*** The prompt used to render `- {text}  [{source}]`,
+    and this test asserted that exact shape. The citation is no longer sent — it was 667
+    of the retrieval block's 2,190 tokens and nothing read it — so the assertion is now
+    that the block is the rule text **and nothing else at all**, which is strictly
+    stronger than the claim it replaces. The scan below therefore examines the residue
+    after every rule text is removed: if a metadata suffix ever returns, its words land
+    there.
     """
     embedder = await _ingested(db_session)
     source = RetrievedGuidelines(db_session, embedder=embedder, token_ceiling=1500)
@@ -664,17 +673,29 @@ async def test_no_retrieval_detail_reaches_the_state_or_the_rendered_prompt(
     assert annotation == "list[dict[str, str]]"
 
     rendered = _guidelines(state)
-    expected = "\n".join(f"- {g.text}  [{g.source}]" for g in retrieved)
-    assert rendered == expected, "the prompt renders more than the guideline's text and citation"
+    expected = "\n".join(f"- {g.text}" for g in retrieved)
+    assert rendered == expected, "the prompt renders more than the guideline's text"
 
-    citations = re.findall(r"\[([^\]]*)\]$", rendered, flags=re.MULTILINE)
-    assert len(citations) == len(retrieved), (
-        f"the scan found {len(citations)} citations for {len(retrieved)} guidelines"
-    )
-    for citation in citations:
-        lowered = citation.lower()
-        for term in _RETRIEVAL_VOCABULARY:
-            assert term not in lowered, f"retrieval vocabulary in a citation: {citation}"
+    # **The omission is of data that is present**, which is what makes this a gate rather
+    # than a tautology: every guideline genuinely carries a citation and a hash, and
+    # neither reaches the model. A corpus that happened to have empty citations would
+    # satisfy an absence check while proving nothing.
+    examined = 0
+    for guideline in retrieved:
+        assert guideline.source and guideline.content_hash, "nothing to omit"
+        assert guideline.source not in rendered, "the citation reached the prompt"
+        assert guideline.content_hash[:12] not in rendered, "a content hash reached the prompt"
+        examined += 1
+    assert examined == len(retrieved), f"examined {examined} of {len(retrieved)}"
+
+    # Whatever the renderer adds around the rule text — today "- " and newlines. If a
+    # metadata suffix is ever reintroduced, its vocabulary lands in this residue.
+    residue = rendered
+    for guideline in retrieved:
+        residue = residue.replace(guideline.text, "")
+    lowered = residue.lower()
+    for term in _RETRIEVAL_VOCABULARY:
+        assert term not in lowered, f"retrieval vocabulary in the rendering: {residue!r}"
 
     for build in (build_plan_prompt, build_draft_prompt):
         assert rendered in build(state), "the guidelines block is not what the prompt carries"
