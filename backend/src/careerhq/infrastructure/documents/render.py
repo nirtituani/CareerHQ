@@ -26,16 +26,32 @@ macOS, so the host renders in **Verdana**; `python:3.12-slim` carries neither an
 resolve to something else again. Two environments therefore produce different bytes from
 identical content, which is a **T032** problem (byte-determinism) and is recorded there.
 
-**Byte-determinism is NOT established here — that is T032**, with T035's metadata and
-timestamp pinning. This renderer currently emits whatever creation date WeasyPrint
-chooses, so two renders of identical content differ. Deliberate: pinning it without the
-test that proves it is how a "stable checksum" ends up unstable in a way nobody notices
-until a re-export.
+**Byte-determinism is pinned here, and the reason is a measurement rather than a
+theory.** FR-031 requires two renders of identical content on one runtime to be
+byte-identical. They were not: on Linux, `fontTools` stamps the embedded font subset's
+`head.modified` with the **wall-clock time of the render**, so two renders landing in
+different seconds produced different fonts, different compressed lengths, and a different
+file. Measured in the production image: **five distinct hashes from eight consecutive
+renders of the same document.**
+
+The three differing bytes were all consequences of one value — `head.modified`, plus the
+two checksums derived from it (`head.checkSumAdjustment` and the `head` entry in the sfnt
+table directory). Nothing else moved: this renderer, object ordering and compression were
+never involved, and the PDF itself carries no `/CreationDate`, `/ModDate` or `/ID` at
+WeasyPrint 69 — T032 measured that correctly and it still holds. The timestamp it missed
+was one level down, inside the font.
+
+**T032 concluded "already byte-identical" from the one environment where that is true.**
+On macOS the resolved font is not restamped and keeps its own 2007 date, so the test
+passed on the dev host while production and CI were nondeterministic on every render more
+than a second apart. The determinism test now separates its two renders by over a second
+for exactly that reason.
 """
 
 from __future__ import annotations
 
 import html
+import os
 
 # Bound to a private name **so the boundary is real rather than conventional** (T035).
 # As `HTML`, `from careerhq.infrastructure.documents.render import HTML` worked, and any
@@ -45,6 +61,28 @@ import html
 from weasyprint import HTML as _HTML
 
 from careerhq.domain.schemas.document import ResumeDocument
+
+#: Pins the timestamp `fontTools` writes into the embedded font subset (FR-031).
+#:
+#: **`SOURCE_DATE_EPOCH` is the reproducible-builds convention**, honoured by
+#: `fontTools.misc.timeTools`, which is what turns `head.modified` from "now" into a
+#: constant. Set here rather than in the Dockerfile, CI and `conftest.py`, because the
+#: renderer is the boundary that owns this guarantee (D7) and three environment files are
+#: three places to forget it — the failure being silent and only visible on a re-export.
+#:
+#: **Zero, deliberately.** The field describes when a *font* was modified, which says
+#: nothing about the résumé being rendered; pinning it to the Unix epoch makes it
+#: obviously synthetic rather than a date someone might read as provenance.
+#:
+#: `setdefault`, so a build system that pins its own value keeps it.
+#:
+#: **Below the imports, and that is checked rather than assumed.**
+#: `fontTools.misc.timeTools.timestampNow()` reads the variable when a font is
+#: *saved*, not when the module is imported — so this does not need to precede the
+#: WeasyPrint import, and putting it there would only earn two `E402` suppressions.
+#: If a future version snapshots it at import instead, this has to move back up.
+PINNED_SOURCE_DATE_EPOCH = "0"
+os.environ.setdefault("SOURCE_DATE_EPOCH", PINNED_SOURCE_DATE_EPOCH)
 
 #: No tables, no columns, no floats, no images, no icons, no backgrounds — FR-018 in CSS.
 #: Points rather than pixels because the output medium is paper, and a named generic

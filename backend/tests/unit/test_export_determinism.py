@@ -28,9 +28,14 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import pathlib
+import re
+import struct
 import subprocess
 import sys
+import time
+import zlib
 
 import pdfplumber
 import pytest
@@ -149,6 +154,14 @@ def test_rendering_the_same_document_twice_is_byte_identical(
     )
 
     first = _render_in_subprocess(render_script, payload, tmp_path / "first.pdf")
+    # **Separated by more than a second, and that is the whole of what this test learned
+    # the hard way.** The failure it exists to catch is a wall-clock timestamp inside the
+    # embedded font subset, whose resolution is one second — so two renders that happen to
+    # land in the same second are identical *whether or not the bug is present*. Without
+    # this sleep the assertion passed on the dev host for months while every render in the
+    # container and in CI was nondeterministic: measured at five distinct hashes from eight
+    # consecutive renders. The second is bought back many times over by not shipping that.
+    time.sleep(1.1)
     second = _render_in_subprocess(render_script, payload, tmp_path / "second.pdf")
 
     assert first, "the renderer produced no bytes"
@@ -187,3 +200,70 @@ def test_the_document_carries_no_time_varying_metadata() -> None:
     time_varying = {k for k in metadata if k in {"CreationDate", "ModDate", "ID"}}
     assert not time_varying, f"time-varying metadata present: {sorted(time_varying)}"
     assert metadata, "no metadata at all — the assertion above would pass on any document"
+
+
+def _embedded_font_head_modified(pdf: bytes) -> int | None:
+    """The `head.modified` timestamp of the first embedded font program, or `None`.
+
+    Reads the PDF by hand rather than through a library because the field is three levels
+    down — a Flate-compressed object carrying an sfnt font, whose table directory locates
+    a `head` table, 28 bytes into which sits a `LONGDATETIME`. No extractor exposes it,
+    and it is the exact value that broke FR-031.
+    """
+    for match in re.finditer(rb"(<<[^>]*?/Length1 \d+[^>]*?>>)\s*stream\r?\n", pdf, re.S):
+        length = int(re.search(rb"/Length (\d+)", match.group(1)).group(1))  # type: ignore[union-attr]
+        font = zlib.decompress(pdf[match.end() : match.end() + length])
+        tables = struct.unpack(">H", font[4:6])[0]
+        for index in range(tables):
+            entry = 12 + index * 16
+            if font[entry : entry + 4] == b"head":
+                offset = struct.unpack(">I", font[entry + 8 : entry + 12])[0]
+                return int(struct.unpack(">q", font[offset + 28 : offset + 36])[0])
+    return None
+
+
+def test_the_embedded_font_carries_no_render_time_timestamp() -> None:
+    """The root cause, named — so a regression says *what* broke, not just that bytes differ.
+
+    `fontTools` stamps the font subset it embeds with `head.modified = now` unless
+    `SOURCE_DATE_EPOCH` is set. That one value moves two derived checksums with it, changes
+    the compressed length of the font object, and shifts every offset after it. The
+    byte-identity test above would catch a regression; this says which field caused it.
+
+    **Asserted as stability, not as a specific value.** The pinned epoch is what a Linux
+    render produces, but macOS resolves a different font and preserves its original 2007
+    date instead of restamping — so demanding a particular number would fail on the dev
+    host for a reason that has nothing to do with the bug. What must hold everywhere is
+    that the value does not move between renders.
+    """
+    first = render_resume_pdf(_sample())
+    time.sleep(1.1)
+    second = render_resume_pdf(_sample())
+
+    before = _embedded_font_head_modified(first)
+    after = _embedded_font_head_modified(second)
+
+    assert before is not None, "no embedded font program found; this test examined nothing"
+    assert before == after, (
+        "the embedded font's head.modified changed between two renders "
+        f"({before} then {after}) — SOURCE_DATE_EPOCH is not reaching fontTools, and every "
+        "re-export will record a different checksum"
+    )
+
+
+def test_the_renderer_pins_the_font_timestamp_on_import() -> None:
+    """The mechanism is a module-level side effect, so it is asserted as one.
+
+    Importing the renderer is what sets `SOURCE_DATE_EPOCH`. Setting it in the Dockerfile,
+    CI and `conftest.py` instead would be three places to forget, and forgetting is silent
+    until somebody re-exports — so the boundary that owns the guarantee (D7) sets it.
+    `setdefault` leaves an operator's own value alone, which is why this asserts the
+    variable is populated rather than that it equals the pin.
+    """
+    import careerhq.infrastructure.documents.render as renderer
+
+    assert os.environ.get("SOURCE_DATE_EPOCH"), (
+        "SOURCE_DATE_EPOCH is unset after importing the renderer; fontTools will stamp "
+        "the embedded font with the current time"
+    )
+    assert renderer.PINNED_SOURCE_DATE_EPOCH == "0"

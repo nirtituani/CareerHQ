@@ -2006,3 +2006,27 @@ belongs; T050 is here.*
       **Do not fix inside a verification task.** Gating the rows is one line; the error handling is
       three; the revision affordance is a product decision about what the submitted view should
       offer, and it is the one that actually matters.
+
+- [ ] **T055** **CI renders with different system libraries and a different font than production.**
+      *(Appended 2026-08-29 while fixing FR-031. Not started — deliberately out of that fix's
+      scope, which changed no CI or Docker configuration.)*
+      `.github/workflows/ci.yml` installs **no system packages at all** — its only step is
+      `pip install -e ".[dev]"`. WeasyPrint therefore binds whatever Pango, Cairo and
+      fontconfig `ubuntu-latest` happens to ship, and resolves whatever fonts happen to be
+      on the runner. **`backend/Dockerfile` declares `fonts-dejavu-core`, `libpango-1.0-0`,
+      `libpangoft2-1.0-0` and `libcairo2` explicitly**, and T032 recorded why: *"which font
+      resolves decides the rendered bytes"* — measured at the time as an 8,885-byte document
+      becoming 11,499 when the family changed.
+      **So the six ATS assertions and the byte-determinism assertion are green against a
+      document production does not produce.** They still test real properties — single
+      column, no tables, character integrity — but not against the bytes an employer would
+      receive. A base image change on the runner could alter CI's output without touching
+      anything this repository declares, which is the exact failure mode the Dockerfile's
+      declaration was added to prevent, left open in the environment that does the asserting.
+      **Three options, none chosen here:** install the same packages in CI so the two agree;
+      run the backend job **in the built image** so there is one environment rather than two;
+      or state explicitly that CI checks renderer-independent properties only and move the
+      font-sensitive assertions somewhere that uses the real image. The second is the only
+      one that cannot drift.
+      **Not a blocker for FR-031**, which is now satisfied on every runtime — the timestamp
+      pin is environment-independent.
