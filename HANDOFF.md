@@ -2,9 +2,12 @@
 
 **Last updated:** 2026-08-30 (**everything below merged, deployed and verified in production this session**)
 
-**`origin/main` is `55222c6`.** Three pull requests merged today — **#8** (Slice 003 JobTracker
-import), **#9** (Slice 006 item D, the corpus verification) and **#10** (the frontend healthcheck).
-Backend and frontend both report `SUCCESS` on that commit.
+**`origin/main` is `e6335bc`** — the Slice 008 merge (PR #14). Backend and frontend both report
+`SUCCESS` on it, and Company Research has been exercised end to end against the live site.
+
+Earlier the same day: **#8** (Slice 003 JobTracker import), **#9** (Slice 006 item D, the corpus
+verification), **#10** (the frontend healthcheck), **#11** (documentation reconciliation) and
+**#13** (per-worktree test databases).
 
 > ## The Railway frontend blocker is FIXED
 >
@@ -58,16 +61,50 @@ Backend and frontend both report `SUCCESS` on that commit.
 > `specs/007-evaluation-benchmark/results/`, so they survive `docker compose down -v`. The
 > tailoring rows behind them do not.
 
-> ## Slice 008 is being built, not shelved
+> ## Slice 008 is COMPLETE, merged and production-validated
 >
-> **A parallel session (agent2) owns Slice 008 and is actively working on it.** Its pipeline is
-> committed as **`b4e60b6`** and pushed to `origin/005-resume-tailoring`, so it is backed up
-> remotely. The search provider is **Tavily, not Brave** — a direct API integration, with MCP
-> treated as an implementation detail rather than a requirement of the slice.
+> Merged as **PR #14**; `origin/main` is **`e6335bc`**. Not "locally validated", not "unbacked" —
+> it is on `main`, deployed, and has produced real research against a real company in production.
+> The earlier ownership fence around `research_*`, `citation_check.py` and `ports.py` is **gone**;
+> those files are ordinary `main` code now.
 >
-> **Do not edit, stage or commit anything under `specs/008-company-research/`, the `research_*`
-> modules, `citation_check.py`, `domain/models/research.py`, `domain/schemas/research.py`, or
-> `ports.py`.** They belong to agent2.
+> **The whole chain works, end to end:**
+>
+> ```
+> Tavily search -> SearchHit (url/title/snippet, no body) -> SourceFetcher
+>   -> the shared SSRF-guarded fetch -> Gemini synthesis -> verify_excerpts -> persistence
+>   -> API -> the Company tab
+> ```
+>
+> **`gemini/gemini-3.6-flash` is the production default, deliberately** (OQ-J). Chosen on
+> measurement across four frozen fixtures with `verify_excerpts` as judge, not on price: its
+> citation rejection rate is **1.7%**, against 18% for Step 3.7 Flash and **42%** for GPT-OSS-20B,
+> whose fabrications only the verbatim check caught. Claude Sonnet 5 stays denser and is **one
+> setting away** — `llm_model_research_synthesise_company` — with nothing provider-specific
+> anywhere above `infrastructure/`.
+>
+> **`v2-dense` is the shared synthesis prompt**, for every model rather than for Gemini. Density
+> was a prompting problem: the old text said "summarise" and never said how much to extract. The
+> extraction block and the anti-fabrication block were validated **together** and must not be
+> separated — the first raises density, the second is why that did not become invention. Exact text
+> in `specs/008-company-research/contracts/optimised-synthesis-prompt.md`.
+>
+> **Production validation, 2026-08-30, against Cloudflare:** 22 claims (20 `fact`,
+> 2 `interpretation`), 5/5 sections, 25 evidence entries, **0 uncited facts and 0 unknown source
+> ids**. Six source rows persisted — **three retrieved and three recorded as failed** (GlobalData,
+> Yahoo Finance, Gartner all refuse automated access), which is FR-009 holding on real data: the
+> brief is honest that half of what it consulted could not be read. Citations render in the browser
+> as verbatim quotes with clickable links, and failed sources are shown as unreadable rather than
+> hidden.
+>
+> **Reuse verified in production and it does not spend again.** A second request returned the same
+> `snapshot_id` with `reused: true`; snapshot count, total cost and source-row count were all
+> byte-identical afterwards. That is FR-013's economics — Layer 1 paid for once per employer —
+> confirmed on the ledger rather than from the response body.
+>
+> **Layer 2 role research remains built-but-unwired.** `research_role.py`, its schemas and
+> `role_research_snapshots` all exist and are tested against doubles. **There is no route and no
+> UI**, and nothing in production reaches it.
 
 > **Implementation priority: Correctness → Simplicity → Efficiency → Course requirements.** Do not
 > add agent/ReAct complexity to look more agentic.
@@ -122,13 +159,13 @@ deliberately has no `top_k`, no scores and no embedding parameters.
 |---|---|---|
 | 001 platform-foundation | 69 / 69 | none |
 | 002 deployment | 52 / 52 | none |
-| 003 data-foundation | **107 / 109** | **T083** (import screen) and **T084** (observed import against a real export) |
+| 003 data-foundation | **108 / 109** | **T083** (import screen) — **T084 done 2026-08-30**, see below |
 | 004 match-analysis | 89 / 89 | none |
 | 005 resume-tailoring | **101 / 101** | none — **T088 done 2026-08-30**, see the header |
 | 006 document-retrieval | **57 / 57** | none — T048 and T057 ticked 2026-08-30; both were already done |
 | 007 evaluation-benchmark | **49 + 1 partial / 50** | **T047** — the real sanity set is built and isolated, deliberately unpopulated |
-| 008 company-research | **no `tasks.md`** | agent2's, in progress. It never went through `/speckit-tasks`, so it cannot be counted here |
-| **Total** | **524 / 527** | 3 — T083, T084, T047 |
+| 008 company-research | **no `tasks.md`** | **COMPLETE and merged** (PR #14). It never went through `/speckit-tasks`, so it cannot be counted here — the absence is a process gap, not open work |
+| **Total** | **525 / 527** | 2 — T083, T047 |
 
 > ⚠️ **Count these with `grep -cE '^- \[[xX]\]'`.** Slice 005 marks its 100 done tasks `- [X]`
 > with a **capital X** and every other slice uses lowercase, so `grep -c '^- \[x\]'` reports
@@ -252,10 +289,29 @@ git log --oneline 1cf9a70~1..HEAD
 
 ### Not in this list, deliberately
 
-`application/ports.py` and every `research_*` module belong to the **parallel Slice 008 session**.
-They are **committed as `b4e60b6` and pushed to `origin/005-resume-tailoring`** — no longer
-uncommitted, and no longer at risk of being lost. They are still not on `main` and are still not
-ours to edit.
+`application/ports.py` and every `research_*` module were Slice 008's, and are **now on `main`**
+(PR #14, `e6335bc`). The ownership fence is gone; they are ordinary code. Listed here only because
+an earlier handoff fenced them off and someone reading that sentence out of context would still
+avoid them.
+
+---
+
+## 3a. Slice 008 — open caveats that ship with the current default
+
+Neither is a defect to fix in passing. Both are decisions someone must make deliberately.
+
+**Gemini's free tier may use submitted content to improve Google's products.** That is acceptable
+for Company Research **because that path reads public company web pages only** — no CV, profile or
+application data reaches it, and the Layer 1 schema has no field one could arrive through. **This
+must not be generalised.** Pointing anything profile-shaped at a free-tier key is a separate
+decision with a different answer, not a configuration change.
+
+**LiteLLM records Gemini's paid-rate equivalent, not the actual free-tier charge.** The production
+Cloudflare run recorded `cost = 0.058972` against a bill of **$0**. That figure is the Principle V
+audit record, written in the same transaction as the work, and the same number feeds slice 007's
+spend ceiling — so a budget guard can refuse runs that cost nothing. **Left open on purpose**: it
+needs a decision about whether `Usage.cost` should carry the amount billed or the paid-rate
+equivalent, and either answer changes what historical rows mean.
 
 ---
 
@@ -746,10 +802,11 @@ is worth expecting rather than discovering.
   "a gate with nothing to examine passes forever" pattern, and the first one found in the tooling
   that exists to prevent drift rather than in a test.
 - **A local test count is not the CI test count, and the difference is not a bug.** Local pytest
-  reported **797 passed** while CI reported **751** on the same commit. The gap is exactly the 46
-  tests in the parallel session's five untracked Slice 008 files. Recording 797 as "the suite" in a
-  handoff would make the next session hunt 46 missing tests in CI. **When a working tree is shared,
-  measure the suite and say which tree you measured.**
+  reported **797 passed** while CI reported **751** on the same commit. The gap was exactly the 46
+  tests in Slice 008's then-untracked files. Recording 797 as "the suite" in a handoff would have
+  sent the next session hunting 46 missing tests in CI. **When a working tree is shared, measure
+  the suite and say which tree you measured.** (Resolved by the PR #14 merge — both counts now
+  describe the same tree.)
 - **The previous HANDOFF disagreed with itself about spend, and the stale half was the detailed
   one.** Its header said $3.084181; its §5A said "$2.431522 across 7 runs". Measured today: 11 runs,
   $3.084181. The narrative section had been updated less recently than the summary, which is the
@@ -942,22 +999,40 @@ previous revision are all **superseded** — they described a state where slice 
 blocking. **None of that is true any more.** They are deleted rather than kept, because a next-steps
 list that mostly describes finished work stops being read.
 
-**Three tasks remain open across the whole project**, and only one of them is blocked.
+**Two tasks remain open across the whole project**, and neither is blocked.
 
-### A — **T084: import a real JobTracker export** · **BLOCKED, and not on the data**
+### A — ~~T084: import a real JobTracker export~~ · **COMPLETE, run in production 2026-08-30**
 
-The export exists — 18 columns matching R8 exactly, 99 rows — but **there is no way to run it**:
-the import has no UI (that is T083, not started), and the API needs an authenticated session that
-only the owner has. So T084 waits on **either** T083 **or** the owner driving
-`POST /api/applications/import/jobtracker` themselves with their own session.
+The owner drove `POST /api/applications/import/jobtracker` with their own session, which is the
+route this task had been waiting on. Verified result:
 
-**The file is real, unscrubbed personal history and must never enter this repository.** The
+| | |
+|---|---|
+| Rows imported | **96** |
+| **Rejected by the importer** | **0** |
+| Notices | **6** |
+| Companies after import | **90** |
+| Applications after import | **97** |
+
+**`rejected = 0` and `rejected = 63` are two different things and must never be collapsed.** The
+importer rejected **nothing** — every row it was given was accepted. Separately, **63 rows
+reconciled to `normalized_status = rejected`** under FR-016, which is an *outcome recorded on the
+application*, not a failure of the import. Reading the 63 as import failures would make a clean
+run look two-thirds broken; reading the 0 as "nobody was rejected" would erase the user's actual
+history. This is exactly why FR-016 has no `rejected` **column** — the label says how far you got,
+the normalised status says how it ended.
+
+**The pre-existing Cellebrite application and its company were preserved**, not duplicated — the
+conservative merge keys (company + title + start date) doing what they were designed for, on real
+data rather than a fixture.
+
+**The export file is real, unscrubbed personal history and must never enter this repository.** The
 committed fixture is synthetic precisely so that it can be committed; this one cannot.
 
 ### B — **T083: the import screen** · owner: the author · unblocked
 
-The last slice-003 task, and the thing that unblocks T084. Low value on its own — a UI for a
-one-off import — but it is the cheapest route to T084.
+The last slice-003 task. It no longer unblocks anything — T084 was completed by driving the API
+directly — so its only remaining value is sparing the next person that manual step.
 
 ### C — **T047: populate the real sanity set** · owner: the author · deliberately open
 
@@ -983,9 +1058,10 @@ T088 measured Plan and Draft on Sonnet and Review on **Opus**, but the interface
 `anthropic/claude-sonnet-5`. Cosmetic, and it understates cost attribution on the one screen where
 a person sees what a run cost.
 
-### G — **Slice 008** · **agent2's, actively in progress** · not ours to touch
+### G — ~~Slice 008~~ · **DONE — merged as PR #14 and validated in production**
 
-Tavily, direct API. See the header for the ownership boundary.
+See the header. The only Slice 008 work left is **Layer 2**, which is built and tested against
+doubles but has no route and no UI — and it is **not** scheduled here.
 
 ---
 ## 5A. Real data that must not be deleted or modified
@@ -1033,7 +1109,22 @@ Two rules already broken once each:
 - **Never run a test against the real profile.** One merged a fictional CV into it. Seed
   `@example.com` — never `.test` or `.invalid`, which `EmailStr` rejects, producing a 500 that
   reads as an application bug.
-- **Delete anything seeded by hand.** The counts above are the truth.
+- **Delete anything seeded by hand.** The counts above are the truth. Honoured again on
+  2026-08-30: the Slice 008 production check seeded a temporary verification user with one
+  application, one company, one snapshot and six source rows, and all of it was deleted after
+  validation — scoped to that user's id, inside a transaction, with the real account's
+  **97 applications and 90 companies** counted before and after and unchanged.
+
+**Two checkouts running the suite at once will corrupt each other unless one is redirected** — the
+session fixture runs `DROP SCHEMA public CASCADE`, so a shared database means each run erases the
+other's schema mid-flight. **PR #13 fixed this**: set `CAREERHQ_TEST_DATABASE_URL` to give a
+worktree its own database, created on demand, no setup needed. Unset, nothing changes and CI is
+unaffected. It is deliberately **not** `DATABASE_URL`, which points at the development database
+holding the paid evaluation evidence.
+
+This cost a wrong conclusion before it was fixed: a suite run against a shared `careerhq_test`
+reported **351 failures and took 12m47s**, and the same code run alone passed 1,219 in 70 seconds.
+**A failure count that changes between runs of identical code is this, not a flaky test.**
 
 ---
 ## 6. Process reminders
