@@ -19,7 +19,19 @@ dockerfilePath = "Dockerfile"
 # own, and the backend's readiness already gates the part that does. Pointing
 # this at a route that proxies to the backend would make a backend problem look
 # like two failing services instead of one.
-healthcheckPath = "/"
+#
+# **Not `/`, and the reason is load-bearing.** `/` is a server-side redirect to
+# `/dashboard` or `/login` depending on a session cookie, so it answers 307.
+# Railway's healthcheck stopped following redirects in their 2026-08-28 security
+# change and logs any non-2xx as `service unavailable` — which reads as a
+# connection-level fault and is not one. Nine consecutive deployments failed on
+# it while the container was serving normally. `/healthz` answers 200 directly,
+# with no cookie, no redirect and no dependency.
+#
+# It is deliberately not under `/api/*`: `next.config.ts` rewrites that prefix
+# to the backend container, so a healthcheck there would report the backend's
+# health from the frontend's service.
+healthcheckPath = "/healthz"
 healthcheckTimeout = 300
 
 restartPolicyType = "ON_FAILURE"
