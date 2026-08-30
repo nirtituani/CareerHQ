@@ -13,7 +13,7 @@ provisioning tests are checking.
 from __future__ import annotations
 
 import os
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Iterator, Mapping
 
 import pytest
 import pytest_asyncio
@@ -33,12 +33,54 @@ if os.path.isdir(_BREW_LIB) and "DYLD_FALLBACK_LIBRARY_PATH" not in os.environ:
     os.environ["DYLD_FALLBACK_LIBRARY_PATH"] = _BREW_LIB
 
 
+#: The variable that redirects the suite at another database.
+#:
+#: **Deliberately not `DATABASE_URL`.** That name already means "the database this application
+#: talks to", `.env` sets it to the *development* database, and this suite runs
+#: `DROP SCHEMA public CASCADE` on whatever it is pointed at. Reusing it would mean a developer
+#: who had merely exported their own `DATABASE_URL` would destroy their development data by
+#: running the tests — including the paid evaluation evidence, which exists nowhere else. A
+#: separate name cannot be set by accident.
+TEST_DATABASE_URL_VAR = "CAREERHQ_TEST_DATABASE_URL"
+
+#: Unchanged, so an ordinary local run and CI both behave exactly as before.
+DEFAULT_TEST_DATABASE_URL = "postgresql+psycopg://careerhq:careerhq@localhost:5432/careerhq_test"
+
+
+def resolve_test_database_url(environ: Mapping[str, str] | None = None) -> str:
+    """The database this suite may drop and rebuild.
+
+    **Overridable because one hardcoded name cannot be shared.** The suite drops the schema at
+    session start, so two checkouts running it at once corrupt each other's runs: the observed
+    symptom is a scatter of unrelated integration failures whose count changes between runs of
+    identical code, which reads as a flaky suite rather than as contention. Giving each worktree
+    its own database removes the interference rather than hiding it. The database is created on
+    demand, so a new name needs no setup.
+
+    **The name must look like a test database, and that refusal is the point.** Making the target
+    configurable is what introduces the risk of pointing it at real data; without this check the
+    convenience and the footgun arrive in the same change. `careerhq` — the development database —
+    is rejected, and so is anything else that does not say `test` in its name.
+    """
+    url = (environ if environ is not None else os.environ).get(
+        TEST_DATABASE_URL_VAR, DEFAULT_TEST_DATABASE_URL
+    )
+    name = url.rsplit("/", 1)[-1].split("?", 1)[0]
+    if "test" not in name.casefold():
+        raise RuntimeError(
+            f"{TEST_DATABASE_URL_VAR} points at a database named {name!r}, which does not look "
+            "like a test database. This suite runs DROP SCHEMA public CASCADE against it, so the "
+            "name must contain 'test' — for example careerhq_test_myworktree."
+        )
+    return url
+
+
 # Set before careerhq.config is imported anywhere: Settings reads the
 # environment at construction, and several fields are deliberately required.
 TEST_ENV: dict[str, str] = {
     "ENVIRONMENT": "local",
     "LOG_LEVEL": "WARNING",
-    "DATABASE_URL": "postgresql+psycopg://careerhq:careerhq@localhost:5432/careerhq_test",
+    "DATABASE_URL": resolve_test_database_url(),
     "REDIS_URL": "redis://localhost:6379/1",
     "S3_ENDPOINT_URL": "http://localhost:9000",
     "S3_ACCESS_KEY": "test-access-key",
