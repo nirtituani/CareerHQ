@@ -33,7 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from careerhq.application.embeddings import EmbeddingSource
 from careerhq.config import get_settings
 from careerhq.domain.models.knowledge import KnowledgeChunk, KnowledgeDocument
-from careerhq.infrastructure.corpus import ParsedDocument, load_corpus
+from careerhq.infrastructure.corpus import CORPUS_ROOT, ParsedDocument, load_corpus
 
 logger = logging.getLogger("careerhq.corpus")
 
@@ -54,6 +54,43 @@ class CorpusEmbeddingModelMismatch(RuntimeError):
     """
 
 
+class CorpusVerificationFailed(RuntimeError):
+    """What ingestion left behind is not the corpus the files describe.
+
+    **Raised after the work, not before it, and that is the difference from
+    `CorpusEmbeddingModelMismatch`.** That one refuses on a precondition nothing else can
+    see. This one refuses on an *outcome*: the loop ran, reported success, and the
+    database still does not hold the rules the image ships.
+
+    **It exists because success and total failure were indistinguishable.**
+    `IngestionReport` counted movement alone — created, updated, deleted — so an unchanged
+    corpus and a corpus that was never there both read `0/0/0/0`, `changed=False`, exit 0.
+    Deployment `75cd8ea` shipped exactly that: a green deploy over an empty production
+    corpus, invisible because retrieval falls back to the static rubric and records that
+    it did (FR-009). T048 fixed the cause it had that day and added a test of the
+    `preDeployCommand` *configuration*; nothing has ever checked the *outcome*.
+
+    **`careerhq.ingest` catches this and returns 1**, so a corpus that failed to load
+    fails the pre-deploy step and Railway keeps the previous version serving — the same
+    gate the migration already relies on, using the exit code that is already wired.
+    """
+
+
+@dataclass(frozen=True, slots=True)
+class CorpusPresence:
+    """What the database holds, measured against what the files authorise.
+
+    Separate from `IngestionReport` because it is a different kind of claim: the report
+    says what one run *did*, this says what is *there* afterwards. A run can legitimately
+    do nothing; it can never legitimately leave the corpus absent.
+    """
+
+    documents_expected: int
+    documents_present: int
+    chunks_expected: int
+    chunks_present: int
+
+
 @dataclass(frozen=True, slots=True)
 class IngestionReport:
     """What one ingestion actually did.
@@ -67,6 +104,14 @@ class IngestionReport:
     documents_updated: int = 0
     chunks_created: int = 0
     chunks_deleted: int = 0
+
+    #: What the corpus files authorise, and what the database actually holds, measured
+    #: after the work by re-reading both. **These are what make a no-op legible.** The
+    #: four counters above are all zero for an unchanged corpus and all zero for a corpus
+    #: that was never loaded; `chunks_present` is the field that tells those apart in a
+    #: deploy log, which is the only place anyone sees this.
+    chunks_expected: int = 0
+    chunks_present: int = 0
 
     @property
     def changed(self) -> bool:
@@ -140,6 +185,79 @@ async def _ensure_model_matches(session: AsyncSession, model: str) -> None:
                 "for these documents until they are re-ingested",
                 extra={"documents": unrecorded, "configured_embedding_model": model},
             )
+
+
+async def verify_corpus_ingested(
+    session: AsyncSession, *, root: pathlib.Path | None = None
+) -> CorpusPresence:
+    """Confirm the database holds every chunk the corpus files authorise.
+
+    **It re-reads the files and re-queries the database rather than trusting the counters
+    ingestion just produced.** A loop that miscounts is precisely what this guards
+    against, and a run that marks its own homework catches nothing — so the corpus is
+    loaded a second time here. That costs parsing 18 small files once per deploy, which
+    is not a budget anybody is defending.
+
+    **An empty corpus is a refusal, not a pass, and that check is the load-bearing one.**
+    Every other assertion here has the form *"everything expected is present"*, which a
+    corpus of nothing satisfies vacuously. A corpus absent from the image — a
+    `.dockerignore` edit, a moved directory — is the realistic way that happens, and it
+    would otherwise ingest "successfully" into an empty database. This project has shipped
+    a gate with nothing to examine five times; this is the line that stops the sixth.
+
+    **Matched per document and by `content_hash`, not by a global `COUNT(*)`.** A bare
+    total would be satisfied by the right number of the wrong rows, and it would also
+    count chunks belonging to documents that have since left the corpus — which are drift
+    to be reported elsewhere, not evidence that today's corpus arrived.
+
+    Read-only, and safe to call outside ingestion.
+    """
+    parsed_documents = load_corpus(root)
+    chunks_expected = sum(len(parsed.chunks) for parsed in parsed_documents)
+
+    if not chunks_expected:
+        raise CorpusVerificationFailed(
+            "no corpus was found to ingest: "
+            f"{len(parsed_documents)} documents and {chunks_expected} chunks were read "
+            f"from {root or CORPUS_ROOT}. An ingestion that writes nothing because there "
+            "was nothing to write reports the same 0/0/0/0 as an unchanged corpus, so "
+            "this refuses rather than letting the deploy proceed over an empty database."
+        )
+
+    documents_present = 0
+    chunks_present = 0
+    for parsed in parsed_documents:
+        document_id = await session.scalar(
+            sa.select(KnowledgeDocument.id).where(KnowledgeDocument.slug == parsed.slug)
+        )
+        if document_id is None:
+            continue
+        documents_present += 1
+        found = await session.scalar(
+            sa.select(sa.func.count())
+            .select_from(KnowledgeChunk)
+            .where(
+                KnowledgeChunk.document_id == document_id,
+                KnowledgeChunk.content_hash.in_([c.content_hash for c in parsed.chunks]),
+            )
+        )
+        chunks_present += int(found or 0)
+
+    if chunks_present != chunks_expected:
+        raise CorpusVerificationFailed(
+            f"the ingested corpus is incomplete: {chunks_present} of {chunks_expected} "
+            f"authored chunks are in the database, across {documents_present} of "
+            f"{len(parsed_documents)} documents. Retrieval would fall back to the static "
+            "rubric and record that it did (FR-009), which is a working system and an "
+            "invisible failure, so the deploy is refused instead."
+        )
+
+    return CorpusPresence(
+        documents_expected=len(parsed_documents),
+        documents_present=documents_present,
+        chunks_expected=chunks_expected,
+        chunks_present=chunks_present,
+    )
 
 
 async def ingest_corpus(
@@ -257,11 +375,19 @@ async def ingest_corpus(
 
         await session.flush()
 
+    # **Verified before the report exists, so there is no success record to contradict.**
+    # The rows are flushed but not committed — the caller owns the transaction — so a
+    # refusal here means nothing is written at all, exactly as the model-mismatch refusal
+    # behaves. It reads the files and the database afresh rather than the counters above.
+    presence = await verify_corpus_ingested(session, root=root)
+
     report = IngestionReport(
         documents_created=documents_created,
         documents_updated=documents_updated,
         chunks_created=chunks_created,
         chunks_deleted=chunks_deleted,
+        chunks_expected=presence.chunks_expected,
+        chunks_present=presence.chunks_present,
     )
     logger.info(
         "corpus ingested",
@@ -271,9 +397,18 @@ async def ingest_corpus(
             "chunks_created": report.chunks_created,
             "chunks_deleted": report.chunks_deleted,
             "changed": report.changed,
+            "chunks_expected": report.chunks_expected,
+            "chunks_present": report.chunks_present,
         },
     )
     return report
 
 
-__all__ = ["IngestionReport", "ingest_corpus"]
+__all__ = [
+    "CorpusEmbeddingModelMismatch",
+    "CorpusPresence",
+    "CorpusVerificationFailed",
+    "IngestionReport",
+    "ingest_corpus",
+    "verify_corpus_ingested",
+]
