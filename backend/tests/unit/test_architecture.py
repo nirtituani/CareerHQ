@@ -636,3 +636,49 @@ def test_the_renderer_is_not_a_back_door_to_weasyprint() -> None:
         f"the renderer's declared surface is {renderer.__all__}; the boundary is one "
         "function that takes content and returns bytes"
     )
+
+
+def test_no_module_uses_a_deprecated_starlette_status_constant() -> None:
+    """Deprecated status aliases must not survive in `src/`.
+
+    **The list is read from Starlette, not written down here.** `starlette.status`
+    carries its own `__deprecated__` mapping and `__getattr__` warns against every
+    name in it. Hardcoding the one name this gate was written for would let the
+    next deprecation land silently — the failure mode is a `DeprecationWarning`
+    nobody reads, and then an `AttributeError` on the upgrade that removes it.
+
+    **Numerically identical, which is exactly why nothing catches this.** Every
+    deprecated alias returns the same integer as its replacement, so the routes
+    answer 413 either way and every behavioural test passes. There is no runtime
+    signal, which makes the source tree the only place the rule can live.
+    """
+    from starlette import status as starlette_status
+
+    deprecated: dict[str, int] = dict(starlette_status.__deprecated__)
+    assert deprecated, "starlette.status.__deprecated__ is empty; this gate has nothing to check"
+
+    offences: list[str] = []
+    examined = 0
+
+    for path in sorted(SRC.rglob("*.py")):
+        examined += 1
+        tree = ast.parse(path.read_text(), filename=str(path))
+        for node in ast.walk(tree):
+            # `status.HTTP_413_REQUEST_ENTITY_TOO_LARGE` — the form both call sites used.
+            if isinstance(node, ast.Attribute) and node.attr in deprecated:
+                offences.append(f"{path.relative_to(SRC)}:{node.lineno} uses {node.attr}")
+            # `from starlette.status import HTTP_413_REQUEST_ENTITY_TOO_LARGE`.
+            elif isinstance(node, ast.ImportFrom) and (node.module or "").endswith("status"):
+                for alias in node.names:
+                    if alias.name in deprecated:
+                        offences.append(
+                            f"{path.relative_to(SRC)}:{node.lineno} imports {alias.name}"
+                        )
+
+    assert examined >= 50, (
+        f"expected the whole source tree, scanned only {examined} modules. "
+        "A scan matching nothing is not a gate."
+    )
+    assert not offences, "deprecated starlette.status constants in src/:\n" + "\n".join(
+        f"  {o} — Starlette names the replacement in its own deprecation warning" for o in offences
+    )
