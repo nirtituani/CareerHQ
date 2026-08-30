@@ -566,3 +566,92 @@ No target was changed, no metric redefined, no code touched by the measurement, 
 evidence altered — the two runs are additions. Whether SC-008 should be expressed against
 something less volatile than total run cost is a metric-definition question, deliberately left
 open.
+
+---
+
+## R16 — SC-008 (006) re-derived from the recorded arms *(measured 2026-08-30, no new spend)*
+
+**Result: SC-008 (006) is MISSED. The recorded 3.22% is a narrower proxy than the criterion it
+answers; the criterion as written measures **5.21%**. Nothing was changed — not the metric, not
+the ≤2% threshold, not the implementation, not a test.**
+
+The prompted question was whether 3.22% is a real cost problem or an artefact of how the ratio is
+computed. It is the second — but correcting the accounting makes the verdict **worse**, not
+better, so the miss is robust rather than fragile.
+
+**Method: free.** Both T052 arms are still in the local database with their per-call rows and their
+recorded `guidelines_used` snapshots. Every figure below is re-derived from those; the guidance
+blocks are re-rendered exactly as `prompts.py::_guidelines` renders them (`- {text}`, no citation,
+post-T052) and counted with `cl100k_base`, the tokenizer `corpus/loader.py` uses for `token_count`.
+No completion was purchased.
+
+### Measured
+
+| | static `aae6f565` | retrieval `1070657e` |
+|---|---|---|
+| rules in the recorded snapshot | 12 | 27 |
+| rendered guidance block | **358** tok | **1,523** tok |
+| rule text alone (what the ceiling budgets) | — | **1,497** tok |
+| total cost | $0.233124 | $0.245262 |
+
+| call | static input | retrieval input | delta | consumes guidance? |
+|---|---|---|---|---|
+| `tailor_plan` | 7,221 | 8,936 | +1,715 | yes |
+| `tailor_draft` | 7,816 | 9,855 | +2,039 | yes |
+| `tailor_review` | 7,313 | 7,983 | **+670** | **no** |
+| | | **total** | **+4,424** | |
+
+Output tokens moved the other way: 13,668 static against 13,259 retrieval, **−409**.
+
+### Four findings
+
+1. **The retrieval ceiling is honoured.** Rule text measures **1,497** against a
+   `retrieval_token_ceiling` of 1,500. Post-T052 the rendered block exceeds it by 26 tokens — the
+   `- ` markers — and nothing else. **There is no implementation defect here**, which is the
+   finding that decides this is an accounting question.
+
+2. **The Reviewer grew by 670 input tokens while consuming no guidance at all.** It reads the
+   profile, the posting and the composed resume; the guidance block never reaches it. That growth
+   is a *downstream content effect* — a differently-guided draft composes a different resume — and
+   it is definitionally not retrieval overhead. The numerator therefore mixes overhead with the
+   **effects** of better guidance, and the recorded figure resolves this by excluding the call
+   entirely rather than by separating the two.
+
+3. **The recorded figure is not the criterion as written.** SC-008 (006) says retrieval
+   *"increases tailoring cost per run by no more than 2%"*. Cost per run is directly observable
+   here: `$0.245262 − $0.233124 = $0.012138`, which is **5.21%** of the same-session baseline.
+   The **3.22%** MISSED figure is `plan+draft` **input tokens** priced at the Sonnet input rate —
+   a defensible controlled proxy, and a narrower quantity than the one the criterion names, since
+   it omits the Reviewer and every output effect. Both miss; see finding 4 for which to carry.
+
+4. **The ≤2% target was derived from a token estimate roughly half the real one.** `spec.md`
+   reasons that a retrieval capped at 1,500 adds *"on the order of +1,000 input tokens across the
+   two calls that consume guidance — roughly 1.5%"*. Measured, the guidance delta is
+   **1,165 per call**, so **2,330 across the two** — about **2.3×** the estimate the threshold was
+   set against. The threshold was not wrong to be strict; it was calibrated against arithmetic that
+   understated the block.
+
+### Interpretation, kept separate from the above
+
+The two figures answer different questions and **both are MISSED against ≤2%**; neither rescues
+the criterion. **3.22%** is the
+better *controlled* number — one call's guidance block is the only thing that differs — and
+**5.21%** is the better *faithful* number, because it is the quantity SC-008 (006) actually names.
+The earlier conclusion stands unchanged and is now supported from a second direction: a fixed
+overhead divided by a total run cost that swings 2.7× with revision cannot establish its own
+position relative to a 2% threshold. What R16 adds is that the numerator is not clean either — it
+silently spans overhead, a tokenizer difference and downstream content effects.
+
+**A caveat on the tokenizer, recorded because it bounds finding 4.** The per-call guidance delta of
+1,165 is `cl100k_base`; the provider billed `tailor_plan` **+1,715** for a call in which only that
+block differs. The gap is the difference between the tokenizer the corpus is budgeted in and the
+one Anthropic charges by. **This is unquantified here** — establishing it needs a provider token
+count, which this re-derivation deliberately did not purchase — and it means the ceiling is
+enforced in a unit the bill is not denominated in.
+
+### Not done *(R16)*
+
+No metric redefined, no threshold moved, no production code touched, no test altered, and no
+evaluation evidence changed — the two arms were read, not re-run. Whether SC-008 (006) should be
+restated against the guidance block rather than against total run cost remains the open
+metric-definition question R15 left, and this section does not close it.

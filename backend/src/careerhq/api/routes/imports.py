@@ -108,7 +108,7 @@ async def upload_resume(
     data = await file.read()
     if len(data) > MAX_UPLOAD_BYTES:
         raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
             detail="That file is larger than 10 MB.",
         )
 
