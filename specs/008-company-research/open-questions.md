@@ -5,7 +5,34 @@ much they block.
 
 ---
 
-## OQ-A — ~~Which MCP web-search server?~~ **CLOSED: Brave** *(preferred implementation)*
+## OQ-A — ~~Which web-search provider?~~ **REOPENED and re-closed 2026-08-30: Tavily**
+
+> **⚠️ SUPERSEDED BELOW — the vendor is now Tavily, reached over its ordinary HTTPS API.**
+>
+> **This is a plan change, not a requirements change**, exactly as the original decision said it
+> would be: `spec.md` names no vendor, so the vendor moves without a requirement moving. What the
+> product needs is that the research agent calls a **real external search tool at runtime** rather
+> than inventing sources, and one authenticated POST does that.
+>
+> **MCP was dropped with it, deliberately.** The Brave route needed a Node process, an MCP SDK and
+> a second failure mode, for no behaviour the product gains — complexity bought to satisfy a
+> reading of the requirement rather than the requirement. The rule this project already applies to
+> agent design applies here too: do not add machinery to look more agentic.
+>
+> **The security reasoning below still governs, and Tavily makes it a live obligation rather than
+> an inherited property.** Brave *cannot* return page bodies; Tavily *can*, via
+> `include_raw_content`. The paragraph below already predicted this — "one careless change routes
+> content around the guard silently" — so the adapter defends it twice: it sends
+> `include_raw_content: False` explicitly rather than trusting a default, and `_hits_from_payload`
+> reads only `title`/`url`/`content`, so a body that arrived anyway is dropped. Both are tested. If
+> either is removed, CareerHQ starts summarising text it never fetched, the SSRF guard is bypassed,
+> and FR-032 quietly degrades into comparing a model's quotation with a provider's summary — with
+> every test still green.
+>
+> The original Brave analysis is kept below because it is *why* the trust boundary is shaped this
+> way, and a future reader choosing a third provider needs it.
+
+## ~~OQ-A — Which MCP web-search server?~~ **superseded: Brave** *(original analysis, retained)*
 
 **Decided 2026-08-27. Evidence and the four-way comparison are in `research.md` R10.**
 
@@ -59,6 +86,105 @@ maturity came from aggregator sources rather than vendor pricing pages, and no s
 tested against this codebase. Confirm Brave's current limits and terms, and make one probe run,
 when the adapter is built (`plan.md` §8 step 6). If either disappoints, the fallback is already
 chosen and the spec does not move.
+
+---
+
+## OQ-J — Which synthesis model? **DECIDED 2026-08-31: Claude Sonnet 5 stays; Gemini 3.6 Flash is the validated low-cost alternative**
+
+Benchmarked on **four frozen fixtures** — identical source bytes to every model, the real
+`build_company_prompt`, the real `CompanyResearch` schema and the real `verify_excerpts` as judge.
+Companies chosen to span the shapes that matter: **Anthropic** (large, well covered), **Doctolib**
+(non-English-primary; its LinkedIn source carries 115 French-language markers), **Voyantis** (small
+private), **Zipher** (thin, and *name-ambiguous* — the corpus contains three unrelated companies).
+
+| Model | done | claims | citations | rejected | sections | billed |
+|---|---|---|---|---|---|---|
+| **Claude Sonnet 5** | 4/4 | **111** | 111 | **1 (0.9%)** | 20/20 | **$0.7272** |
+| **Gemini 3.6 Flash + optimised prompt** | 4/4 | **84** | **119** | 2 (1.7%) | 20/20 | **$0** |
+| Gemini 3.6 Flash, baseline prompt | 4/4 | 55 | 44 | 1 | 20/20 | $0 |
+| Step 3.7 Flash | 4/4 | 68 | 113 | **20 (18%)** | 19/20 | $0.1119 |
+| GPT-OSS-20B | 3/4 | 27 | 72 | **30 (42%)** | 12/15 | $0.0049 |
+| Nemotron 3 Super `:free` | **0/4** | — | — | — | — | $0 |
+| Groq (any model) | **0/4** | — | — | — | — | $0 |
+
+**The rejection column is the one that decides this**, and it is why schema validity is not a
+sufficient test. Every model above shows 0 uncited facts and 0 unknown source ids — but only
+*because* `verify_excerpts` stripped the bad citations first. GPT-OSS-20B fabricated **more
+citations than it got right** on the largest fixture; without FR-032 it would have produced a
+confident, well-formed brief in which nearly half the quotations were invented, and nothing would
+have flagged it. This is the clearest evidence the slice has that the verbatim check earns its keep.
+
+**Two candidates failed structurally rather than on quality.** Nemotron `:free` on OpenRouter
+returned nothing in over 30 minutes of queueing. **Groq is capped at 8,000 tokens/minute on every
+standard model** (`x-ratelimit-limit-tokens: 8000`), while our prompts are 9,000-30,000 tokens — the
+*smallest* fixture exceeds a whole minute's allowance, and a single request into a verified-empty
+window is still refused as `Request too large`. Groq is built for small, frequent requests; this
+workload is one large one. Only `groq/compound` has a higher cap, and it is Groq's *agentic* system
+with its own web search, which would bypass Tavily → SourceFetcher → the SSRF guard entirely and
+dismantle the trust boundary the slice is built on.
+
+**Decision: `anthropic/claude-sonnet-5` remains the production default.** A cold research run costs
+~$0.17 **once per employer**, reused across every application to it inside the 30-day window
+(OQ-E). The saving from switching is cents on an action a user triggers rarely, and it is paid for
+in the density of exactly the briefs that are hardest to replace — small private companies, where
+the brief *is* the research.
+
+**Gemini 3.6 Flash with the optimised prompt is the validated alternative**, for a deployment
+without an Anthropic budget: 76% of Claude's claims, **107% of its citations**, more distinct
+sources cited than Claude (20 vs 18), all five sections, 1.7% rejection, half the latency, $0.
+Selected by configuration alone — `llm_model_research_synthesise_company` — which is how every model
+in that table ran, with no code change and nothing provider-specific in `application/`.
+
+**Two caveats that must travel with the recommendation.** Google's free tier may use submitted
+content to improve their products: acceptable for public company pages, **not** for anything
+profile-shaped. And **LiteLLM prices Gemini from its paid-rate table regardless of actual billing**,
+so `Usage.cost` — the Principle V audit record — would systematically overstate spend, and the same
+figure feeds slice 007's ceiling. Unresolved, deliberately: see the follow-up below.
+
+### The optimised prompt — **candidate, not yet adopted**
+
+Density was a *prompting* problem, not a capability ceiling. The shipped prompt says "Summarise, and
+quote only the passage that carries a claim" and never says **how much** to extract; Claude reads
+that as "be thorough", Gemini as "be brief", and nothing adjudicates. Adding ~2,300 characters of
+guidance moved Gemini from 50% to 76% of Claude's claims and **tripled** its citations, with **zero**
+near-duplicate claims — the gain is evidence per claim, not padding.
+
+Two blocks, inserted before *"How to make claims"*:
+
+* **`## How much to extract`** — extract every materially useful fact rather than summarising;
+  enumerate the particulars most often omitted (people, named customers, distinct products, numbers
+  and dates, locations, technology); prefer several specific claims to one general one; **cite every
+  source supporting a fact, not just one**; **state contradictions explicitly rather than silently
+  choosing**; fill all five sections with real content.
+* **`## The one thing that overrides all of the above`** — never invent to raise the count; a
+  fabricated quotation is discarded and is worse than a missing claim; never promote an `inference`
+  to a `fact`; if the sources are thin, a short honest profile is the correct output.
+
+That second block is why integrity held while density rose, and it must not be dropped if the first
+is adopted.
+
+**It produced the single most valuable output of the whole benchmark**, which no model managed
+otherwise — *including Claude at 2.4x the price*. On the Zipher fixture it read the two irrelevant
+sources, recognised them as different companies, and told the reader:
+
+> "The Kansas metal manufacturer Zephyr Products, Inc. and the UK printer manufacturer Zipher Ltd
+> are separate companies that should not be confused with the AI data infrastructure startup
+> Zipher.ai."
+
+Baseline Gemini and Claude both silently ignored those sources. The behaviour came from the
+"say so when sources disagree" instruction, so that clause buys contradiction-awareness rather than
+verbosity.
+
+**Why it is a candidate and not yet the prompt.** It is a *prompt* improvement rather than a Gemini
+workaround, so it should apply to every model — a Gemini-only prompt would put provider branching
+into the synthesis path, which is what the seam exists to prevent. But it has **only been measured
+on Gemini**. Adopting it changes the production default's behaviour on an untested assumption, and
+one Claude pass to check costs ~$0.70 and was explicitly not authorised. Until that is run,
+"it would likely help Claude too" is a hypothesis.
+
+**Caveat on all figures above**: n=1 per cell, and Gemini varied 16 -> 21 claims on an identical
+fixture between runs, so treat +-20% as noise. The +53% density gain is well outside that; the
+per-company numbers are not precise.
 
 ---
 
@@ -301,6 +427,44 @@ of them.
 - **Why not unilateral**: it is a shared file, and a second SSRF implementation is a second thing to
   get wrong.
 
+#### Binding constraints on the adapter — from the `b4e60b6` security review
+
+**The entire SSRF guarantee of slice 008 rests on this adapter, which does not exist yet.** Nothing
+in the committed pipeline makes an outbound request: `SourceFetcher` is a Protocol, and
+`research_company` / `research_role` call `fetcher.fetch(url=...)` without validating anything
+themselves. That is why the review found no SSRF issue — and why every one of these is load-bearing
+the moment the adapter lands. They are constraints, not suggestions.
+
+1. **Validate the final URL after every redirect, and persist that URL.** `FetchedSource.url` is
+   written to `research_sources.url` and displayed as the citation. If the adapter returns the
+   *requested* URL rather than the one actually retrieved, a redirect makes the stored citation name
+   a page nobody read — and FR-032's excerpt check would then be verifying text against a document
+   the citation does not point at.
+2. **Re-run the guard on every hop**, for each of the up-to-`MAX_SOURCES` URLs per run. The existing
+   `fetch_posting` already does this for its single user-supplied URL; a batch entry point must not
+   quietly weaken it to a first-hop check because it now has six URLs to get through.
+3. **Do not widen the DNS-rebinding window — and close it if practical.**
+
+   ⚠️ **Corrected 2026-08-30.** An earlier version of this note claimed *"the current single-URL
+   path has no such gap"*. **That was wrong, and reading `fetch.py` disproves it.**
+   `assert_fetchable` resolves the hostname with `getaddrinfo` and then returns; `client.get()`
+   then resolves the **same name again, independently**, when it opens the connection. Nothing
+   carries the checked addresses forward. That is a textbook TOCTOU: a name whose A record is
+   public at check time can answer `169.254.169.254` or `pgvector.railway.internal` microseconds
+   later at connect time, and the guard will have approved it.
+
+   The window is **narrow** — it is one round trip wide, and exploiting it needs an attacker-run
+   DNS server with a very low TTL and the ability to win the race — but it is real, it is on the
+   shipped single-URL path today, and slice 008 makes it *N* times more likely to be met by
+   fetching up to `MAX_SOURCES` machine-chosen URLs per run instead of one URL a human typed.
+
+   The honest constraint is therefore: a batch entry point must not make this worse, and should
+   close it. **Closing it means connecting to the address that was validated rather than to the
+   name** — resolve once, check every address, then pin the connection to a checked address while
+   still sending the original `Host` header and SNI so TLS and virtual hosting keep working.
+   Documenting the window is not a fix; it was documented as absent, which was worse than not
+   documenting it at all.
+
 ### S2 — Shared web-fetching infrastructure
 
 - **008 needs**: retrieval of **untrusted public web** pages.
@@ -364,3 +528,52 @@ numbers in `research.md` R2.
 - `docs/05_Implementation_Plan.md:365-369`, the **course-requirements coverage table**, is on an
   entirely superseded numbering and maps the **graded** evaluation requirement to slice 005. That
   one is worth fixing before the table is used to argue requirement coverage.
+
+---
+
+## Security review — `b4e60b6`, **COMPLETE, no vulnerabilities found**
+
+Run 2026-08-30 against the Steps 1–5 commit, covering the four areas the pipeline actually puts at
+risk: attacker-controlled web content reaching model prompts, citation and evidence handling, the
+SSRF boundary, and persistence.
+
+**Result: no security vulnerabilities.** Three candidates were raised and all three were rejected on
+independent review, each at confidence 2/10 against a ≥8 bar:
+
+| Candidate | Why rejected |
+|---|---|
+| Excerpt check satisfiable by a one-word quote | No boundary crossed; the path is prompt injection end to end, and an attacker who controls the page can place the fabricated sentence *on* it and have it quoted verbatim — so a length floor raises cost, it does not close a hole |
+| `interpretation` / `inference` skip excerpt verification | This is the documented contract (FR-029), stated in `_check_claim`'s own docstring. `CitationReport.examined` already exists to stop a checker that walked nothing reading as clean |
+| Unescaped structural delimiters in prompts | Attribution laundering is already blocked because source ids are **ours**, not the page's; synthesis has no tool use and no outbound channel |
+
+**What the review confirmed positively**, and what must therefore stay true: `SearchHit` carries no
+page content; source ids are assigned by us and never read from a page; every prompt frames fetched
+text as data with no authority; synthesis makes one completion call with no tool use; all new
+queries use bound parameters, with `sa.text()` in `0019` only for literal index predicates; and both
+snapshot tables are `user_id`-scoped with every read reached through an already-owned `Company` or
+`Application`, so no cross-user path exists.
+
+**One forward-looking note beyond S1**: reads are scoped by traversing an owned object rather than
+filtering on `user_id`. That is safe now and matches the codebase, but once routes accept ids a
+defence-in-depth `user_id` filter is worth adding.
+
+## Deferred correctness follow-ups — **not security**, and deliberately not acted on
+
+Both surfaced during the `b4e60b6` review and were judged robustness rather than vulnerability. They
+are recorded because a rejected security finding is easy to lose, and neither is wrong to fix.
+
+- **Minimum excerpt length.** `Evidence.excerpt` carries only `min_length=1`, and the verbatim check
+  is an unanchored substring test after whitespace collapse — so `"the"` matches almost any page.
+  The module docstring claims the check "defeats citation laundering", which overstates what a
+  one-word excerpt is defeated by. A length-and-word-count floor belongs in **both**
+  `Field(description=...)` and the validator, per the slice 005 rule that a validator-only rule is
+  never shown to the model. **Cannot be fixed by a threshold alone** — an attacker controlling the
+  page can supply a long quotable sentence — so this is a cost increase, not a fix, and should be
+  described that way when it is done.
+- **`rests_on` referential closure after rejection.** `_check_section` removes rejected claims but
+  leaves surviving claims' `rests_on` untouched, so an `interpretation` can cite a claim id that is
+  no longer in the persisted brief. The reader cannot tell that dangling reference from a sound one.
+  Resolving `rests_on` against the surviving ids — and deciding whether an orphaned interpretation is
+  dropped or relabelled with a recorded reason — is the fix.
+
+Neither is scheduled. Neither blocks Step 6.

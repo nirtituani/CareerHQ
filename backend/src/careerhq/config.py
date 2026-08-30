@@ -172,12 +172,22 @@ class Settings(BaseSettings):
     llm_model_tailor_revise_escalated: str = "anthropic/claude-opus-5"
     # -- Slice 008: company research -----------------------------------------
     #
-    #: Sonnet. Layer 1 summarises retrieved pages and quotes them; it is
-    #: output-heavy but the judgement is shallow — no grounding decision, no
-    #: release-blocking verdict. Opus is reserved for the nodes whose failure is
-    #: a blocker, which here is nothing: the citation guarantee is a
-    #: deterministic string check, not a model's opinion (FR-032).
-    llm_model_research_synthesise_company: str = "anthropic/claude-sonnet-5"
+    #: **Gemini 3.6 Flash, chosen on measurement** (OQ-J). Benchmarked against
+    #: Claude Sonnet 5, Step 3.7 Flash, GPT-OSS-20B, Nemotron and Groq on four
+    #: frozen fixtures — identical source bytes, the same prompt, the same schema,
+    #: and `verify_excerpts` as the judge. With the `v2-dense` prompt it reaches
+    #: 76% of Sonnet's claims and **107% of its citations**, cites more distinct
+    #: sources than Sonnet did, fills all five sections, and holds a 1.7% citation
+    #: rejection rate — against 18% for Step and 42% for GPT-OSS-20B, whose
+    #: fabrications only the verbatim check caught.
+    #:
+    #: Sonnet remains the density leader and is one setting away; nothing about
+    #: this choice is structural. **Two caveats travel with it**: Google's free
+    #: tier may use submitted content to improve their products, which is
+    #: acceptable for public company pages and *not* for anything profile-shaped;
+    #: and LiteLLM prices Gemini from its paid-rate table regardless of actual
+    #: billing, so `Usage.cost` overstates spend on a free-tier key.
+    llm_model_research_synthesise_company: str = "gemini/gemini-3.6-flash"
     #: Haiku. Layer 2's query planner is the cheapest call in the pipeline and
     #: the least demanding: it maps a role and its requirements onto search
     #: terms, with short output and no citation, tier or grounding obligation. It
@@ -206,6 +216,16 @@ class Settings(BaseSettings):
     #: of reaping a live run is a lost paid run, and the cost of waiting is a
     #: button that stays disabled a little longer.
     research_max_duration_seconds: int = 900
+    #: Tavily, the web-search tool the research agent actually calls (FR-003).
+    #: **Optional**: absent means web search is not configured, and
+    #: `TavilySearch` refuses rather than pretending to search — a research run
+    #: with no sources must fail loudly, because a brief synthesised from nothing
+    #: is a fabrication wearing a clean bill of health.
+    #:
+    #: `SecretStr` so `get_settings()`'s error path redacts it automatically:
+    #: that redaction is driven off the annotation rather than off a list of
+    #: names, so a new secret is covered without anyone remembering to add it.
+    tavily_api_key: SecretStr | None = None
     # -- Slice 007: evaluation ------------------------------------------------
     #
     #: **Opus, and set explicitly rather than left to fall back.** `docs/08` §5.2

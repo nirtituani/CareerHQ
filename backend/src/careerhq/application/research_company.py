@@ -53,6 +53,14 @@ TASK_SYNTHESISE_COMPANY = "research_synthesise_company"
 #: Which Layer 1 prompt produced a snapshot (FR-012).
 #:
 #: **Bump this whenever `_PROMPT` changes in any way that could change output.**
+#:
+#: `v2` (2026-08-31) added the extraction-density and anti-fabrication blocks.
+#: Measured on four frozen fixtures against Gemini 3.6 Flash: claims +53%,
+#: citations +170%, zero near-duplicate claims, rejection steady at 1.7% — and it
+#: produced the only cross-company disambiguation any model managed on the
+#: name-ambiguous fixture (OQ-J). The two blocks were validated **together** and
+#: must not be separated: the first raises density, the second is what stopped
+#: that becoming fabrication.
 #: It is not derived from the text — a hash would change on a typo fix and make
 #: two materially identical runs look incomparable — so it is a deliberate
 #: statement that this is a different prompt, the same posture as slice 004's
@@ -62,7 +70,7 @@ TASK_SYNTHESISE_COMPANY = "research_synthesise_company"
 #: differed are indistinguishable, and the prompts will change. Slice 006's
 #: migration `0018` exists because exactly this fact — which model produced a
 #: row — turned out to be unrecoverable after the fact.
-COMPANY_PROMPT_VERSION = "v1"
+COMPANY_PROMPT_VERSION = "v2-dense"
 
 #: How many pages one Layer 1 run may read. Bounded in code, not in a prompt
 #: (FR-004). Every extra page widens the synthesis input and, through a longer
@@ -121,6 +129,48 @@ finding; a missing one is a silence nobody can interpret.
 Lead with what the company does and what it builds — that is the primary output.
 Location, working arrangements and benefits are secondary: include them where a source
 states them, never at the expense of the sections above.
+
+## How much to extract
+
+**Extract every materially useful fact the sources contain — not a summary of them.**
+A reader should not have to open the sources afterwards to learn something important
+that was there. Aim for completeness over brevity: if a source states something a
+reader would want to know before an interview, it belongs in the profile.
+
+Concrete particulars are the most valuable and the most often omitted. Include, wherever
+a source states them:
+
+- **people** — founders, executives, their names, roles and previous companies
+- **customers and partners**, named
+- **products**, each one distinctly, with what it actually does
+- **numbers and dates** — headcount, funding rounds and amounts, valuations, revenue,
+  customer counts, growth figures, founding year, launch dates
+- **locations** — headquarters, offices, where roles are based
+- **technology, methods and stack**, where described
+
+Prefer several specific claims over one general one. "Acme raised $65M in a Series B led
+by X in March 2026" is worth more than "Acme is well funded", and both may be supported
+by the same passage.
+
+**Where several sources support the same fact, cite them all** in `evidence` rather than
+picking one — independent corroboration is information in itself.
+
+**Say so when sources disagree.** If two sources give different figures, dates or
+descriptions, do not silently choose one and do not average them. State the discrepancy
+as its own claim, quoting both, or record it as an `interpretation` naming the facts it
+rests on. A contradiction a reader would want to know about is a finding, not noise.
+
+**Fill all five sections with real content** where the sources allow it. `empty_reason`
+is for a section the sources genuinely do not cover, not for one that would take effort.
+
+## The one thing that overrides all of the above
+
+**Never invent anything to raise the count.** Every `fact` must quote a passage that
+appears WORD FOR WORD in the retrieved page; a fabricated or paraphrased quotation is
+discarded automatically and is worse than a missing claim. Do not stretch a source to
+cover a claim it does not make, do not merge two sources into a fact neither states, and
+do not promote an `inference` to a `fact` because it sounds better. If the sources are
+thin, a short honest profile is the correct output.
 
 ## How to make claims
 
