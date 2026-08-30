@@ -679,3 +679,57 @@ export function versionDocumentUrl(versionId: string): string {
 export function getTailoringRun(versionId: string): Promise<TailoringRun> {
   return request<TailoringRun>(`/api/versions/${versionId}/run`);
 }
+
+/* -- Company research (slice 008) ---------------------------------------- */
+
+export type ResearchClaim = {
+  id: string;
+  text: string;
+  tier: "fact" | "interpretation" | "inference";
+  evidence: { source_id: string; excerpt: string }[];
+  rests_on: string[];
+};
+
+export type ResearchSection = {
+  claims: ResearchClaim[];
+  empty_reason: string | null;
+};
+
+export type ResearchSource = {
+  source_id: string;
+  url: string;
+  title: string | null;
+  fetch_status: "retrieved" | "failed" | "refused";
+  excerpt: string | null;
+};
+
+export type CompanyResearch = {
+  snapshot_id: string;
+  company: string;
+  status: "running" | "succeeded" | "failed";
+  failure_reason: string | null;
+  retrieved_at: string;
+  /** Derived at read time, never stored — a row keeps ageing. */
+  freshness: "fresh" | "stale";
+  sections: Record<string, ResearchSection>;
+  sources: ResearchSource[];
+};
+
+export type ResearchStarted = {
+  snapshot_id: string;
+  status: string;
+  /** True when a fresh snapshot already existed and nothing was spent (FR-013). */
+  reused: boolean;
+};
+
+/** Start research, or get back the snapshot already worth reusing. */
+export function startResearch(applicationId: string): Promise<ResearchStarted> {
+  return request<ResearchStarted>(`/api/applications/${applicationId}/research`, {
+    method: "POST",
+  });
+}
+
+/** `null` is an answer: this employer has not been researched yet. */
+export function getResearch(applicationId: string): Promise<CompanyResearch | null> {
+  return request<CompanyResearch | null>(`/api/applications/${applicationId}/research`);
+}

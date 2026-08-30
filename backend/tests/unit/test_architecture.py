@@ -112,6 +112,18 @@ def test_the_application_layer_imports_no_provider_sdk() -> None:
     from being undone by whoever finds the obvious library first. A forbidden
     name that nothing imports costs nothing and refuses the undo.
 
+    **Widened again in slice 008, for a different reason than the first two.**
+    `httpx`, `requests`, `aiohttp`, `mcp` and `tavily` are not ways of reaching a
+    *model* — they are ways of reaching the *internet*. Slice 008's entire trust
+    story is that the search provider returns URLs and snippets and CareerHQ
+    fetches the pages itself, through the SSRF guard in
+    `infrastructure/jobs/fetch.py`. A use case that imported `httpx` directly
+    could retrieve a page without the address check, the per-hop redirect
+    re-check or the peer verification, and hand it to a model — and
+    `SearchHit`'s no-page-content boundary would still *look* intact while being
+    routed around entirely. The adapters live under `infrastructure/research/`,
+    which this walk deliberately does not cover.
+
     **The count assertion is not decoration.** A guard with nothing to examine
     passes forever, and this project has shipped that failure four times — a
     route enumeration examining zero routes, a theme scan that never existed, an
@@ -133,6 +145,16 @@ def test_the_application_layer_imports_no_provider_sdk() -> None:
         "torch",
         "transformers",
         "huggingface_hub",
+        # Slice 008: reaching the internet. See the docstring — a third way out
+        # of this layer, and it leads outward rather than to a model. `mcp` is
+        # listed although nothing imports it, for the same reason the PyTorch
+        # names are: an MCP route was considered and dropped, and a rejection
+        # recorded only in prose is one import from being undone.
+        "httpx",
+        "requests",
+        "aiohttp",
+        "mcp",
+        "tavily",
     )
     offenders: dict[str, list[str]] = {}
     examined = 0

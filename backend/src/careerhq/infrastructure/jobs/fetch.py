@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import ipaddress
 import socket
+from dataclasses import dataclass
 from urllib.parse import urlparse
 
 import httpx
@@ -68,8 +69,16 @@ def _is_public(address: str) -> bool:
         return False
 
 
-def assert_fetchable(url: str) -> None:
-    """Raise `UnsafeUrlError` unless `url` is safe to request. No I/O but DNS."""
+def assert_fetchable(url: str) -> set[str]:
+    """Raise `UnsafeUrlError` unless `url` is safe to request. No I/O but DNS.
+
+    **Returns the addresses it checked**, so a caller can verify that the
+    connection it later opens actually reached one of them. Resolving here and
+    then connecting by name resolves *twice*, and a name that answered publicly
+    the first time can answer `169.254.169.254` the second — a TOCTOU that has
+    been on this path since it was written. Returning the set is what lets
+    `fetch_url` close it. Existing callers ignore the value and are unaffected.
+    """
     parsed = urlparse(url.strip())
 
     if parsed.scheme.lower() not in ALLOWED_SCHEMES:
@@ -91,15 +100,65 @@ def assert_fetchable(url: str) -> None:
         # reached would turn the guard into a way of mapping the network.
         raise UnsafeUrlError("That address is not reachable from CareerHQ.")
 
+    return resolved
 
-async def fetch_posting(url: str) -> str:
-    """Return the HTML at `url`, or raise `JobFetchError` saying why not.
 
-    Redirects are followed manually, one hop at a time, because a permitted URL
-    that redirects to `169.254.169.254` would otherwise walk straight through
-    the guard — the check has to run again on every hop, not only the first.
+def _assert_peer_was_checked(peer: str | None, checked: set[str]) -> None:
+    """Refuse a connection that reached an address the guard never approved.
+
+    The second half of the DNS-rebinding fix. `assert_fetchable` decides which
+    addresses are acceptable; this runs once the socket is open and **before a
+    single byte of body is read**, and refuses when the address actually reached
+    is not among them.
+
+    **An unknown peer is refused, not assumed safe.** If the transport cannot say
+    who it connected to, the property cannot be verified — and an unverifiable
+    connection is precisely the case this exists for.
+
+    **The message names nothing**, matching `assert_fetchable`: saying which
+    address was reached would turn the guard into a way to map the network.
     """
-    assert_fetchable(url)
+    if peer is None or peer not in checked or not _is_public(peer):
+        raise UnsafeUrlError("That address is not reachable from CareerHQ.")
+
+
+@dataclass(frozen=True, slots=True)
+class Retrieved:
+    """One page, and **the URL it actually came from**.
+
+    `url` is the address after every redirect, not the one requested. Slice 008
+    persists it as the citation a reader can click, so returning the requested
+    URL for a page that redirected would name a document nobody read — and
+    FR-032's verbatim check would then be verifying an excerpt against a page the
+    citation does not identify.
+
+    Frozen and named rather than a bare tuple: both fields are strings, and
+    swapping them would stay silent until someone followed a citation.
+    """
+
+    url: str
+    body: str
+
+
+async def fetch_url(url: str) -> Retrieved:
+    """Retrieve one page safely, and say **which URL it came from**.
+
+    The whole of the guard runs here, and each part answers a specific way in:
+
+    * `assert_fetchable` before the first request, and again on **every redirect
+      hop** — a permitted URL that redirects to `169.254.169.254` would otherwise
+      walk straight through a first-hop-only check.
+    * the peer address is verified against the addresses that were approved,
+      **while the connection is open and before any body is read**, which closes
+      the rebinding window between resolving a name and connecting to it.
+    * the returned `Retrieved.url` is `current` — the address after the last
+      redirect — because that is the page that was actually read.
+
+    Introduced for slice 008, which fetches machine-chosen URLs and *publishes*
+    the URL it fetched as a citation. `fetch_posting` keeps its old signature and
+    delegates here, so there is exactly one implementation of this guard.
+    """
+    checked = assert_fetchable(url)
     current = url
 
     async with httpx.AsyncClient(
@@ -113,43 +172,72 @@ async def fetch_posting(url: str) -> str:
     ) as client:
         for _ in range(5):
             try:
-                response = await client.get(current)
+                request = client.build_request("GET", current)
+                # Streamed so the socket is still open when the peer is checked:
+                # a completed response has already closed it, and the address
+                # would then be unavailable exactly when it matters.
+                response = await client.send(request, stream=True)
             except httpx.TimeoutException as exc:
                 raise JobFetchError("The site took too long to respond.") from exc
             except httpx.HTTPError as exc:
                 raise JobFetchError("Could not reach that address.") from exc
 
-            if response.is_redirect:
-                location = response.headers.get("location")
-                if not location:
-                    raise JobFetchError("The site redirected us nowhere.")
-                current = str(httpx.URL(current).join(location))
-                assert_fetchable(current)
-                continue
+            try:
+                stream = response.extensions.get("network_stream")
+                peer = stream.get_extra_info("server_addr") if stream is not None else None
+                _assert_peer_was_checked(peer[0] if peer else None, checked)
 
-            if response.status_code in (401, 403, 429, 999):
-                # The common case, and not an error in our code. LinkedIn
-                # answers 999 to anything that is not a browser session. The
-                # interface turns this into "paste the text instead".
-                raise JobFetchError(
-                    "This site does not allow automated access. Paste the posting text instead."
-                )
-            if response.status_code >= 400:
-                raise JobFetchError(f"The site returned an error ({response.status_code}).")
+                if response.is_redirect:
+                    location = response.headers.get("location")
+                    if not location:
+                        raise JobFetchError("The site redirected us nowhere.")
+                    current = str(httpx.URL(current).join(location))
+                    # Re-checked per hop, and the new address set replaces the
+                    # old one — the next connection is verified against where
+                    # *this* hop said to go, not where the first one did.
+                    checked = assert_fetchable(current)
+                    continue
 
-            if len(response.content) > MAX_BYTES:
-                raise JobFetchError("That page is too large to read.")
+                if response.status_code in (401, 403, 429, 999):
+                    # The common case, and not an error in our code. LinkedIn
+                    # answers 999 to anything that is not a browser session. The
+                    # interface turns this into "paste the text instead".
+                    raise JobFetchError(
+                        "This site does not allow automated access. Paste the posting text instead."
+                    )
+                if response.status_code >= 400:
+                    raise JobFetchError(f"The site returned an error ({response.status_code}).")
 
-            return response.text
+                await response.aread()
+                if len(response.content) > MAX_BYTES:
+                    raise JobFetchError("That page is too large to read.")
+
+                return Retrieved(url=current, body=response.text)
+            finally:
+                await response.aclose()
 
     raise JobFetchError("That address redirected too many times.")
+
+
+async def fetch_posting(url: str) -> str:
+    """Return the HTML at `url`, or raise `JobFetchError` saying why not.
+
+    **Unchanged for its callers**, and deliberately a thin wrapper: slice 003's
+    extraction path wants the body and has no use for the final URL, while slice
+    008 needs both. Two entry points over one implementation, rather than two
+    implementations — a second SSRF guard is a second thing to get wrong, which
+    is why S1 was a coordination item instead of a slice-008 file.
+    """
+    return (await fetch_url(url)).body
 
 
 __all__ = [
     "ALLOWED_SCHEMES",
     "MAX_BYTES",
     "JobFetchError",
+    "Retrieved",
     "UnsafeUrlError",
     "assert_fetchable",
     "fetch_posting",
+    "fetch_url",
 ]
