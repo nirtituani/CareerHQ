@@ -38,6 +38,28 @@ Backend and frontend both report `SUCCESS` on that commit.
 > `anthropic/claude-sonnet-5` while the Review call ran on Opus at 5x the input price. Cosmetic,
 > but it understates cost attribution.
 
+> ## T084 is COMPLETE — the real JobTracker history is in production
+>
+> Slice 003 is **108 / 109**; only T083 remains. The author's real export — 96 rows — was imported
+> through the live API from their own authenticated browser session: **96 imported, 0 skipped, 0
+> rejected, 6 notices**. Production now holds **97 applications** and **90 companies**, with
+> **96/96** dates persisted and **96/96** rows carrying full import provenance.
+>
+> **Rejection arrived as a status value, which is what the task was about.** **63 rows** keep their
+> original label while normalizing to `rejected`, across 4 distinct labels — and the deployed
+> schema still has **zero columns named `rejected`**.
+>
+> **Two things the synthetic fixture could not prove**: those 63 real reconciliations, and **6
+> unrecognised status labels** confirming R8 Finding 3 that custom statuses are the common case.
+>
+> **Additive only.** The application carrying the T088 run still reads `import_source = NULL` with
+> an `updated_at` ten days older than the import. The existing Cellebrite company was **reused**,
+> not duplicated; there are now two Cellebrite *applications* — manual and imported — which is
+> correct, and **no deduplication logic was added to hide it**.
+>
+> ⚠️ **The export must never enter this repository.** It is real employment history and this repo
+> is public. It was rehearsed first on a disposable local database, which was dropped afterwards.
+
 > ## Slice 006 item D is COMPLETE
 >
 > `verify_corpus_ingested()` re-reads the corpus files and re-queries the database after ingestion,
@@ -122,13 +144,13 @@ deliberately has no `top_k`, no scores and no embedding parameters.
 |---|---|---|
 | 001 platform-foundation | 69 / 69 | none |
 | 002 deployment | 52 / 52 | none |
-| 003 data-foundation | **107 / 109** | **T083** (import screen) and **T084** (observed import against a real export) |
+| 003 data-foundation | **108 / 109** | **T083** (the import screen) — deferred by choice, not blocked |
 | 004 match-analysis | 89 / 89 | none |
 | 005 resume-tailoring | **101 / 101** | none — **T088 done 2026-08-30**, see the header |
 | 006 document-retrieval | **57 / 57** | none — T048 and T057 ticked 2026-08-30; both were already done |
 | 007 evaluation-benchmark | **49 + 1 partial / 50** | **T047** — the real sanity set is built and isolated, deliberately unpopulated |
 | 008 company-research | **no `tasks.md`** | agent2's, in progress. It never went through `/speckit-tasks`, so it cannot be counted here |
-| **Total** | **524 / 527** | 3 — T083, T084, T047 |
+| **Total** | **525 / 527** | 2 — T083 and T047, both open by choice |
 
 > ⚠️ **Count these with `grep -cE '^- \[[xX]\]'`.** Slice 005 marks its 100 done tasks `- [X]`
 > with a **capital X** and every other slice uses lowercase, so `grep -c '^- \[x\]'` reports
@@ -942,48 +964,41 @@ previous revision are all **superseded** — they described a state where slice 
 blocking. **None of that is true any more.** They are deleted rather than kept, because a next-steps
 list that mostly describes finished work stops being read.
 
-**Three tasks remain open across the whole project**, and only one of them is blocked.
+**Two tasks remain open across the whole project — T083 and T047 — and neither is blocked.**
+Both are open by choice. T084 was completed in production on 2026-08-30; slice 003 is 108 / 109.
 
-### A — **T084: import a real JobTracker export** · **BLOCKED, and not on the data**
+### A — **T083: the import screen** · **the only slice-003 task left** · deferred by choice
 
-The export exists — 18 columns matching R8 exactly, 99 rows — but **there is no way to run it**:
-the import has no UI (that is T083, not started), and the API needs an authenticated session that
-only the owner has. So T084 waits on **either** T083 **or** the owner driving
-`POST /api/applications/import/jobtracker` themselves with their own session.
+**No longer a blocker for anything.** It was the presumed route to T084, but T084 has since been
+run without it. What remains is the affordance itself: today an import can only be started by
+someone willing to call the endpoint directly. Low value for a one-off import, real value if
+importing ever becomes something a person does more than once.
 
-**The file is real, unscrubbed personal history and must never enter this repository.** The
-committed fixture is synthetic precisely so that it can be committed; this one cannot.
-
-### B — **T083: the import screen** · owner: the author · unblocked
-
-The last slice-003 task, and the thing that unblocks T084. Low value on its own — a UI for a
-one-off import — but it is the cheapest route to T084.
-
-### C — **T047: populate the real sanity set** · owner: the author · deliberately open
+### B — **T047: populate the real sanity set** · owner: the author · deliberately open
 
 Built, isolated, gitignored, PII-scanned and **deliberately unpopulated**: filling it means putting
 a real CV on disk. Spends no money. Open by choice rather than by omission.
 
-### D — **Off-machine backup of the paid evaluation evidence** · owner: the author · see §5A
+### C — **Off-machine backup of the paid evaluation evidence** · owner: the author · see §5A
 
 Still the largest unmanaged risk in the project. The only backup is dated 2026-08-29, sits **on the
 same machine as the volumes**, and predates both the two T052 arms and the entire Slice 007
 benchmark. Production now holds $0.352047 of its own paid evidence as well.
 
-### E — **`HTTP_413_REQUEST_ENTITY_TOO_LARGE` is deprecated** · small, deliberately deferred
+### D — **`HTTP_413_REQUEST_ENTITY_TOO_LARGE` is deprecated** · small, deliberately deferred
 
 Starlette prefers `HTTP_413_CONTENT_TOO_LARGE`; same numeric value, so nothing is broken. **Two call
 sites must move together** — `api/routes/imports.py`, which owns `MAX_UPLOAD_BYTES`, and
 `api/routes/applications.py`, which imports it. Left alone during slice 003 because an unrelated
 cleanup inside a slice is how a diff stops being reviewable.
 
-### F — **The tailoring UI reports one model for a run that used two** · small · **new 2026-08-30**
+### E — **The tailoring UI reports one model for a run that used two** · small · **new 2026-08-30**
 
 T088 measured Plan and Draft on Sonnet and Review on **Opus**, but the interface showed a single
 `anthropic/claude-sonnet-5`. Cosmetic, and it understates cost attribution on the one screen where
 a person sees what a run cost.
 
-### G — **Slice 008** · **agent2's, actively in progress** · not ours to touch
+### F — **Slice 008** · **agent2's, actively in progress** · not ours to touch
 
 Tavily, direct API. See the header for the ownership boundary.
 

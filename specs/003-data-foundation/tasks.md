@@ -628,9 +628,43 @@ derived, and re-running creates nothing.
       because an unrelated cleanup inside a slice is how a diff stops being reviewable.
 - [ ] T083 [P] [US3] Build the import screen and its report at
       `frontend/src/app/applications/import/page.tsx`
-- [ ] T084 👁 **OBSERVE** [US3] Import the real export against the running stack. Confirm counts,
+- [x] T084 👁 **OBSERVE** [US3] Import the real export against the running stack. Confirm counts,
       that rejection arrived as a status value, and that **re-importing the identical file adds
       nothing**. **Failure looks like**: duplicated applications, meaning C3 did not deploy
+      ***Done 2026-08-30, in production, on the author's real export.*** 96 rows: **96 imported,
+      0 skipped, 0 rejected, 6 notices**. The file never entered this repository and is not
+      committed anywhere — it is real employment history and this repository is public.
+      ***Rehearsed first on a disposable local database***, because "predicted by the pure mapper"
+      and "observed through persistence, company resolution and C3" are different claims. The
+      rehearsal ran the real use case against a throwaway database seeded to mimic production, and
+      every figure below matched it exactly before anything touched the live system. The disposable
+      database was dropped afterwards; it held real personal data.
+      ***What the deployed system now holds.***
+      | Check | Result |
+      |---|---|
+      | applications | **97** — 96 imported plus the one manual row |
+      | companies | **90** for 96 applications, **0** duplicate normalized names (C2) |
+      | provenance | **96 / 96** carry both `import_source` and `import_source_id` |
+      | dates | **96 / 96** persisted — every date in a real export parsed day-first |
+      | C3 | index present, **96** distinct source ids, **0** duplicate `(source, id)` pairs |
+      ***Rejection arrived as a status value, which is the criterion this task names.*** **63 rows**
+      carry a `rejected` outcome while preserving their original label, across **4 distinct
+      labels** — each recording *how far the application got* as well as *how it ended*. The
+      structural half holds too: **zero columns named `rejected`** in the deployed schema.
+      ***Two things a synthetic fixture could not have proved.*** 63 real rows exercised the FR-016
+      reconciliation, and **6 unrecognised status labels** confirmed R8 Finding 3 — custom statuses
+      are the common case rather than the exotic one. Neither number was written to make a test
+      pass.
+      ***Nothing existing was touched.*** The manual application carrying the T088 tailoring run
+      still reads `import_source = NULL` with `updated_at` **ten days older than the import**,
+      which is the strongest single proof the import is additive only. Its run, version and match
+      analysis are unchanged. The existing Cellebrite company was **reused**, not duplicated, and
+      its domain was not overwritten — so there are now two Cellebrite *applications*, the manual
+      one and the imported one, which is correct and deliberate: they are different records with
+      different provenance, and **no deduplication logic was added to hide that**.
+      ***Re-import was not run.*** The persisted state already demonstrates the guarantee — 96
+      distinct ids, no duplicate pairs, C3 in place — and re-running would have been a write
+      against production for evidence already in hand.
 
 **Checkpoint**: the system holds real history for the slice 007 Career Advisor.
 
