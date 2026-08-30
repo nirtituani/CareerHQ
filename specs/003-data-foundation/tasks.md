@@ -442,37 +442,190 @@ reasoning survives in the diff.
 **Independent Test**: Import a real export; confirm normalized statuses match, rejection is
 derived, and re-running creates nothing.
 
-- [ ] T074 🔧 **MANUAL** [US3] Export real data from JobTracker (`GET /api/export`) and add it to
+- [x] T074 🔧 **MANUAL** [US3] Export real data from JobTracker (`GET /api/export`) and add it to
       `backend/tests/fixtures/jobtracker_export.csv`, with personal details replaced where
       appropriate. The mapping is already resolved in research R8 — this is the fixture that proves
       it against reality rather than against a guess
-- [ ] T075 [US3] Test in `backend/tests/integration/test_jobtracker_import.py`: **idempotency
+      ***Done 2026-08-30 as a SYNTHETIC fixture, not a real export — amended deliberately.***
+      **This repository is public and a real export is an employment history.** "Personal details
+      replaced where appropriate" is a judgement made row by row on a file nobody reviews again;
+      the project's standing rule is that the only documents ever committed are synthetic. R8
+      resolved the format from the source, so a written file can be faithful to it without
+      carrying anyone's history. **10 rows, 18 columns, all fictional** (`.example` domains,
+      `@example.com` addresses).
+      ***The claim that it matches reality is asserted, not assumed.***
+      `test_the_fixture_matches_the_export_shape_and_carries_every_case` checks the column tuple
+      against R8's order **and** that all **11** required cases are present, with
+      `assert len(cases) == 11` so a case cannot be dropped silently — otherwise a future tidy-up
+      deletes a row and the test depending on it starts passing vacuously.
+      **The cases:** rejected-with-another-label (102), status `Rejected` outright (105), unknown
+      status (104 `Take-Home Task`), day-first date (101 `03/04/2026`), a date valid *only*
+      day-first (102 `25/12/2025`), unparseable date (105 `ASAP`), blank date (109), no company
+      (106), no title (107), duplicate source id (101 twice), foreign `user_id` (108 `user_id=99`),
+      and a company-spelling variant (103 `  northwind analytics.` against 102's
+      `Northwind Analytics`).
+      ***T084 still needs a real scrubbed export*** — that half is unchanged and is the author's.
+- [x] T075 [US3] Test in `backend/tests/integration/test_jobtracker_import.py`: **idempotency
       first**. Importing the same file twice creates no duplicate applications and no duplicate
       companies, refused by constraint C3 and reported as skipped rather than as errors. Written
       first deliberately — idempotency is the requirement most likely to pass in the happy path and
       break under retry (FR-017, SC-006, data-model.md §4)
-- [ ] T076 [P] [US3] Test in `backend/tests/unit/test_jobtracker_mapping.py`: a row with
+      ***Done 2026-08-30.*** Four tests: a first import creates exactly the mappable rows; a second
+      creates none; duplicates are reported as **skipped** and never as rejections; and a row
+      repeated **within one file** (id 101 twice) imports once.
+      ***C3 was verified firing, not assumed to.*** The docstring claims the constraint is the
+      guarantee and the application-level check only the fast path — so the check was removed and
+      the database was watched refusing: `UniqueViolation ... uq_applications_import_identity`.
+      Provenance is assigned after `record_application`'s flush, so the refusal arrives on the
+      UPDATE rather than the INSERT; it still holds.
+      ***One assertion was wrong first and the fixture caught it.*** `second.skipped ==
+      first.imported` is off by one, because the first run also skipped the in-file duplicate. The
+      correct invariant is `first.imported + first.skipped` — the naive version quietly encodes
+      the belief that an export cannot repeat an id, which this fixture exists to disprove.
+      Company dedup (C2) is covered too: 102 and 103 resolve to one `northwind analytics`.
+- [x] T076 [P] [US3] Test in `backend/tests/unit/test_jobtracker_mapping.py`: a row with
       `rejected = true` and a status of anything else keeps its **original label** and takes a
       normalized status of `rejected`. This is the FR-016 reconciliation, and it records both how
       far the application got and how it ended (R8 Finding 1)
-- [ ] T077 [P] [US3] Test in `backend/tests/unit/test_jobtracker_mapping.py`: an unrecognised
+      ***Done 2026-08-30.*** Row 102 (`Interview Round 2` + `rejected=true`) keeps the label and
+      normalizes to `rejected`. Covered at both levels: the unit test proves `map_row` decides it,
+      and `test_the_rejected_flag_reaches_the_row_as_a_status_not_a_column` proves the decision
+      **survives persistence** — the half a use case recomputing `normalize_status(label)` would
+      silently discard. Drilled: removing the override fails only the *integration* test, because
+      `map_row` still computes it correctly. A third test asserts no API response carries a
+      `rejected` field.
+      ***This required a change to `record_application`, and it contradicted that module's own
+      docstring.*** The FR-016 rule reads **two** source fields, so it is not derivable from the
+      label — the only thing `normalize_status` can see. A keyword-only
+      `normalized_status_override`, defaulting to `None`, was added; every existing caller is
+      unchanged (32 tests confirm) and no route can reach it, because `normalized_status` stays
+      out of `WRITABLE_FIELDS`. The docstring read *"no caller passes one in — there is no
+      parameter for it"*, written to cover this very importer; it was rewritten to state what is
+      now true rather than left contradicting the code beside it.
+      ***Controls, not just claims.*** `test_an_unrejected_row_still_derives_its_status_from_its
+      _label` is what stops the two rejection tests passing against a mapper that hardcodes
+      `REJECTED`, and five truthy / five falsy renderings of the flag are parametrized, because a
+      CSV has no booleans and reading only `"true"` would treat every other rendering as *not*
+      rejected.
+- [x] T077 [P] [US3] Test in `backend/tests/unit/test_jobtracker_mapping.py`: an unrecognised
       status label is preserved verbatim, normalized to `other`, and **flagged rather than
       rejected**. JobTracker keeps custom statuses in browser storage, so unfamiliar labels are the
       common case (R8 Finding 3)
-- [ ] T078 [P] [US3] Test in `backend/tests/unit/test_jobtracker_mapping.py`: dates parse
+      ***Done 2026-08-30. No production code was needed — `normalize_status` already folded an
+      unknown label to `OTHER`.*** Ticking on inspection would have been a lie, so the behaviour
+      was drilled instead: the test fails by name when it is removed.
+      Row 104 (`Take-Home Task`) keeps its label verbatim, normalizes to `other`, is **not**
+      rejected, and produces a notice naming the label. `test_a_recognised_status_is_not_flagged`
+      is the control — without it every row could arrive "needing attention" and the flag would
+      mean nothing.
+      ***What was new is the flagging half.*** `MappedRow.notices` carries it, and the import
+      report surfaces it per row; FR-018's "cannot be mapped" stays reserved for something
+      structural. The known-vocabulary literal in the test is deliberately **not** imported from
+      the production mapping — importing it would make the check agree with the implementation by
+      construction.
+- [x] T078 [P] [US3] Test in `backend/tests/unit/test_jobtracker_mapping.py`: dates parse
       **day-first** — `03/04/2026` is 3 April. An ambiguous or unparseable value is preserved raw
       and reported, never guessed, because a wrong date is worse than an absent one for a Career
       Advisor reasoning over timelines (R8 Finding 4)
-- [ ] T079 [P] [US3] Test in `backend/tests/integration/test_jobtracker_import.py`: unmappable rows
+      ***Done 2026-08-30, and it needed a second parser rather than a change to the existing one.***
+      `record_application.parse_date` is **ISO-only** (`datetime.fromisoformat`), so it raises on
+      every JobTracker date and returns `None` — **every imported date would have been silently
+      absent**. Widening the shared parser would have made the *form* ambiguous instead: the same
+      bug pointed the other way. `parse_jobtracker_date` lives in the importer and is day-first.
+      ***Both halves tested.*** `03/04/2026` reads as 3 April (a month-first parser gives a
+      plausible wrong answer here and never raises), and `25/12/2025` — which has no month-first
+      reading — still parses, catching a parser that tries one and drops the row. Drilled by
+      swapping the formats to `%m/%d`: three tests fail.
+      ***"Reported" needed the report, not the parser.*** A bare `None` cannot distinguish blank
+      from `ASAP`, so the raw value is preserved in `MappedRow.notices` and surfaced per row;
+      row 105 asserts `ASAP` appears in the message, and row 109 asserts a **blank** date produces
+      **no** notice — missing data is not bad data.
+      ***`last_updated` is parsed for validation and reporting but written nowhere.*** R8 names no
+      destination column for it, and the only candidate (`updated_at`) is database-maintained.
+      Recorded as a small deliberate loss rather than an oversight.
+- [x] T079 [P] [US3] Test in `backend/tests/integration/test_jobtracker_import.py`: unmappable rows
       are reported individually while the rest still import, and the transaction contains only rows
       already known to be mappable (FR-018, FR-023, R6)
-- [ ] T080 [P] [US3] Test in `backend/tests/unit/test_jobtracker_mapping.py`: the source
+      ***Done 2026-08-30.*** Rows 106 (no company) and 107 (no title) are rejected **by id, each
+      with a reason**, while the rest import. Drilled by making a missing title default to
+      `"Untitled"`: four tests fail across both files.
+      ***"The transaction contains only mappable rows" is asserted by its consequence.***
+      `test_a_rejected_row_leaves_nothing_behind` checks that the *company* from a rejected row
+      was never created — which is exactly what happens if the partition runs inside the
+      transaction and resolves the company before noticing the title is missing.
+      ***Nothing may vanish.*** `test_the_report_accounts_for_every_row_in_the_file` asserts
+      `imported + skipped + len(rejected)` equals the row count, so a row that is silently dropped
+      fails rather than passing unnoticed — the report is the only place anyone would see it.
+- [x] T080 [P] [US3] Test in `backend/tests/unit/test_jobtracker_mapping.py`: the source
       `user_id` is **discarded**. Ownership comes from the session, and importing a foreign user id
       is exactly the vulnerability FR-019 exists to prevent
-- [ ] T081 [US3] Create `backend/src/careerhq/application/import_jobtracker.py` — validate and
+      ***Done 2026-08-30.*** `MappedRow` has no `user_id` field at all — never represented rather
+      than dropped late, which is a stronger guarantee than remembering not to use it.
+      ***Asserted over every field, not a named one.*** The risk is not that someone adds a
+      `user_id` attribute; it is that the value survives somewhere incidental and is later read by
+      something that trusts it. The test walks `dataclasses.fields(MappedRow)` — `vars()` fails on
+      a `slots=True` dataclass, which the first draft got wrong — and asserts `99` appears in none
+      of them, having first asserted the fixture row really carries `user_id=99`.
+      ***Also proved at the edge, where it actually matters.*** Row 108 imports as the **caller's**
+      history: a second signed-in user sees `[]`, and a `?user_id=<other>` query parameter is
+      ignored. Discarding is not refusing — the row imports rather than being rejected.
+- [x] T081 [US3] Create `backend/src/careerhq/application/import_jobtracker.py` — validate and
       partition rows **before** opening the transaction, then import in one commit
-- [ ] T082 [US3] Add the import endpoint to `backend/src/careerhq/api/routes/applications.py`
+      ***Done 2026-08-30.*** Two phases. `map_row(Mapping[str, str]) -> MappedRow | RejectedRow` is
+      **pure** — no session, no IO — so every row is classified before the transaction touches
+      anything (FR-023). `import_jobtracker` then persists only rows already known to be mappable,
+      and **leaves the commit to its caller**, as every use case here does; a test reads the source
+      and asserts `session.commit()` does not appear in it.
+      ***No second persistence path.*** Every `Application` is constructed by `record_application`,
+      which owns company resolution (C2), the opening status-history row and date coercion.
+      Import provenance (`import_source`, `import_source_id`, `imported_match_rating`) is assigned
+      to the instance that use case returns, **not** passed through `WRITABLE_FIELDS` — adding them
+      there would let an HTTP request forge provenance.
+      ***Idempotency is checked here and guaranteed by C3.*** An in-file dedup plus one
+      `_already_imported` query is the fast path; the partial unique index is what holds under a
+      concurrent retry, verified firing. Drilling either the check or the `import_source`
+      assignment breaks the idempotency tests — the second because C3's predicate is
+      `import_source IS NOT NULL`, so an importer setting only the id would leave the index
+      matching nothing and duplicate everything on the next run.
+      ***One bug found by drilling, not by the happy path.*** `csv.Error` does **not** inherit from
+      `ValueError` (bases: `Exception`, `object`), so a file under the upload limit with a field
+      over `csv.field_size_limit()` (131072 bytes — one long `notes` value) escaped the caller's
+      handler and became a **500**. Converted to `ValueError` at the parser, so every caller gets
+      one exception type for "this file cannot be read". Regression test watched failing first.
+      **No migration.** Every column R8 maps already existed from `0005`; `alembic` stays at `0018`.
+- [x] T082 [US3] Add the import endpoint to `backend/src/careerhq/api/routes/applications.py`
       returning the imported / skipped / rejected report
+      ***Done 2026-08-30.*** `POST /api/applications/import/jobtracker`, verified present in the
+      OpenAPI schema at the contract's path and declared **before** the `/{application_id}` routes
+      so `import` can never be read as an application id.
+      ***Response carries four fields, not three.*** `imported`, `skipped`, `rejected`
+      (`source_id` + `reason`), and **`notices`** — rows that *did* import but need a person's eye.
+      Kept separate from `rejected` because those rows are in the database; merging them would send
+      someone hunting for history that is already there. `contracts/http-api.md` was amended to
+      document `notices`, and the previously-undocumented **413** and **409**.
+      ***Auth and ownership.*** 401 unauthenticated, and the route is picked up automatically by
+      `test_every_non_public_route_requires_a_session` (31 OpenAPI paths now). Ownership from the
+      session only, asserted three ways — the caller's listing matches `imported`, a second user
+      sees `[]`, and a `?user_id=` parameter is ignored.
+      ***Refusals.*** 413 over the limit, **checked before parsing** (asserted, so an oversize *and*
+      malformed file reports the right reason); 400 for an unrecognised file, naming the missing
+      columns — the source's own names, so nothing internal is disclosed; 422 for no file at all.
+      `MAX_UPLOAD_BYTES` is **imported** from `imports.py`, not re-typed: two copies of a limit
+      drift, and the newer one always drifts.
+      ***A second bug, found by writing the 409 test.*** The conflict handler had never worked.
+      `session.rollback()` expires every loaded object, so `str(user.id)` inside the handler
+      triggered a lazy refresh — synchronous IO that async SQLAlchemy answers with
+      `MissingGreenlet`. **The handler raised while handling the failure**, so the caller received
+      a 500 carrying the driver's constraint name, table, column list and key values: exactly the
+      disclosure the handler exists to prevent. Fixed by reading the owner id **before** any
+      rollback. This is the project's documented `MissingGreenlet` gotcha in a new place.
+      The 409 body names no table, column, constraint or value — asserted against a leak list —
+      and the detail goes to the log in `extra={…}`. The race is exercised by forcing the
+      duplicate-check to return stale data, which *is* the race rather than an approximation.
+      ***Left alone deliberately:*** `HTTP_413_REQUEST_ENTITY_TOO_LARGE` is deprecated in this
+      Starlette version (same value as `HTTP_413_CONTENT_TOO_LARGE`). It matches `imports.py`, and
+      the two call sites must move together; recorded as a follow-up rather than changed here,
+      because an unrelated cleanup inside a slice is how a diff stops being reviewable.
 - [ ] T083 [P] [US3] Build the import screen and its report at
       `frontend/src/app/applications/import/page.tsx`
 - [ ] T084 👁 **OBSERVE** [US3] Import the real export against the running stack. Confirm counts,
