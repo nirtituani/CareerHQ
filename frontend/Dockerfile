@@ -55,7 +55,40 @@ RUN echo "Building with BACKEND_URL=${BACKEND_URL:-<unset — will bake in the l
 
 FROM node:24-alpine AS runner
 WORKDIR /app
+# **`HOSTNAME=::` is what makes the container reachable, and the value here has been
+# wrong twice.** Next.js standalone binds to `process.env.HOSTNAME`, so this one
+# variable decides the socket's address family — and **Railway's private network is
+# IPv6**, which is where its healthcheck arrives.
+#
+# Four frontend deployments failed this way — `75cd8ea`, `73dca63`, `67e9d03`,
+# `9edf2f1` — each reporting `failed with service unavailable` on all 14 attempts
+# across the 5-minute window. That is a *connection* failure, never a response the
+# probe could reject, and it is why CI stayed green throughout: the image builds and
+# the container starts, it simply cannot be reached.
+#
+# **The first fix was `0.0.0.0`, and it did not work.** Docker sets `HOSTNAME` to the
+# container id, so the server had been binding one eth0 address; `0.0.0.0` correctly
+# widened that to every IPv4 address, and the very next deploy failed identically —
+# because `0.0.0.0` is **IPv4-only** and cannot accept an IPv6 connection. Measured
+# from another container over Railway's private network:
+#
+#     IPv6  fd12:2ea:b56c:1:5000:b2:2900:f513   connection refused
+#     IPv4  10.128.245.19                       connected
+#
+# `::` binds the IPv6 wildcard, which on Linux (`bindv6only=0`) serves **both**
+# families through IPv4-mapped addresses. Confirmed on a dual-stack Docker network
+# with four controlled variants of this image, changing one variable at a time:
+#
+#     HOSTNAME=0.0.0.0  -> tcp4 00000000:1F90        IPv4 307, IPv6 FAILED
+#     HOSTNAME=::       -> tcp6 0000..0000:1F90      IPv4 307, IPv6 307
+#
+# **`PORT` is deliberately not set here, and that is a measured decision rather than
+# an omission.** The same experiment ran both values with `PORT` set and unset: it
+# moves which port is listened on and has no effect whatever on the address family or
+# on reachability. Hard-coding it would only take away the platform's ability to
+# assign one — the rule `entrypoint.sh` already follows on the backend.
 ENV NODE_ENV=production \
+    HOSTNAME=:: \
     NEXT_TELEMETRY_DISABLED=1
 RUN addgroup --system --gid 1001 nodejs \
     && adduser --system --uid 1001 nextjs
@@ -63,5 +96,10 @@ COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 USER nextjs
-EXPOSE 3000
+# 8080, not 3000: the platform injects `PORT=8080` and the server honours it, so the
+# declared port has to say the same thing the process actually does. No `PORT` is set
+# here — the application already listens on what it is given, and hard-coding one
+# would take that away. This is the frontend's version of the rule the backend
+# entrypoint already follows.
+EXPOSE 8080
 CMD ["node", "server.js"]

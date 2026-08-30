@@ -87,6 +87,12 @@ async def run() -> int:
             "chunks_created": report.chunks_created,
             "chunks_deleted": report.chunks_deleted,
             "changed": report.changed,
+            # **What is actually there, not only what moved.** The four counters above
+            # are all zero for an unchanged corpus and all zero for one that was never
+            # loaded — the shape deployment `75cd8ea` shipped green. These two are what
+            # make a deploy log answer "is the corpus present" without a database session.
+            "chunks_expected": report.chunks_expected,
+            "chunks_present": report.chunks_present,
         },
     )
     return 0

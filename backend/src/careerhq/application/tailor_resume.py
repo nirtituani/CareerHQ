@@ -288,6 +288,35 @@ async def create_pending_version(session: AsyncSession, application: Application
     return version
 
 
+def _compose(*parts: str | None) -> str:
+    """Restate the stored values of one row, in order, joined by a separator.
+
+    **Adds nothing.** Every part is a column the owner's profile already holds; a
+    missing one is skipped rather than filled, so a row carrying only its required
+    field renders exactly that field and no separator. This is deliberately the
+    same shape as `analyze_match._line`, which has composed the same entities for
+    the match prompt since slice 004 — the two prompts were describing the same
+    profile differently, and only one of them was right.
+
+    The separator is `·` for the same reason it is there: it reads as *"and also"*
+    rather than as punctuation the model might take for part of a value.
+    """
+    return " · ".join(part for part in parts if part)
+
+
+def _span(start: str | None, end: str | None) -> str | None:
+    """A date range as the profile stored it, or one end, or nothing.
+
+    **Never parsed and never inferred.** These columns are text because the CV's
+    own wording is what they preserve — "10/2017", or empty when the owner
+    recorded none. Turning "2014"-"2017" into a duration would be inventing
+    precision, which is the mistake `WorkExperience.start_date` already documents.
+    """
+    if start and end:
+        return f"{start}-{end}"
+    return start or end or None
+
+
 async def _render_master(
     session: AsyncSession, profile_id: uuid.UUID
 ) -> tuple[str, list[dict[str, Any]]]:
@@ -381,6 +410,15 @@ async def _render_master(
     # The loop was three lines shorter and mypy could not type it at all, which
     # meant the one place a column name could be wrong was the one place with no
     # checking.
+    #
+    # **Composed rather than reduced to one column (T057).** These four kinds each
+    # captured a single field and dropped the rest, so a profile holding
+    # `qualification = "B.Sc. in Computer Science"` reached the model — and the
+    # exported PDF — as the bare words "Ben-Gurion University". The credential was
+    # not abbreviated, it was **never shown**: the agent cannot emphasise what it is
+    # never given, and AI-008 forbids it inventing one. `_compose` restates stored
+    # values in a stable order and **adds nothing**, which is what keeps this a
+    # rendering change rather than a claim.
     simple: list[tuple[SourceKind, list[tuple[uuid.UUID, str | None]]]] = [
         (
             SourceKind.SKILL,
@@ -396,7 +434,7 @@ async def _render_master(
         (
             SourceKind.PROJECT,
             [
-                (row.id, row.name)
+                (row.id, _compose(row.name, row.description, row.url))
                 for row in (
                     await session.execute(select(Project).where(Project.profile_id == profile_id))
                 )
@@ -407,7 +445,16 @@ async def _render_master(
         (
             SourceKind.EDUCATION,
             [
-                (row.id, row.institution)
+                (
+                    row.id,
+                    _compose(
+                        row.qualification,
+                        row.field_of_study,
+                        row.institution,
+                        _span(row.start_date, row.end_date),
+                        row.grade,
+                    ),
+                )
                 for row in (
                     await session.execute(
                         select(Education).where(Education.profile_id == profile_id)
@@ -420,7 +467,7 @@ async def _render_master(
         (
             SourceKind.CERTIFICATION,
             [
-                (row.id, row.name)
+                (row.id, _compose(row.name, row.issuer, row.year))
                 for row in (
                     await session.execute(
                         select(Certification).where(Certification.profile_id == profile_id)
@@ -433,7 +480,7 @@ async def _render_master(
         (
             SourceKind.LANGUAGE,
             [
-                (row.id, row.name)
+                (row.id, _compose(row.name, row.proficiency))
                 for row in (
                     await session.execute(select(Language).where(Language.profile_id == profile_id))
                 )

@@ -13,14 +13,17 @@ rules that run through `imports.py` run through here:
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import UTC, datetime
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Response, status
+from fastapi import APIRouter, BackgroundTasks, File, HTTPException, Response, UploadFile, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from careerhq.api.deps import CompletionClient, CurrentUser, DbSession
+from careerhq.api.routes.imports import MAX_UPLOAD_BYTES
 from careerhq.api.routes.tailoring import submission_out
 from careerhq.application.analyze_match import (
     create_pending_analysis,
@@ -28,6 +31,7 @@ from careerhq.application.analyze_match import (
     run_analysis,
 )
 from careerhq.application.extract_job import extract_job_from_text, extract_job_from_url
+from careerhq.application.import_jobtracker import import_jobtracker
 from careerhq.application.match_criteria import CREDIT, Judged, cap_bit, caps_band
 from careerhq.application.ports import StructuredCompletion
 from careerhq.application.record_application import (
@@ -49,6 +53,7 @@ from careerhq.infrastructure.database import get_session_factory
 from careerhq.infrastructure.jobs import JobFetchError
 
 router = APIRouter(prefix="/applications", tags=["applications"])
+logger = logging.getLogger("careerhq.applications")
 
 
 def _iso(value: datetime | None) -> str | None:
@@ -203,6 +208,89 @@ async def list_applications(session: DbSession, user: CurrentUser) -> dict[str, 
             }
         )
     return {"applications": out}
+
+
+@router.post("/import/jobtracker", summary="Import a JobTracker export")
+async def import_jobtracker_export(
+    session: DbSession,
+    user: CurrentUser,
+    file: Annotated[UploadFile, File()],
+) -> dict[str, Any]:
+    """Import a JobTracker CSV export as this user's history (FR-015, D2).
+
+    **Declared before the `/{application_id}` routes**, so `import` can never be read as an
+    application id. Nothing currently collides — no `POST /{application_id}` exists — but the
+    ordering is the cheap half of that guarantee and the collision would arrive as a confusing
+    422 about a malformed UUID.
+
+    **Ownership comes from the session, and the file's own `user_id` column is discarded**
+    (FR-019). A JobTracker export carries the id of whoever exported it; honouring that would
+    let anyone import rows attributed to another account, which is exactly the vulnerability
+    the rule exists to prevent. The importer never represents that field at all.
+
+    **Re-running is safe and is not an error.** Rows already imported are reported as
+    `skipped`, refused by C3 rather than by a check that could be raced. A person who is unsure
+    whether their upload worked should be able to press it again, and the honest answer is a
+    report saying nothing new arrived.
+
+    **The whole import commits or none of it does** (FR-023). Rows are classified before the
+    transaction touches anything, so an unreadable row is reported while the rest still land —
+    and a failure anywhere leaves no half-imported history behind.
+    """
+    data = await file.read()
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="That file is larger than 10 MB.",
+        )
+
+    # **Read before any rollback below, and that is not tidiness.** `session.rollback()`
+    # expires every loaded object, so `user.id` afterwards is a lazy refresh — synchronous IO
+    # that async SQLAlchemy answers with `MissingGreenlet`. The handler would then raise while
+    # handling the failure and the caller would get a 500 carrying the original driver message,
+    # which is precisely the disclosure the handler exists to prevent.
+    owner_id = user.id
+
+    try:
+        report = await import_jobtracker(session, user_id=owner_id, data=data)
+    except ValueError as exc:
+        # Nothing was written — the file is refused before the first row is examined — but the
+        # rollback is explicit, because a refused upload must leave no trace. The message is
+        # ours and names only the source's own column names, the same judgement `/extract`
+        # makes when it hands a `JobFetchError` to the browser.
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except IntegrityError as exc:
+        # C3 refused a row the pre-check believed was new, which means a second import of the
+        # same file is in flight. **The detail goes to the log and the type goes to the
+        # browser**: a driver's unique-violation text names the constraint, the table and the
+        # values. Re-running once the other import finishes reports everything as skipped.
+        await session.rollback()
+        logger.warning(
+            "jobtracker import conflicted with a concurrent import",
+            extra={"user_id": str(owner_id), "error": str(exc)},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="An import of this file is already running. Try again in a moment.",
+        ) from exc
+
+    await session.commit()
+
+    return {
+        "imported": report.imported,
+        "skipped": report.skipped,
+        "rejected": [
+            {"source_id": rejection.source_id, "reason": rejection.reason}
+            for rejection in report.rejected
+        ],
+        # Rows that imported but need a person's eye: an unfamiliar status, a date nobody could
+        # read. Carried separately from `rejected` because the row *is* in the database — a
+        # report that conflated them would send someone looking for history that is already there.
+        "notices": [
+            {"source_id": notice.source_id, "message": notice.message} for notice in report.notices
+        ],
+    }
 
 
 @router.get("/{application_id}", summary="One application")
