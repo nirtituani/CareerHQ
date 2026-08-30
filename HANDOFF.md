@@ -1,65 +1,74 @@
 # HANDOFF
 
-**Last updated:** 2026-08-29 (**Slice 007 built and its paid benchmark run**; every number below measured)
+**Last updated:** 2026-08-30 (**everything below merged, deployed and verified in production this session**)
 
-**Two branches are live and both matter.** `005-resume-tailoring` sits at **`01030f6`**, pushed and
-CI-green, **1 ahead of `origin/main`** — that one commit is the T052 documentation and it is still
-not merged (§5A). `007-evaluation-benchmark` branches from it and is **entirely uncommitted**.
+**`origin/main` is `55222c6`.** Three pull requests merged today — **#8** (Slice 003 JobTracker
+import), **#9** (Slice 006 item D, the corpus verification) and **#10** (the frontend healthcheck).
+Backend and frontend both report `SUCCESS` on that commit.
 
-> ⚠️ **This file is the reconciliation of two independent HANDOFF states, and it is now the
-> authoritative one.** The 007 worktree's *committed* copy was the older pre-deployment version
-> (`298a45f`); the primary worktree held an uncommitted post-deployment rewrite. Updating the
-> committed one would have produced a document that looked current while describing a superseded
-> state, so the rewrite was adopted wholesale and extended — **nothing from it was dropped**:
-> exactly seven of its lines changed, being the header, the Slice 007 roadmap row, and five
-> pre-existing lines that stated 3.22% without naming it as **missed** against ≤2%.
+> ## The Railway frontend blocker is FIXED
 >
-> **The primary worktree's copy was never written to**, so no Slice 008 work was disturbed. It
-> still holds its own now-superseded version; **replace it with this file** rather than merging
-> by hand.
+> It had blocked every frontend release since 2026-08-26. The fix was to give the healthcheck a
+> target that answers 200 without redirecting: production now probes **`/healthz`** rather than
+> `/`, which had been answering 307. The deployment succeeded **on the first healthcheck attempt**.
+>
+> Verified publicly: `/healthz` -> **200 with zero redirects**, `/` -> **307 to /login** (correct),
+> `/api/health/ready` -> **200** with `database ok - cache not_configured - object_storage ok -
+> ai_provider ok`.
+>
+> **Treat this as closed.** No further investigation, no support ticket. The earlier analysis stays
+> in §4B as history rather than as an open problem. **The frontend is live**, so every user-facing
+> change from slices 006 and 007 has finally shipped.
 
-> ✅ **Slice 006 is deployed and retrieval is live.** `origin/main` is `73dca63` (PR #4), the
-> backend deployment reports `SUCCESS` on that commit, production is at
-> **`0018_corpus_embedding_model`** with **18 documents / 79 chunks**, every document recorded
-> against **`BAAI/bge-small-en-v1.5`**, and readiness answers **HTTP 200**. A tailoring run in
-> production now uses the corpus rather than the FR-009 static fallback.
+> ## T088 is COMPLETE — the first real paid production run
 >
-> **Slice 006 is 55 of 57.** T051, T052, T053, T054, T055 and T056 are done, committed, pushed and
-> CI-green. **Two boxes remain unticked: T048 and T057.**
+> Slice 005 is now **101 / 101**. Run `f116683f`, **`succeeded`**, `is_fixture = false`,
+> **3m 15.9s**, **$0.312825** — 35,785 input / 18,808 output tokens across three calls. Plan and
+> Draft on `claude-sonnet-5`, Review on **`claude-opus-5`** (its configured model, not an
+> escalation). **No revision**: `attempts = 0`, confidence 84, one `overstated` and six `uncovered`
+> findings, and **no `ungrounded`** — so the discard path still has no production exercise.
 >
-> ⚠️ **T048's box is unticked but its work is finished and verified in production.** The deploy
-> happened, the corpus loaded, and the ingestion fix shipped — nobody ticked the checkbox. Do not
-> read `- [ ] T048` as outstanding work; read it as an untidied record. **T057 is the only task
-> with work left**, and it is **deferred by decision** — see §5.
+> **The first production proof that retrieval works.** `guidelines_used` holds **28 real corpus
+> citations across 9 documents**, not the `StaticGuidelines` constant, and **all 28 content hashes
+> resolve to live `knowledge_chunks`** — FR-012's resolvability verified against real data. 15 of
+> the 28 rules come from integrity documents (the mandatory inclusion working), and the Israeli
+> market rules were hoisted for an Israeli employer.
 >
-> **The T052 documentation commit `01030f6` is NOT on `main`.** Production runs `73dca63`, which
-> predates it. The divergence is **documentation only** — three markdown files — so production
-> behaviour is identical; but `main`'s specs still record SC-008 as 2.12%, while the branch records
-> the current 3.22%.
+> ⚠️ **The interface reports one model for a run that used two.** The UI showed
+> `anthropic/claude-sonnet-5` while the Review call ran on Opus at 5x the input price. Cosmetic,
+> but it understates cost attribution.
+
+> ## Slice 006 item D is COMPLETE
 >
-> **SC-007 MET, SC-008 MISSED — and re-measured.** Retrieval latency p50 12.1 ms / max 24.8 ms
-> against 500 ms (R14, measured at T044, not re-measured today). **SC-008 is 3.22%** against the
-> **unchanged ≤2%** threshold, re-measured on current code at T052 with two fresh paid arms. The
-> citation fix worked — the numerator fell **+4,727 → +3,754 tokens, 21%** — and the ratio still
-> got worse, because the denominator halved when this session's static arm did not revise. **The
-> 1.68% against the older baseline is not a pass and must not be recorded as one.**
+> `verify_corpus_ingested()` re-reads the corpus files and re-queries the database after ingestion,
+> refusing an empty or incomplete result. The existing pre-deploy exit code now gates the
+> **outcome** as well as the ordering, with **no Railway configuration change**. Confirmed in
+> production's own pre-deploy log: `chunks_expected=79 chunks_present=79 changed=false`.
 >
-> 🔴 **$8.488570 of paid evaluation evidence now lives in two local Docker volumes** —
-> **$3.562567** from slices 004–006 plus **$4.925403** from the Slice 007 benchmark. Backed up
-> 2026-08-29 to `/Users/nirtituani/CareerHQ-backups/2026-08-29/`, **outside the repository** — but
-> that backup predates the two T052 arms **and the entire Slice 007 benchmark**, and is **on the
-> same machine**. See §5A and §4A.
+> Before this, that log read `0/0/0/0` — indistinguishable from the `75cd8ea` failure where the
+> corpus was empty. **It does not catch ingestion never running at all**; that remains what T048's
+> configuration test is for.
+
+> 🔴 **Paid evaluation evidence still lives in two local Docker volumes** — $3.562567 from slices
+> 004–006 and $4.925403 from the Slice 007 benchmark, plus **$0.352047 now in production** (the
+> match analysis and the T088 run). The local backup is dated 2026-08-29, **predates the two T052
+> arms and the whole Slice 007 benchmark**, and sits **on the same machine**. See §5A.
 >
 > **Slice 007's results are the exception and are safe**: they are committed *files* under
-> `specs/007-evaluation-benchmark/results/`, deliberately, so they survive
-> `docker compose down -v`. The tailoring rows behind them do not.
+> `specs/007-evaluation-benchmark/results/`, so they survive `docker compose down -v`. The
+> tailoring rows behind them do not.
+
+> ## Slice 008 is being built, not shelved
 >
-> **A parallel session owns 12 uncommitted paths in this tree** (`ports.py`, `research_*.py`,
-> `citation_check.py`, `domain/schemas/research.py`, their tests, `specs/008-company-research/`).
-> **Do not edit, stage or commit them.** Twelve commits have now been made across several sessions
-> and every one excluded them; `ports.py` at HEAD still hashes identically to `298a45f`, verified
-> today.
+> **A parallel session (agent2) owns Slice 008 and is actively working on it.** Its pipeline is
+> committed as **`b4e60b6`** and pushed to `origin/005-resume-tailoring`, so it is backed up
+> remotely. The search provider is **Tavily, not Brave** — a direct API integration, with MCP
+> treated as an implementation detail rather than a requirement of the slice.
 >
+> **Do not edit, stage or commit anything under `specs/008-company-research/`, the `research_*`
+> modules, `citation_check.py`, `domain/models/research.py`, `domain/schemas/research.py`, or
+> `ports.py`.** They belong to agent2.
+
 > **Implementation priority: Correctness → Simplicity → Efficiency → Course requirements.** Do not
 > add agent/ReAct complexity to look more agentic.
 
@@ -113,12 +122,13 @@ deliberately has no `top_k`, no scores and no embedding parameters.
 |---|---|---|
 | 001 platform-foundation | 69 / 69 | none |
 | 002 deployment | 52 / 52 | none |
-| 003 data-foundation | 98 / 109 | T074–T084, the JobTracker import path |
+| 003 data-foundation | **107 / 109** | **T083** (import screen) and **T084** (observed import against a real export) |
 | 004 match-analysis | 89 / 89 | none |
-| 005 resume-tailoring | **100 / 101** | T088 — a real paid production run, open on purpose |
-| 006 document-retrieval | **56 / 57** | **T048** (done, box untidied). **T057 is now DONE — landed in slice 007 at T044** |
-| 007 evaluation-benchmark | **49 / 50** | **T047** partial — the real sanity set is built and isolated, deliberately unpopulated |
-| **Total** | **513 / 526** | 13 |
+| 005 resume-tailoring | **101 / 101** | none — **T088 done 2026-08-30**, see the header |
+| 006 document-retrieval | **57 / 57** | none — T048 and T057 ticked 2026-08-30; both were already done |
+| 007 evaluation-benchmark | **49 + 1 partial / 50** | **T047** — the real sanity set is built and isolated, deliberately unpopulated |
+| 008 company-research | **no `tasks.md`** | agent2's, in progress. It never went through `/speckit-tasks`, so it cannot be counted here |
+| **Total** | **524 / 527** | 3 — T083, T084, T047 |
 
 > ⚠️ **Count these with `grep -cE '^- \[[xX]\]'`.** Slice 005 marks its 100 done tasks `- [X]`
 > with a **capital X** and every other slice uses lowercase, so `grep -c '^- \[x\]'` reports
@@ -242,8 +252,10 @@ git log --oneline 1cf9a70~1..HEAD
 
 ### Not in this list, deliberately
 
-`application/ports.py` and every `research_*` module belong to the **parallel Slice 008 session**
-and are uncommitted. `ports.py` at HEAD is byte-identical to `298a45f`, verified today.
+`application/ports.py` and every `research_*` module belong to the **parallel Slice 008 session**.
+They are **committed as `b4e60b6` and pushed to `origin/005-resume-tailoring`** — no longer
+uncommitted, and no longer at risk of being lost. They are still not on `main` and are still not
+ours to edit.
 
 ---
 
@@ -429,6 +441,15 @@ order is the cheapest way to understand why the id plumbing looks the way it doe
 - **`railway deployment redeploy` as a rollback.** It redeploys the *latest* deployment. A rollback
   also creates a **new** id carrying the **old** commit, so read which version is live from the
   commit.
+- **A healthcheck pointed at a path that redirects fails, and the failure names nothing.** The
+  frontend probed `/`, which answers **307 to `/login`** for a signed-out request — and the
+  platform reports that as `service unavailable`, which reads as the container being down. Eight
+  consecutive deployments failed this way between 2026-08-26 and 2026-08-30 while the application
+  was healthy the whole time. **A healthcheck target must return 200 without redirecting**;
+  `/healthz` was added for exactly that and succeeded on the first attempt.
+  The corollary is the one that cost the time: **a deployment failure that says nothing about
+  cause is not evidence of an application fault.** Several plausible application-level fixes were
+  tried and disproved first.
 - **Reading Railway logs for a message string.** Railway **blanks the `message` field** of parsed
   JSON logs. Put anything needed to debug production in `extra={…}` fields. This is why T090's fix
   puts `str(exc)` in `extra`, not in the message.
@@ -914,85 +935,57 @@ under `google_sub LIKE 'benchmark|%'`.
 ---
 ## 5. Exact next steps
 
-**Slice 006 is deployed and every Claude-ownable item in it is done.** What remains is one
-deferred task, two tidy-ups, and the graded slice nobody has started.
+**Both of the project's long-standing blockers are gone.** The Railway frontend failure is fixed
+and the frontend is live; Slice 008's implementation is committed and pushed. Steps A–G of the
+previous revision are all **superseded** — they described a state where slice 007 was uncommitted,
+`01030f6` was unmerged, T048/T057 were untidied, item D was unbuilt, T088 was unmet and Railway was
+blocking. **None of that is true any more.** They are deleted rather than kept, because a next-steps
+list that mostly describes finished work stops being read.
 
-### A0 — **Slice 007 is uncommitted** · owner: **the author** · **nothing blocks it, and it is the largest body of unsaved work in the project**
+**Three tasks remain open across the whole project**, and only one of them is blocked.
 
-The whole slice — harness, synthetic benchmark, metrics, judge, the paid results and this file —
-is uncommitted on `007-evaluation-benchmark`. **The measurements it contains cost $4.925403 and
-exist nowhere else**, except that the *results* are committed files rather than database rows, so
-they survive a volume loss. Review and commit. §4A is the summary.
+### A — **T084: import a real JobTracker export** · **BLOCKED, and not on the data**
 
-### A — **Get `01030f6` onto `main`** · owner: **the author** · nothing blocks it
+The export exists — 18 columns matching R8 exactly, 99 rows — but **there is no way to run it**:
+the import has no UI (that is T083, not started), and the API needs an authenticated session that
+only the owner has. So T084 waits on **either** T083 **or** the owner driving
+`POST /api/applications/import/jobtracker` themselves with their own session.
 
-The branch is **1 commit ahead**: the T052 documentation. It is three markdown files, so
-production behaviour is unaffected — but `main`'s specs record SC-008 as **2.12%** while the
-branch records the measured **3.22%**, missed against ≤2%. A PR and merge closes it; the deploy
-it triggers is a
-no-op for behaviour.
+**The file is real, unscrubbed personal history and must never enter this repository.** The
+committed fixture is synthetic precisely so that it can be committed; this one cannot.
 
-```bash
-gh pr create --base main --head 005-resume-tailoring --title "docs(006): T052 re-measurement"
-```
+### B — **T083: the import screen** · owner: the author · unblocked
 
-### B — **T048's checkbox** · owner: whoever touches `tasks.md` next · trivial
+The last slice-003 task, and the thing that unblocks T084. Low value on its own — a UI for a
+one-off import — but it is the cheapest route to T084.
 
-`- [ ] T048` is still unticked although the work is done, deployed and verified. **Not
-outstanding work — an untidied record.** Left alone here because this session was scoped to
-`HANDOFF.md` only. Tick it with the deployment evidence and slice 006 becomes 56 of 57.
+### C — **T047: populate the real sanity set** · owner: the author · deliberately open
 
-### C — **T057** · owner: **the author** · **deferred by decision**, not forgotten
+Built, isolated, gitignored, PII-scanned and **deliberately unpopulated**: filling it means putting
+a real CV on disk. Spends no money. Open by choice rather than by omission.
 
-**The only slice-006 task with work left.** Education and Language items capture one field and
-drop the rest: the profile stores `qualification = "B.Sc. in Computer Science"` and the exported
-PDF says only *"Ben-Gurion University"*.
+### D — **Off-machine backup of the paid evaluation evidence** · owner: the author · see §5A
 
-**Fully investigated; the fix is small and measured.** `+16 tokens, 1.07%` of the master block on
-the real profile, **no migration**, and the richer composition already exists in
-`analyze_match.py:218`. **Projects and Certifications have zero rows**, so Education and Language
-are the only kinds with live impact.
+Still the largest unmanaged risk in the project. The only backup is dated 2026-08-29, sits **on the
+same machine as the volumes**, and predates both the two T052 arms and the entire Slice 007
+benchmark. Production now holds $0.352047 of its own paid evidence as well.
 
-**Deferred because it changes what the model is sent** — the one behaviour-altering change left in
-this slice — and judging its effect needs evaluation rather than a token count. That belongs with
-slice 007. Nothing is at risk while it waits: no requirement is breached, and the degree is
-already visible in the profile UI and already read by match scoring.
+### E — **`HTTP_413_REQUEST_ENTITY_TOO_LARGE` is deprecated** · small, deliberately deferred
 
-### D — **A post-deploy corpus assertion** · owner: **the author** · nothing blocks it · **new**
+Starlette prefers `HTTP_413_CONTENT_TOO_LARGE`; same numeric value, so nothing is broken. **Two call
+sites must move together** — `api/routes/imports.py`, which owns `MAX_UPLOAD_BYTES`, and
+`api/routes/applications.py`, which imports it. Left alone during slice 003 because an unrelated
+cleanup inside a slice is how a diff stops being reviewable.
 
-`75cd8ea` deployed green with an empty corpus and nothing noticed. The T048 test checks the
-*configuration*; no check exists for the *outcome*. A post-deploy assertion on
-`knowledge_chunks` would have caught it in seconds. **This is the gap that let the failure
-happen, and it is still open.**
+### F — **The tailoring UI reports one model for a run that used two** · small · **new 2026-08-30**
 
-### E — **T088 (slice 005): a real paid production run** · owner: **the author** · unblocked
+T088 measured Plan and Draft on Sonnet and Review on **Opus**, but the interface showed a single
+`anthropic/claude-sonnet-5`. Cosmetic, and it understates cost attribution on the one screen where
+a person sees what a run cost.
 
-Infrastructure was verified at the slice-005 deploy; the criterion — a run with
-`is_fixture = false`, a real model name, real tokens, a real cost — is **not met**. Retrieval is
-now live in production, so such a run would also be the first real evidence of the corpus in use.
+### G — **Slice 008** · **agent2's, actively in progress** · not ours to touch
 
-### F — **Slice 007 evaluation** · **BUILT AND MEASURED 2026-08-29** · was the project's largest risk
-
-**No longer open.** It was deferred twice and named "the single largest risk in the project"; it
-is now 49 of 50, with a paid benchmark behind it. See §4A.
-
-**What it did not settle**, carried forward honestly rather than closed:
-
-- **No measured noise floor.** One paid pass was approved; SC-001's repeat on an unchanged system
-  was the third. Every delta the slice reports is therefore a **bound**, not a movement — the T057
-  comparison says so in its own text.
-- **The judge is unvalidated.** No human-rated sample exists, so FR-025 keeps every judge score
-  labelled `unvalidated` and no conclusion rests on one.
-- **SC-008 (007) is `unresolved`**, which is a valid outcome of that criterion rather than a
-  verdict on retrieval — and it holds **only inside the $2.00/MTok pricing window ending
-  2026-08-31**.
-- **SC-010 is unmet and needs a column** (`tailoring_run_calls.duration_ms`). It is the only thing
-  in the slice that would need a migration, and it is inherited from M-001 rather than required by
-  anything slice 007 measures.
-
-### G — **Off-machine backup of the evaluation evidence** · owner: **the author** · see §5A
-
-The 2026-08-29 backup is on the same machine as the volumes and **predates the two T052 arms**.
+Tavily, direct API. See the header for the ownership boundary.
 
 ---
 ## 5A. Real data that must not be deleted or modified
