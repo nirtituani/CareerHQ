@@ -7,9 +7,20 @@ makes afterwards.
 Two rules are enforced here rather than at the edge, so they hold for the
 JobTracker importer in User Story 3 as well as for the HTTP routes:
 
-* **The normalized status is derived, never accepted.** `normalize_status` is
-  the only producer (FR-013). No caller passes one in — there is no parameter
-  for it.
+* **The normalized status is derived, never accepted from a request.**
+  `normalize_status` is the only producer for anything a client sends (FR-013),
+  and `normalized_status` is absent from `WRITABLE_FIELDS` so a request body
+  cannot reach it.
+
+  **This originally read "no caller passes one in — there is no parameter for
+  it", and User Story 3 disproved it.** FR-016's reconciliation reads *two*
+  source fields: JobTracker's status label and its separate `rejected` boolean.
+  `rejected=true` with the label `Interview Round 2` must keep the label — how
+  far the application got — and normalize to `rejected` — how it ended. That is
+  not derivable from the label alone, which is the only thing `normalize_status`
+  can see, so the importer passes `normalized_status_override`. The parameter is
+  keyword-only, defaults to `None`, and is reachable from no route; the rule it
+  narrows is "a *client* cannot choose this", and that rule is intact.
 * **A status change appends history, and only a change does.** Editing notes is
   not a move (FR-012).
 """
@@ -27,6 +38,7 @@ from careerhq.domain.models import (
     Application,
     ApplicationStatusHistory,
     Company,
+    NormalizedStatus,
     normalize_company_name,
     normalize_status,
 )
@@ -132,12 +144,25 @@ async def resolve_company(
 
 
 async def record_application(
-    session: AsyncSession, *, user_id: uuid.UUID, data: dict[str, Any]
+    session: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    data: dict[str, Any],
+    normalized_status_override: NormalizedStatus | None = None,
 ) -> Application:
     """Create an application, its company, and its opening history row.
 
     Valid with no submitted resume (FR-011) — there is no field for one until
     slice 004.
+
+    `normalized_status_override` exists for FR-016 and for nothing else: the
+    JobTracker importer reconciles a status label with a separate `rejected`
+    boolean, which `normalize_status` cannot see. It is keyword-only, defaults
+    to `None` — every existing caller is unchanged — and is reachable from no
+    route, because `normalized_status` is not in `WRITABLE_FIELDS`. **The label
+    is still whatever the caller supplied**: the override changes how the row is
+    *counted*, never what it is *called*, which is the entire point of having
+    both fields.
     """
     company = await resolve_company(
         session, user_id=user_id, name=data["company"], domain=data.get("company_domain")
@@ -155,7 +180,7 @@ async def record_application(
         company_id=company.id,
         job_title=data["job_title"],
         status=label,
-        normalized_status=normalize_status(label),
+        normalized_status=normalized_status_override or normalize_status(label),
         **fields,
     )
     session.add(application)
