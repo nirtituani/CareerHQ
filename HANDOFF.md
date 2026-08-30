@@ -234,6 +234,20 @@ denominator nearly halved. SC-008 divides a fixed per-run overhead by a total ru
 2.7× with revision behaviour, so it cannot establish the overhead's position relative to the
 threshold **independently of revision count**. **No target was adjusted and no metric redefined.**
 
+**Re-derived free at R16 (2026-08-31), and the miss is robust.** `specs/006-document-retrieval/`
+`research.md` §R16 reads both arms back out of the database, spending nothing. It settles three
+things. The retrieval ceiling **is** honoured — 1,497 rule tokens against a configured 1,500 — so
+there is **no implementation defect** behind the number. `tailor_review` grew **+670** input tokens
+while consuming no guidance at all, so the numerator was already mixing overhead with the
+*downstream effects* of better guidance. And the recorded **3.22% MISSED** figure is the narrower
+`plan+draft` input-token proxy, where SC-008 (006) as written says *cost per run* — directly
+observable as `$0.245262 − $0.233124`, which is **5.21%** of the same-session baseline.
+**Both figures miss the ≤2% threshold**, so correcting the accounting makes the verdict worse
+rather than rescuing it. The target was itself calibrated against `spec.md`'s estimate of *"+1,000
+input tokens across the two calls"*, against a measured guidance delta of **1,165 per call — 2,330
+across the two**, roughly 2.3× the arithmetic the threshold was set on.
+**No metric redefined, no threshold moved, no test altered, no production behaviour changed.**
+
 ---
 
 ## 3. Files modified
@@ -1045,18 +1059,32 @@ Still the largest unmanaged risk in the project. The only backup is dated 2026-0
 same machine as the volumes**, and predates both the two T052 arms and the entire Slice 007
 benchmark. Production now holds $0.352047 of its own paid evidence as well.
 
-### E — **`HTTP_413_REQUEST_ENTITY_TOO_LARGE` is deprecated** · small, deliberately deferred
+### E — ~~`HTTP_413_REQUEST_ENTITY_TOO_LARGE` is deprecated~~ · **DONE 2026-08-31**
 
-Starlette prefers `HTTP_413_CONTENT_TOO_LARGE`; same numeric value, so nothing is broken. **Two call
-sites must move together** — `api/routes/imports.py`, which owns `MAX_UPLOAD_BYTES`, and
-`api/routes/applications.py`, which imports it. Left alone during slice 003 because an unrelated
-cleanup inside a slice is how a diff stops being reviewable.
+Both call sites moved together, as this entry always said they had to —
+`api/routes/imports.py`, which owns `MAX_UPLOAD_BYTES`, and `api/routes/applications.py`, which
+imports it. Same numeric value, so nothing observable changed.
 
-### F — **The tailoring UI reports one model for a run that used two** · small · **new 2026-08-30**
+**It needed a source-tree gate, not a behavioural test**, precisely because 413 is 413 either way:
+no request would ever have failed, so nothing at run time could have caught the drift.
+`test_architecture.py::test_no_module_uses_a_deprecated_starlette_status_constant` reads
+`starlette.status.__deprecated__` **at run time** rather than hardcoding the one name it was
+written for, so the next deprecation is caught without anyone remembering to widen it. Watched
+failing first; it named both call sites.
 
-T088 measured Plan and Draft on Sonnet and Review on **Opus**, but the interface showed a single
-`anthropic/claude-sonnet-5`. Cosmetic, and it understates cost attribution on the one screen where
-a person sees what a run cost.
+### F — ~~The tailoring UI reports one model for a run that used two~~ · **DONE 2026-08-31**
+
+The provenance line now names every distinct model the run used, read from `run.models`, and reads
+`Written by AI · claude-opus-5 + claude-sonnet-5 · $…`. Deliberately not a task-by-task breakdown —
+`RunDetail` already carries that for anyone who opens it.
+
+**The backend was never wrong.** `version.model` is the *drafting* model by design and the full
+per-task map lives on the run endpoint; only the presentation conflated authorship with spend.
+
+⚠️ **The existing test could not have caught this, and the reason generalises.** `renderTab`
+rejects `getTailoringRun` with a 404, so `run` was `null` in all 49 tailor tests and the provenance
+assertion passed off `version.model` alone — a gate with nothing to examine, the fifth in this
+project. The fix required a fixture that supplies a real run before the line was testable at all.
 
 ### G — ~~Slice 008~~ · **DONE — merged as PR #14 and validated in production**
 
