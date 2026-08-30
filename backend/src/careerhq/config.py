@@ -176,9 +176,35 @@ class Settings(BaseSettings):
     #: release-blocking verdict. Opus is reserved for the nodes whose failure is
     #: a blocker, which here is nothing: the citation guarantee is a
     #: deterministic string check, not a model's opinion (FR-032).
-    #:
-    #: Layer 2's tasks are not registered yet — that layer is not built.
     llm_model_research_synthesise_company: str = "anthropic/claude-sonnet-5"
+    #: Haiku. Layer 2's query planner is the cheapest call in the pipeline and
+    #: the least demanding: it maps a role and its requirements onto search
+    #: terms, with short output and no citation, tier or grounding obligation. It
+    #: is also the call OQ-I marks for challenge — the deterministic alternative
+    #: is unmeasured, not rejected — so paying Sonnet for a step that may not
+    #: need a model at all would be the wrong way round.
+    llm_model_research_plan_role_queries: str = "anthropic/claude-haiku-4-5-20251001"
+    #: Sonnet, matching Layer 1's synthesis: the same task shape against
+    #: role-targeted sources. Opus stays reserved for nodes whose failure is a
+    #: release blocker, and this is not one — the citation guarantee here is the
+    #: same deterministic string check, not a model's opinion (FR-032).
+    llm_model_research_synthesise_role: str = "anthropic/claude-sonnet-5"
+    #: FR-004's second half: a run is bounded by a maximum duration as well as a
+    #: maximum number of sources, and **both are configured constants rather than
+    #: prompt instructions** — a budget a model is asked to respect is a request,
+    #: not a limit.
+    #:
+    #: This is also what decides when a `running` snapshot is treated as
+    #: abandoned rather than in flight. The two are deliberately one number: a
+    #: run that has exceeded its own bound is precisely a run nothing will
+    #: finish, and two constants would eventually disagree — leaving either a row
+    #: reaped while still working, or one that blocks a retry forever.
+    #:
+    #: 15 minutes against slice 005's measured 2m50s-4m20s tailoring runs, which
+    #: make more model calls than this slice does. Generous on purpose: the cost
+    #: of reaping a live run is a lost paid run, and the cost of waiting is a
+    #: button that stays disabled a little longer.
+    research_max_duration_seconds: int = 900
     # Local by default so the stack runs with no API key. Anthropic has no
     # embeddings endpoint, which is why this is not an Anthropic model.
     #

@@ -155,6 +155,32 @@ class Company(Base):
     careers_url: Mapped[str | None] = mapped_column(String(1024))
     notes: Mapped[str | None] = mapped_column(Text)
 
+    #: Slice 008 FR-014 — the current company-research snapshot, or NULL for a
+    #: company nobody has researched, which is the normal case rather than an
+    #: error.
+    #:
+    #: **Written only on success.** Slice 005's T093 lesson applies directly: a
+    #: pointer updated at the start of a run makes a failed re-run replace a good
+    #: result with nothing, and the interface then shows an employer whose
+    #: research disappeared because someone pressed the button again.
+    #:
+    #: **`use_alter=True` and a name, both required.** `companies` and
+    #: `company_research_snapshots` reference each other, so without `use_alter`
+    #: the two tables form a dependency cycle that `create_all` cannot order —
+    #: which would take every integration test in the project down with it. And
+    #: an unnamed `use_alter` constraint cannot be dropped, so the migration
+    #: creating it would have no working downgrade.
+    current_research_snapshot_id: Mapped[uuid.UUID | None] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey(
+            "company_research_snapshots.id",
+            ondelete="SET NULL",
+            use_alter=True,
+            name="fk_companies_current_research_snapshot",
+        ),
+        nullable=True,
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
