@@ -8,6 +8,7 @@ fail at startup rather than at the first request that needs the value (FR-006).
 
 from __future__ import annotations
 
+from decimal import Decimal
 from functools import lru_cache
 from typing import Literal
 
@@ -205,6 +206,36 @@ class Settings(BaseSettings):
     #: of reaping a live run is a lost paid run, and the cost of waiting is a
     #: button that stays disabled a little longer.
     research_max_duration_seconds: int = 900
+    # -- Slice 007: evaluation ------------------------------------------------
+    #
+    #: **Opus, and set explicitly rather than left to fall back.** `docs/08` §5.2
+    #: puts the judge on Opus because it is judging quality. The fallback is
+    #: `llm_provider_model`, which is *also* Opus — so omitting this entry would
+    #: be right by accident and wrong by process, and the fallback says nothing
+    #: while it happens. Every other task in this file is defaulted here for the
+    #: same reason; this one is the case where the silence would be hardest to
+    #: notice, because nothing would look wrong.
+    llm_model_eval_judge: str = "anthropic/claude-opus-5"
+    #: Hard ceiling on what one evaluation invocation may spend, in USD
+    #: (FR-008, SC-011). Approved at **$10.00** on 2026-08-29 (spec.md D3).
+    #:
+    #: **Headroom for judge-cost variance, not a budget to consume.** The
+    #: projected total is $7.97 expected / $9.13 conservative; the judge's
+    #: $0.070 per output is the only figure in the plan with no measurement
+    #: behind it. Spending beyond this needs explicit approval, and the runner
+    #: refuses above it *before* any billable call rather than reconciling
+    #: afterwards.
+    #:
+    #: `Decimal`, never float: this is an audit value compared against costs
+    #: that are themselves `Numeric(12, 6)`, and a float ceiling would compare
+    #: unequal to itself at the boundary.
+    eval_spend_ceiling_usd: Decimal = Decimal("10.00")
+    #: Which benchmark set version the runner loads (FR-002). A directory name
+    #: under `backend/benchmark/`. **Editing a case is a new version, never an
+    #: edit in place** — otherwise every historical result silently becomes
+    #: incomparable, which is the rule the match criteria and the finalisation
+    #: rules already follow.
+    eval_benchmark_set: str = "v1"
     # Local by default so the stack runs with no API key. Anthropic has no
     # embeddings endpoint, which is why this is not an Anthropic model.
     #

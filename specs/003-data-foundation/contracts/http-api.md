@@ -88,10 +88,31 @@ FR-023).
 
 | | |
 |---|---|
-| **200** | Report: imported, skipped-as-duplicate, and rejected rows with per-row reasons |
+| **200** | Report: imported, skipped-as-duplicate, rejected rows with per-row reasons, and notices |
 | **400** | File unreadable or not a recognised export |
+| **413** | File larger than the upload limit, checked before the file is parsed |
+| **409** | Another import of the same rows is already in progress |
 
 Re-running is safe: duplicates are refused by C3 and reported as skipped, not as errors.
+
+**200 carries four fields, not three.** `notices` holds rows that *did* import but need a
+person's eye — an unfamiliar status label, a date nobody could read. Deliberately separate from
+`rejected`: those rows are in the database, and a report that merged the two would send someone
+looking for history that is already there.
+
+**409 is for two imports racing, and it is the only outcome that asks the caller to wait.**
+Duplicate detection reads which rows were already imported and then writes; between those two
+steps a second upload of the same file can import the same row, so the read can be stale by the
+time the write happens. The guarantee is the uniqueness rule itself rather than the check, so the
+second writer is refused rather than allowed to duplicate someone's history.
+
+**The response says what to do, not what went wrong underneath.** The body is
+*"An import of this file is already running. Try again in a moment."* — the refusal names no
+table, column, constraint or value, because a conflict message is a description of the schema if
+it is allowed to be. The detail goes to the log in structured fields, which is the same split
+`/api/health/ready` applies to a failed dependency: **the operator gets the cause, the browser
+gets the kind.** Retrying once the other import finishes reports every row as skipped, so the
+resolution is to wait rather than to change anything.
 
 **No request or response anywhere in this API carries a `rejected` boolean** (FR-016). Rejection
 travels as a normalized status value. Worth stating in the contract because an API field is

@@ -1,0 +1,480 @@
+{
+  "metric_version": "1.0.0",
+  "corpus": "18/79/unknown",
+  "runs_examined": 13,
+  "shipping_mix": {
+    "tailor_plan": "anthropic/claude-sonnet-5",
+    "tailor_draft": "anthropic/claude-sonnet-5",
+    "tailor_review": "anthropic/claude-opus-5"
+  },
+  "runs": [
+    {
+      "run_id": "a76bd349-bfaf-4a08-8337-ddc9c597fcca",
+      "version_id": "a8f1e4b7-f7bd-4dbe-bded-3c3c3dad8bcf",
+      "status": "failed",
+      "attempts": 0,
+      "cost": 0.0,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "is_fixture": false,
+      "finalisation_rules_version": "v1-severity",
+      "review_confidences": null,
+      "version_status": "ready",
+      "reportable": false,
+      "refusal": "run a76bd349-bfaf-4a08-8337-ddc9c597fcca cannot support an agent-quality metric:\n  - status is 'failed', not 'succeeded' \u2014 filter on status, never on the presence of guidelines_used, because a failed run can carry guidance it never used\n  - the run recorded no guidance, so nothing can be said about what advised it",
+      "guidelines": 0,
+      "persisted_ungrounded": 0,
+      "ungrounded_caught": 0,
+      "metrics_withheld": "agent-quality metrics are not reported for an ineligible run"
+    },
+    {
+      "run_id": "cd27b092-a4bb-443e-ad2c-c2cba584c089",
+      "version_id": "a8f1e4b7-f7bd-4dbe-bded-3c3c3dad8bcf",
+      "status": "failed",
+      "attempts": 0,
+      "cost": 0.361819,
+      "input_tokens": 30028,
+      "output_tokens": 21641,
+      "is_fixture": false,
+      "finalisation_rules_version": "v1-severity",
+      "review_confidences": null,
+      "version_status": "ready",
+      "reportable": false,
+      "refusal": "run cd27b092-a4bb-443e-ad2c-c2cba584c089 cannot support an agent-quality metric:\n  - status is 'failed', not 'succeeded' \u2014 filter on status, never on the presence of guidelines_used, because a failed run can carry guidance it never used\n  - the run recorded no guidance, so nothing can be said about what advised it",
+      "guidelines": 0,
+      "persisted_ungrounded": 0,
+      "ungrounded_caught": 0,
+      "metrics_withheld": "agent-quality metrics are not reported for an ineligible run"
+    },
+    {
+      "run_id": "2615363e-0c18-40d4-8d1e-52c5a58ce32d",
+      "version_id": "a8f1e4b7-f7bd-4dbe-bded-3c3c3dad8bcf",
+      "status": "succeeded",
+      "attempts": 0,
+      "cost": 0.29545,
+      "input_tokens": 34888,
+      "output_tokens": 15512,
+      "is_fixture": false,
+      "finalisation_rules_version": "v1-severity",
+      "review_confidences": null,
+      "version_status": "ready",
+      "reportable": true,
+      "guidelines": 12,
+      "persisted_ungrounded": 0,
+      "ungrounded_caught": 0,
+      "grounding": {
+        "traceable": {
+          "value": 1.0,
+          "n": 35,
+          "measured": true,
+          "reason": ""
+        },
+        "ungrounded_caught": 0,
+        "overstated_flagged": 2,
+        "persisted_ungrounded": 0,
+        "proposals": 4
+      },
+      "coverage": {
+        "overall": {
+          "value": 0.2727272727272727,
+          "n": 11,
+          "measured": true,
+          "reason": ""
+        },
+        "must_have": {
+          "value": 0.25,
+          "n": 8,
+          "measured": true,
+          "reason": ""
+        },
+        "unmatched_findings": 0
+      }
+    },
+    {
+      "run_id": "6356fb4e-513d-4b4a-b5b3-f91fdb9765c8",
+      "version_id": "c582d938-c0d7-4338-9712-dfe36eba8be3",
+      "status": "succeeded",
+      "attempts": 1,
+      "cost": 0.464942,
+      "input_tokens": 41621,
+      "output_tokens": 23908,
+      "is_fixture": false,
+      "finalisation_rules_version": "v1-severity",
+      "review_confidences": null,
+      "version_status": "awaiting_approval",
+      "reportable": true,
+      "guidelines": 12,
+      "persisted_ungrounded": 0,
+      "ungrounded_caught": 0,
+      "grounding": {
+        "traceable": {
+          "value": 1.0,
+          "n": 35,
+          "measured": true,
+          "reason": ""
+        },
+        "ungrounded_caught": 0,
+        "overstated_flagged": 4,
+        "persisted_ungrounded": 0,
+        "proposals": 1
+      },
+      "coverage": {
+        "overall": {
+          "value": 0.3333333333333333,
+          "n": 9,
+          "measured": true,
+          "reason": ""
+        },
+        "must_have": {
+          "value": 0.4,
+          "n": 5,
+          "measured": true,
+          "reason": ""
+        },
+        "unmatched_findings": 0
+      }
+    },
+    {
+      "run_id": "60263226-9495-4046-9b4f-bacc1b2cdcd3",
+      "version_id": "d3700cb8-7db1-4d85-a878-192cff960280",
+      "status": "succeeded",
+      "attempts": 2,
+      "cost": 0.547891,
+      "input_tokens": 64493,
+      "output_tokens": 21855,
+      "is_fixture": false,
+      "finalisation_rules_version": "v1-severity",
+      "review_confidences": [
+        72,
+        86,
+        88
+      ],
+      "version_status": "awaiting_approval",
+      "reportable": true,
+      "guidelines": 12,
+      "persisted_ungrounded": 0,
+      "ungrounded_caught": 1,
+      "grounding": {
+        "traceable": {
+          "value": 1.0,
+          "n": 35,
+          "measured": true,
+          "reason": ""
+        },
+        "ungrounded_caught": 1,
+        "overstated_flagged": 2,
+        "persisted_ungrounded": 0,
+        "proposals": 4
+      },
+      "coverage": {
+        "overall": {
+          "value": 0.6666666666666666,
+          "n": 12,
+          "measured": true,
+          "reason": ""
+        },
+        "must_have": {
+          "value": 0.6666666666666666,
+          "n": 12,
+          "measured": true,
+          "reason": ""
+        },
+        "unmatched_findings": 0
+      }
+    },
+    {
+      "run_id": "508f4c2c-8311-421f-9d0d-e653cb11234b",
+      "version_id": "f3ba40ca-c499-49b0-84f7-0f9b8fcbf194",
+      "status": "failed",
+      "attempts": 0,
+      "cost": 0.145002,
+      "input_tokens": 12736,
+      "output_tokens": 11953,
+      "is_fixture": false,
+      "finalisation_rules_version": "v1-severity",
+      "review_confidences": null,
+      "version_status": "awaiting_approval",
+      "reportable": false,
+      "refusal": "run 508f4c2c-8311-421f-9d0d-e653cb11234b cannot support an agent-quality metric:\n  - status is 'failed', not 'succeeded' \u2014 filter on status, never on the presence of guidelines_used, because a failed run can carry guidance it never used\n  - the run recorded no guidance, so nothing can be said about what advised it",
+      "guidelines": 0,
+      "persisted_ungrounded": 0,
+      "ungrounded_caught": 0,
+      "metrics_withheld": "agent-quality metrics are not reported for an ineligible run"
+    },
+    {
+      "run_id": "ff0e310c-81d7-468a-92d4-b1e59b8748c7",
+      "version_id": "f3ba40ca-c499-49b0-84f7-0f9b8fcbf194",
+      "status": "succeeded",
+      "attempts": 0,
+      "cost": 0.307106,
+      "input_tokens": 18706,
+      "output_tokens": 21702,
+      "is_fixture": false,
+      "finalisation_rules_version": "v1-severity",
+      "review_confidences": [
+        82
+      ],
+      "version_status": "awaiting_approval",
+      "reportable": true,
+      "guidelines": 12,
+      "persisted_ungrounded": 0,
+      "ungrounded_caught": 0,
+      "grounding": {
+        "traceable": {
+          "value": 1.0,
+          "n": 35,
+          "measured": true,
+          "reason": ""
+        },
+        "ungrounded_caught": 0,
+        "overstated_flagged": 2,
+        "persisted_ungrounded": 0,
+        "proposals": 4
+      },
+      "coverage": {
+        "overall": {
+          "value": 0.5,
+          "n": 8,
+          "measured": true,
+          "reason": ""
+        },
+        "must_have": {
+          "value": 1.0,
+          "n": 4,
+          "measured": true,
+          "reason": ""
+        },
+        "unmatched_findings": 0
+      }
+    },
+    {
+      "run_id": "a76197da-e79b-43d6-96c6-d9196a35a9e4",
+      "version_id": "bcff0dc7-019f-4cfe-a15b-e82634b4149a",
+      "status": "failed",
+      "attempts": 0,
+      "cost": 0.0,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "is_fixture": false,
+      "finalisation_rules_version": "v1-severity",
+      "review_confidences": null,
+      "version_status": "awaiting_approval",
+      "reportable": false,
+      "refusal": "run a76197da-e79b-43d6-96c6-d9196a35a9e4 cannot support an agent-quality metric:\n  - status is 'failed', not 'succeeded' \u2014 filter on status, never on the presence of guidelines_used, because a failed run can carry guidance it never used",
+      "guidelines": 12,
+      "persisted_ungrounded": 0,
+      "ungrounded_caught": 0,
+      "metrics_withheld": "agent-quality metrics are not reported for an ineligible run"
+    },
+    {
+      "run_id": "013c68c7-897f-4992-814f-0f5428f88c95",
+      "version_id": "bcff0dc7-019f-4cfe-a15b-e82634b4149a",
+      "status": "failed",
+      "attempts": 0,
+      "cost": 0.0,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "is_fixture": false,
+      "finalisation_rules_version": "v1-severity",
+      "review_confidences": null,
+      "version_status": "awaiting_approval",
+      "reportable": false,
+      "refusal": "run 013c68c7-897f-4992-814f-0f5428f88c95 cannot support an agent-quality metric:\n  - status is 'failed', not 'succeeded' \u2014 filter on status, never on the presence of guidelines_used, because a failed run can carry guidance it never used",
+      "guidelines": 27,
+      "persisted_ungrounded": 0,
+      "ungrounded_caught": 0,
+      "metrics_withheld": "agent-quality metrics are not reported for an ineligible run"
+    },
+    {
+      "run_id": "e70ecd76-7d72-4dc7-b71c-bc63ccb270b7",
+      "version_id": "bcff0dc7-019f-4cfe-a15b-e82634b4149a",
+      "status": "succeeded",
+      "attempts": 1,
+      "cost": 0.446391,
+      "input_tokens": 38021,
+      "output_tokens": 25898,
+      "is_fixture": false,
+      "finalisation_rules_version": "v1-severity",
+      "review_confidences": [
+        62,
+        88
+      ],
+      "version_status": "awaiting_approval",
+      "reportable": true,
+      "guidelines": 12,
+      "persisted_ungrounded": 0,
+      "ungrounded_caught": 1,
+      "grounding": {
+        "traceable": {
+          "value": 1.0,
+          "n": 35,
+          "measured": true,
+          "reason": ""
+        },
+        "ungrounded_caught": 1,
+        "overstated_flagged": 2,
+        "persisted_ungrounded": 0,
+        "proposals": 2
+      },
+      "coverage": {
+        "overall": {
+          "value": 0.2222222222222222,
+          "n": 9,
+          "measured": true,
+          "reason": ""
+        },
+        "must_have": {
+          "value": 0.2,
+          "n": 5,
+          "measured": true,
+          "reason": ""
+        },
+        "unmatched_findings": 2
+      }
+    },
+    {
+      "run_id": "7c1d64d4-2f34-4f32-a947-e60e5830531f",
+      "version_id": "1bd5f20f-ac7a-40f0-b6d2-4e349714bf4e",
+      "status": "succeeded",
+      "attempts": 0,
+      "cost": 0.206268,
+      "input_tokens": 27792,
+      "output_tokens": 9948,
+      "is_fixture": false,
+      "finalisation_rules_version": "v1-severity",
+      "review_confidences": [
+        86
+      ],
+      "version_status": "submitted",
+      "reportable": true,
+      "guidelines": 27,
+      "persisted_ungrounded": 0,
+      "ungrounded_caught": 0,
+      "grounding": {
+        "traceable": {
+          "value": 1.0,
+          "n": 35,
+          "measured": true,
+          "reason": ""
+        },
+        "ungrounded_caught": 0,
+        "overstated_flagged": 0,
+        "persisted_ungrounded": 0,
+        "proposals": 2
+      },
+      "coverage": {
+        "overall": {
+          "value": 0.3333333333333333,
+          "n": 9,
+          "measured": true,
+          "reason": ""
+        },
+        "must_have": {
+          "value": 0.6,
+          "n": 5,
+          "measured": true,
+          "reason": ""
+        },
+        "unmatched_findings": 1
+      }
+    },
+    {
+      "run_id": "aae6f565-53f2-47b5-ab77-66c1e32833c1",
+      "version_id": "48359320-1070-4ad5-827d-e801f4a0b9b6",
+      "status": "succeeded",
+      "attempts": 0,
+      "cost": 0.233124,
+      "input_tokens": 22350,
+      "output_tokens": 13668,
+      "is_fixture": false,
+      "finalisation_rules_version": "v1-severity",
+      "review_confidences": [
+        86
+      ],
+      "version_status": "awaiting_approval",
+      "reportable": true,
+      "guidelines": 12,
+      "persisted_ungrounded": 0,
+      "ungrounded_caught": 0,
+      "grounding": {
+        "traceable": {
+          "value": 1.0,
+          "n": 35,
+          "measured": true,
+          "reason": ""
+        },
+        "ungrounded_caught": 0,
+        "overstated_flagged": 0,
+        "persisted_ungrounded": 0,
+        "proposals": 2
+      },
+      "coverage": {
+        "overall": {
+          "value": 0.3333333333333333,
+          "n": 9,
+          "measured": true,
+          "reason": ""
+        },
+        "must_have": {
+          "value": 0.4,
+          "n": 5,
+          "measured": true,
+          "reason": ""
+        },
+        "unmatched_findings": 1
+      }
+    },
+    {
+      "run_id": "1070657e-8217-4fbb-9767-5b5b7f07322e",
+      "version_id": "655d6893-6f2f-459f-9734-d68ef2d26bf1",
+      "status": "succeeded",
+      "attempts": 0,
+      "cost": 0.245262,
+      "input_tokens": 26774,
+      "output_tokens": 13259,
+      "is_fixture": false,
+      "finalisation_rules_version": "v1-severity",
+      "review_confidences": [
+        84
+      ],
+      "version_status": "awaiting_approval",
+      "reportable": true,
+      "guidelines": 27,
+      "persisted_ungrounded": 0,
+      "ungrounded_caught": 0,
+      "grounding": {
+        "traceable": {
+          "value": 1.0,
+          "n": 35,
+          "measured": true,
+          "reason": ""
+        },
+        "ungrounded_caught": 0,
+        "overstated_flagged": 1,
+        "persisted_ungrounded": 0,
+        "proposals": 6
+      },
+      "coverage": {
+        "overall": {
+          "value": 0.2222222222222222,
+          "n": 9,
+          "measured": true,
+          "reason": ""
+        },
+        "must_have": {
+          "value": 0.4,
+          "n": 5,
+          "measured": true,
+          "reason": ""
+        },
+        "unmatched_findings": 1
+      }
+    }
+  ],
+  "denominator_sample": {
+    "n": 8,
+    "revised": 3,
+    "min_usd": 0.206268,
+    "max_usd": 0.547891
+  }
+}
