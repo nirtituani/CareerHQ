@@ -425,6 +425,25 @@ Backend checks (from `backend/`, with the venv active):
 `pytest` needs PostgreSQL: without it a block of tests skip, skipped tests cover nothing, and the
 coverage gate trips. `pytest --no-cov` for a quick unit-only check.
 
+**Two checkouts running the suite at once will corrupt each other unless one is redirected.** The
+session fixture runs `DROP SCHEMA public CASCADE`, so a shared database means each run erases the
+other's schema mid-flight. The symptom is a scatter of unrelated integration failures whose
+**count changes between runs of identical code** — which reads as a flaky suite and has already
+cost a wrong conclusion about an innocent change. Give each worktree its own:
+
+```bash
+CAREERHQ_TEST_DATABASE_URL=postgresql+psycopg://careerhq:careerhq@localhost:5432/careerhq_test_myworktree \
+  .venv/bin/pytest
+```
+
+The database is created on demand, so a new name needs no setup. **Unset, nothing changes** —
+local runs and CI keep using `careerhq_test`.
+
+**It is deliberately not `DATABASE_URL`.** That name already means "the database this application
+talks to" and `.env` points it at the *development* database, which holds evaluation evidence that
+exists nowhere else; reusing it would let an exported variable drop real data by running `pytest`.
+A database whose name does not contain `test` is refused rather than dropped.
+
 ---
 
 ## Deployment
