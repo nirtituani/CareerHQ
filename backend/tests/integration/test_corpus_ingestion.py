@@ -24,8 +24,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from careerhq.application.ingest_corpus import (
     CorpusEmbeddingModelMismatch,
+    CorpusVerificationFailed,
     IngestionReport,
     ingest_corpus,
+    verify_corpus_ingested,
 )
 from careerhq.domain.models.knowledge import KnowledgeChunk, KnowledgeDocument
 
@@ -364,3 +366,144 @@ async def test_the_model_is_not_part_of_chunk_identity(
 
     after = sorted(await db_session.scalars(sa.select(KnowledgeChunk.content_hash)))
     assert after == before, "content_hash changed with the embedding model"
+
+
+# -- D: what ingestion left behind, verified rather than assumed ---------------------
+#
+# **The hole this closes.** `IngestionReport` counted only *movement* — created, updated,
+# deleted — so a steady-state re-run and a total failure produce the identical record:
+# `0/0/0/0`, `changed=False`, exit 0. Deployment `75cd8ea` shipped that shape once already
+# (an empty production corpus behind a green deploy), and T048 fixed only the cause it had
+# that day. The `preDeployCommand` test checks the *configuration*; nothing checked the
+# *outcome*, so a corpus that never reached the image — a `.dockerignore` edit, a moved
+# directory — would still ingest "successfully" into an empty database.
+#
+# **The verification re-reads the files and re-queries the database.** It does not trust
+# the ingestion loop's own bookkeeping, because a loop that miscounts is exactly the thing
+# being guarded against: marking your own homework catches nothing.
+#
+# **`chunks_expected == 0` is the load-bearing half.** Without it a corpus that loaded no
+# documents at all would satisfy "every expected chunk is present" *vacuously* and pass
+# forever — this project's most-repeated failure, now five times over.
+
+
+async def test_an_empty_corpus_is_refused_rather_than_reported_as_a_clean_no_op(
+    db_session: AsyncSession, tmp_path: pathlib.Path
+) -> None:
+    """A corpus with no documents is a broken image, not a tidy no-op.
+
+    This is the vacuous-pass guard. Every other assertion here is of the form "everything
+    expected is present", which an empty corpus satisfies trivially.
+    """
+    empty = tmp_path / "empty-corpus"
+    empty.mkdir()
+
+    with pytest.raises(CorpusVerificationFailed) as refusal:
+        await ingest_corpus(db_session, embedder=CountingEmbedder(), root=empty)
+
+    assert "no corpus" in str(refusal.value).lower(), str(refusal.value)
+
+
+async def test_verification_passes_when_every_authored_chunk_is_present(
+    db_session: AsyncSession, corpus_dir: pathlib.Path
+) -> None:
+    """The positive control.
+
+    Without it the refusal tests below would pass just as happily against a verification
+    that raised unconditionally.
+    """
+    await ingest_corpus(db_session, embedder=CountingEmbedder(), root=corpus_dir)
+
+    presence = await verify_corpus_ingested(db_session, root=corpus_dir)
+
+    assert presence.documents_expected == 1
+    assert presence.documents_present == 1
+    assert presence.chunks_expected == 2
+    assert presence.chunks_present == 2
+
+
+async def test_a_chunk_missing_from_the_database_is_refused(
+    db_session: AsyncSession, corpus_dir: pathlib.Path
+) -> None:
+    """A real deficit against real rows, not an arithmetic double.
+
+    Ingest, then remove one chunk behind the verification's back. This is the shape of
+    every partial failure worth catching: the documents are there, the count is not.
+    """
+    await ingest_corpus(db_session, embedder=CountingEmbedder(), root=corpus_dir)
+    assert (await _counts(db_session)) == (1, 2)
+
+    victim = await db_session.scalar(sa.select(KnowledgeChunk.id).limit(1))
+    await db_session.execute(sa.delete(KnowledgeChunk).where(KnowledgeChunk.id == victim))
+
+    with pytest.raises(CorpusVerificationFailed) as refusal:
+        await verify_corpus_ingested(db_session, root=corpus_dir)
+
+    # Both numbers, because "the corpus is incomplete" without them is a message an
+    # operator cannot act on during a failed deploy.
+    assert "1" in str(refusal.value) and "2" in str(refusal.value), str(refusal.value)
+
+
+async def test_a_document_that_never_reached_the_database_is_refused(
+    db_session: AsyncSession, corpus_dir: pathlib.Path
+) -> None:
+    """The whole-document case, which a per-document count would miss by never looking."""
+    await ingest_corpus(db_session, embedder=CountingEmbedder(), root=corpus_dir)
+    await db_session.execute(sa.delete(KnowledgeChunk))
+    await db_session.execute(sa.delete(KnowledgeDocument))
+
+    with pytest.raises(CorpusVerificationFailed):
+        await verify_corpus_ingested(db_session, root=corpus_dir)
+
+
+async def test_the_report_states_what_is_present_not_only_what_changed(
+    db_session: AsyncSession, corpus_dir: pathlib.Path
+) -> None:
+    """**The headline.** A steady-state no-op and a total no-op must not read alike.
+
+    Before this, both reported `0/0/0/0` with `changed=False`. The presence counts are
+    what tell a deploy log that nothing changed *because everything was already there*,
+    rather than because nothing was ever loaded.
+    """
+    await ingest_corpus(db_session, embedder=CountingEmbedder(), root=corpus_dir)
+
+    second = CountingEmbedder()
+    report = await ingest_corpus(db_session, embedder=second, root=corpus_dir)
+
+    assert report.changed is False
+    assert report.chunks_created == 0
+    assert second.calls == 0
+    assert report.chunks_expected == 2
+    assert report.chunks_present == 2
+
+
+async def test_chunks_of_a_document_that_left_the_corpus_do_not_count_against_it(
+    db_session: AsyncSession, tmp_path: pathlib.Path
+) -> None:
+    """Deleting a corpus file must not fail every deploy afterwards.
+
+    **This is why the match is per document and per `content_hash` rather than a global
+    `COUNT(*)`.** Ingestion removes chunks a *surviving* document no longer authorises,
+    but a document whose file is deleted is never visited again, so its rows stay. A total
+    count would then read 4 present against 2 expected and refuse — a false failure on a
+    legitimate state, arriving as a broken deploy at the worst possible moment.
+
+    The orphan is asserted to still be there, so this cannot pass by the rows having
+    quietly vanished — which would make it a test of a different behaviour entirely.
+    """
+    root = tmp_path / "corpus"
+    (root / "integrity").mkdir(parents=True)
+    (root / "integrity" / "ingest-fixture.md").write_text(_DOC)
+    second = root / "integrity" / "retired.md"
+    second.write_text(_DOC.replace("ingest-fixture", "retired-fixture").replace("first", "third"))
+
+    await ingest_corpus(db_session, embedder=CountingEmbedder(), root=root)
+    assert (await _counts(db_session)) == (2, 4)
+
+    second.unlink()
+    report = await ingest_corpus(db_session, embedder=CountingEmbedder(), root=root)
+
+    # The orphan survives — nothing deleted it — and the verification still passes.
+    assert (await _counts(db_session)) == (2, 4), "the orphan was removed; this tests nothing"
+    assert report.chunks_expected == 2
+    assert report.chunks_present == 2

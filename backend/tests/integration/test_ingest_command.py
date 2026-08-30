@@ -39,6 +39,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from careerhq import ingest as ingest_command
 from careerhq.application.ingest_corpus import IngestionReport
 from careerhq.domain.models.knowledge import KnowledgeChunk, KnowledgeDocument
+from careerhq.infrastructure.corpus import loader as corpus_loader
 
 pytestmark = pytest.mark.asyncio
 
@@ -255,8 +256,51 @@ async def test_the_report_reaches_the_log_as_structured_fields(
     )
     record = reports[-1]
     assert record.chunks_created > 0
-    for field in ("documents_created", "documents_updated", "chunks_deleted", "changed"):
+    for field in (
+        "documents_created",
+        "documents_updated",
+        "chunks_deleted",
+        "changed",
+        # The presence counts are part of the deploy's record, not a debugging extra:
+        # they are the only fields that distinguish an unchanged corpus from an absent
+        # one, and Railway keeps structured fields while blanking the message.
+        "chunks_expected",
+        "chunks_present",
+    ):
         assert hasattr(record, field), f"{field} is missing from the structured report"
+
+
+async def test_a_corpus_missing_from_the_image_exits_non_zero_and_commits_nothing(
+    wired: _Embedder,
+    session_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    """The outcome check, end to end: the real command, the real use case, the real loader.
+
+    **This is the failure `75cd8ea` shipped, in the form still reachable after T048.** That
+    deploy never ran ingestion at all, and the `preDeployCommand` test now guards the
+    ordering — but nothing guarded the *result*. A corpus absent from the image (a
+    `.dockerignore` edit, a moved directory) still reaches this command, still finds
+    nothing to do, and without the verification still reports `0/0/0/0` and exits **0**,
+    letting Railway promote a version whose retrieval silently falls back to the static
+    rubric.
+
+    **`CORPUS_ROOT` is repointed rather than `load_corpus` replaced**, so the loader under
+    test is the real one: substituting it would prove only that a double returns what it
+    was told to.
+    """
+    empty = tmp_path / "image-without-a-corpus"
+    empty.mkdir()
+    monkeypatch.setattr(corpus_loader, "CORPUS_ROOT", empty)
+
+    assert await ingest_command.run() == 1, (
+        "an empty corpus exited 0; Railway would promote a deployment with no guidance"
+    )
+
+    async with session_factory() as check:
+        assert (await _counts(check)) == (0, 0)
+    assert wired.calls == 0, "an unverifiable ingestion still embedded"
 
 
 async def test_the_command_calls_the_shared_ingestion_path(
