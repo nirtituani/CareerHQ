@@ -136,6 +136,24 @@ function Confidence({ score }: { score: number }) {
   );
 }
 
+/** Every distinct model the run used, for the provenance line.
+ *
+ * **Not `version.model`, which is the *drafting* model alone.** A run puts
+ * Review on a stronger model by configuration and escalates Revise to it on a
+ * second attempt, so a two-model run is the normal case rather than the
+ * exception. Naming one of them beside the run's *total* cost reads as "this
+ * model cost that much" — understating attribution on the one screen where a
+ * person sees what a run spent (T088: Sonnet drafted, Opus reviewed at 5x the
+ * input price, and the line said Sonnet).
+ *
+ * Falls back to the version's own field when there is no run to read — a
+ * failed or in-flight version still has to say what wrote it.
+ */
+function modelsUsed(version: ResumeVersion, run: TailoringRun | null): string {
+  const distinct = run ? [...new Set(Object.values(run.models))].sort() : [];
+  return distinct.length > 0 ? distinct.join(" + ") : (version.model ?? "unknown");
+}
+
 /** How this was produced — Principle V's audit record, at reading distance. */
 function RunDetail({ run }: { run: TailoringRun }) {
   return (
@@ -613,7 +631,7 @@ export function TailorTab({ applicationId }: { applicationId: string }) {
         style={{ borderColor: "var(--border)", color: "var(--faint)" }}
       >
         <span style={{ fontFamily: "var(--font-mono)" }}>
-          Written by AI · {version.model ?? "unknown"} · ${version.cost ?? "0"}
+          Written by AI · {modelsUsed(version, run)} · ${version.cost ?? "0"}
         </span>
         {version.is_fixture && (
           <span data-testid="fixture" style={{ color: "var(--color-fixture)" }}>
