@@ -1689,10 +1689,48 @@ name the violation** rather than ticking the box on inspection.
       with **no employer, job title or dates** (**T051**). Nothing was done about T048's embedding
       mismatch (T053), the citation-token accounting (T052), FR-024's wording, or
       `DELETE /api/profile/content`.
-- [ ] **T048** Deploy and verify per the slice-002 workflow; confirm the deployed commit, not the
+- [x] **T048** Deploy and verify per the slice-002 workflow; confirm the deployed commit, not the
       deployment id.
-      ***BLOCKED 2026-08-29, awaiting the author. Everything that can be verified without
-      publishing has been; nothing was committed, pushed, merged or deployed.***
+      ***DONE 2026-08-29. Deployed, and verified against the deployed database rather than the
+      deploy's own logs.*** The author cleared the block below; PR #3 merged slice 006 to `main`
+      and PR #4 shipped the ingestion fix. **The block and the pre-deploy verification are kept
+      verbatim underneath, not rewritten** — they are the evidence that the ordering was proven
+      before anything shipped, and a record that erases why a task waited is worth less than one
+      that shows it.
+
+      ***What the deployed system reports.***
+      | Check | Result |
+      |---|---|
+      | Deployed commit | **`73dca63`** (PR #4), read from the **commit**, not the deployment id |
+      | Alembic head | **`0018_corpus_embedding_model`** — `0015`–`0018` all applied |
+      | knowledge documents / chunks | **18 / 79** |
+      | Recorded embedding model | **`BAAI/bge-small-en-v1.5`**, all 18 documents |
+      | Readiness | **HTTP 200** — `database ok · cache not_configured · object_storage ok · ai_provider ok` |
+
+      ***The first deploy shipped green with an empty corpus, and that is the finding.***
+      Deployment `75cd8ea` migrated cleanly `0014 → 0018`, reported **SUCCESS**, passed every
+      health check — and **never ran ingestion**. `preDeployCommand` is a *single* command:
+      Railway's schema types it as a string or a one-element array, and under
+      `builder = "DOCKERFILE"` nothing interprets a shell operator, so the `a && b` recorded in
+      the table below ran **only `a`**. Fixed in `2f0ba29` by wrapping it as
+      `'/bin/sh -c "…"'`, which is Railway's own documented remedy.
+      **The `preDeployCommand` row in the table below is therefore historical**: it records the
+      string that was configured then, and that string does not do what its own comment claimed.
+
+      ***Verify a deploy by its effect on the database, not by a log grep.*** After the fix the
+      ingestion lines are present as `corpus ingested` and `corpus ingestion finished`, but
+      grepping the deploy logs for the **logger name** `careerhq.ingest` returns **0** — Railway
+      stripped the logger names while keeping the message text, the inverse of the documented
+      "Railway blanks the message field" behaviour. That grep would have been reported as a failed
+      ingestion had the corpus counts not contradicted it.
+
+      ***The gap this left open, and where it was closed.*** A green deployment was not evidence
+      the corpus loaded, and nothing in the pipeline asserted it: the test added here checks the
+      **configuration**, never the **outcome**. Closed since, in `application/ingest_corpus.py` —
+      `verify_corpus_ingested()` re-reads the corpus files and re-queries the database after
+      ingestion and refuses an empty or incomplete result, so the existing pre-deploy exit code
+      now gates the outcome as well as the ordering.
+
 
       ***The block: deployment needs a commit, and the tree is not this session's alone.***
       Railway deploys the **`backend`/`frontend` services from GitHub pushes to `main`** — the live
@@ -1970,8 +2008,31 @@ belongs; T050 is here.*
       **19 tests, 5 drills.** See `tests/unit/test_export_role_context.py` and
       `tests/integration/test_role_context_snapshot.py`.
 
-- [ ] **T057** **Education, Project and Certification items capture one field and drop the rest.**
-      *(Appended 2026-08-29 at T051, which deliberately did not fix it. Not started.)*
+- [x] **T057** **Education, Project and Certification items capture one field and drop the rest.**
+      *(Appended 2026-08-29 at T051, which deliberately did not fix it. **Done 2026-08-29 in
+      slice 007, at its T044** — not in this slice, and not on this branch.)*
+
+      ***Where the code is.*** The fix landed in
+      `application/tailor_resume.py::_render_master`, which composes the full item text rather than
+      the institution alone. It is on `main`, beside this file — so the box and the code agree.
+
+      ***Mechanism confirmed.*** Items now read
+      `B.Sc. in Software Engineering · Software Engineering · Ben-Gurion University of the Negev ·
+      2014-2018 · 87` where before they read the institution alone. The qualification reaches the
+      model, the Reviewer and the export.
+
+      ***Quality: a bound, not a movement.*** Mean **Δ +0.073**, n = 5, range **−0.20 to +0.40**.
+      **No regression observed; no improvement demonstrable** — the **noise floor is unmeasured**,
+      because only one paid pass was approved, so the delta cannot be compared against zero and is
+      not. **The experiment ran backwards from the plan, deliberately**: slice 007's T040 is the
+      **post**-T057 arm and T045 the **pre**-T057 arm, because T057 had already landed at T044
+      before the benchmark existed. The temporary source revert was restored and **SHA-256
+      verified** (`f218a263b985`).
+
+      ***The deferral reason was discharged, not waived.*** It was held back because it changes
+      what the model is sent, and judging that needs evaluation rather than a token count — which
+      is exactly what slice 007 then provided.
+
       `_render_master` builds these as `(row.id, row.institution)`, `(row.id, row.name)` and
       `(row.id, row.name)`. The real profile stores `qualification = "B.Sc. in Computer Science"`,
       `field_of_study`, dates and `grade`; the exported PDF says only **"Ben-Gurion University"**.
