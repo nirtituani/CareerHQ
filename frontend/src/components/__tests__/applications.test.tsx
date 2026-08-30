@@ -135,7 +135,7 @@ describe("application detail tabs", () => {
     // discover it is not built, then clicks Interview to discover the same.
     render(<DetailTabs application={application()} match={NO_MATCH} />);
 
-    for (const label of ["Company", "Interview"]) {
+    for (const label of ["Interview"]) {
       const tab = screen.getByRole("tab", { name: new RegExp(label) });
       expect(within(tab).getByLabelText("not built yet")).toBeInTheDocument();
     }
@@ -143,8 +143,8 @@ describe("application detail tabs", () => {
     // Every built tab, not only Details. The marker going stale in the other
     // direction is the worse failure: a capability that exists, marked "later",
     // is a feature nobody clicks into. Versions carried this marker until slice
-    // 005 built it and became Tailor.
-    for (const label of ["Details", "Match", "Tailor"]) {
+    // 005 built it and became Tailor; Company carried it until slice 008.
+    for (const label of ["Details", "Match", "Tailor", "Company"]) {
       expect(
         within(screen.getByRole("tab", { name: new RegExp(label) })).queryByLabelText(
           "not built yet",
@@ -170,10 +170,12 @@ describe("application detail tabs", () => {
     // panel that is simply not built should not alarm anyone.
     const { container } = render(<DetailTabs application={application()} match={NO_MATCH} />);
 
-    await userEvent.click(screen.getByRole("tab", { name: /Company/ }));
+    await userEvent.click(screen.getByRole("tab", { name: /Interview/ }));
 
     const panel = screen.getByRole("tabpanel");
-    expect(within(panel).getByText(/Company research/)).toBeInTheDocument();
+    // `getAllBy`: the panel names the capability in both its heading and its
+    // explanatory line, and either one alone would satisfy the point.
+    expect(within(panel).getAllByText(/Interview preparation/).length).toBeGreaterThan(0);
     expect(panel.innerHTML).toContain("dashed");
     expect(container.innerHTML).not.toContain("--color-failure");
   });

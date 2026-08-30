@@ -3,6 +3,7 @@
 import { Tabs } from "radix-ui";
 
 import { MatchTab } from "@/components/applications/match-tab";
+import { CompanyTab } from "@/components/applications/company-tab";
 import { TailorTab } from "@/components/applications/tailor-tab";
 import { NotBuiltYet } from "@/components/not-built-yet";
 import { versionDocumentUrl } from "@/lib/api";
@@ -47,16 +48,12 @@ const TABS = [
   // After Match, because tailoring refuses to run without a completed
   // analysis — the tab order is the order the work actually happens in.
   { value: "tailor", label: "Tailor", built: true },
-  { value: "company", label: "Company", built: false },
+  { value: "company", label: "Company", built: true },
   { value: "interview", label: "Interview", built: false },
 ] as const;
 
 /** What each unbuilt panel will hold, in the user's terms rather than ours. */
 const UNBUILT: Record<string, { title: string; arrives: string }> = {
-  company: {
-    title: "Company research",
-    arrives: "A research snapshot for this company arrives with the research agent.",
-  },
   interview: {
     title: "Interview preparation",
     arrives: "Interview preparation is a future release, not a planned slice.",
@@ -255,6 +252,15 @@ export function DetailTabs({
             request that started it, so there is nothing for a server render to
             hand over that would still be true by the time it is read. */}
         <TailorTab key={application.id} applicationId={application.id} />
+      </Tabs.Content>
+
+      <Tabs.Content value="company" className="outline-none">
+        {/* Fetches its own research and polls while a run is in flight. A
+            research run outlives the request that started it, so a server
+            render would hand over something already out of date. Keyed on the
+            application so switching jobs cannot show the previous employer's
+            research — React keeps a component across a navigation. */}
+        <CompanyTab key={application.id} applicationId={application.id} />
       </Tabs.Content>
 
       <Tabs.Content value="match" className="outline-none">

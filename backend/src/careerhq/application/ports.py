@@ -232,10 +232,111 @@ class UsageRecorder:
         return any(call.is_fixture for call in self.calls)
 
 
+@dataclass(frozen=True, slots=True)
+class SearchHit:
+    """One web-search result: a pointer and a teaser, never a page.
+
+    **The absence of page content is the point.** Slice 008 researches the
+    untrusted public web, and its trust boundary is that the search provider
+    hands back URLs while *CareerHQ* does the fetching, through the SSRF guard in
+    `infrastructure/jobs/fetch.py`. Two properties follow, and both are load
+    bearing:
+
+    * every byte a model eventually sees provably passed that guard;
+    * we hold the retrieved document, which is what makes the verbatim excerpt
+      check (slice 008 FR-032) possible — a fabricated quotation paired with a
+      real URL cannot survive a string containment test against the page we
+      actually fetched.
+
+    A provider that returned page content would have to change this dataclass to
+    give it to us. That makes the boundary a reviewed change rather than a
+    silent one, which is why the constraint lives here rather than in a comment.
+    """
+
+    url: str
+    title: str
+    #: The provider's own short teaser. Enough to choose what is worth fetching,
+    #: never enough to summarise from — summarising a snippet would cite a page
+    #: nobody read.
+    snippet: str
+
+
+class WebSearch(Protocol):
+    """Find public pages. **Not** slice 006's corpus retrieval.
+
+    Kept deliberately separate from any RAG retrieval port (slice 008
+    coordination item S3). The two answer different questions — *find me public
+    pages* against *find me relevant passages from our curated corpus* — and
+    their trust properties are opposites: this one returns attacker-influenceable
+    results, that one returns material we curated. A shared abstraction would be
+    honest about neither.
+
+    A Protocol for the same reason `StructuredCompletion` is one: `application/`
+    imports the protocol, the MCP client lives under `infrastructure/`, and the
+    import-graph test keeps provider and MCP packages out of the application
+    layer. A scripted double satisfies it structurally, so the suite runs with no
+    network.
+
+    The application decides **when** to call this; the model decides **what** to
+    search for. There is no autonomous tool-calling loop — see
+    `specs/008-company-research/plan.md` §3.
+    """
+
+    async def search(self, *, query: str, limit: int) -> list[SearchHit]:
+        """Run one query. `limit` is the caller's budget and is not advisory."""
+        ...
+
+
+@dataclass(frozen=True, slots=True)
+class FetchedSource:
+    """One page CareerHQ retrieved itself, through its own guard.
+
+    **Distinct from anything slice 006 curates, and deliberately so.** This text
+    came from the public web: it is attacker-influenceable, it may contain
+    instructions addressed to a model, and every prompt carrying it must frame it
+    as data (slice 008 FR-016). A shared "document" type that lost that marking
+    would be a security regression rather than a tidy-up, which is why alignment
+    with slice 006's representation is a recorded coordination item (S5) and not
+    an assumption made here.
+
+    `source_id` is what the model cites. Ids are assigned by us rather than taken
+    from the page, so a claim can be mapped back to the exact text it was drawn
+    from and checked against it (FR-032).
+    """
+
+    url: str
+    title: str
+    text: str
+    #: Stable within one run. Assigned at fetch time, never model-supplied.
+    source_id: str = ""
+
+
+class SourceFetcher(Protocol):
+    """Retrieve one page. The adapter is what enforces the SSRF guard.
+
+    **The adapter is not written yet, and that is a coordination point, not an
+    oversight.** Slice 008 FR-015 requires reuse of the existing guard in
+    `infrastructure/jobs/fetch.py`, which is currently shaped around a single
+    user-supplied URL; serving N machine-chosen URLs per run wants a batch entry
+    point, and that file is shared (coordination item S1). This port is slice
+    008's own consumption contract, which a double satisfies today.
+
+    Returning `None` means the page could not be retrieved. Slice 008 FR-009
+    requires that to be recorded rather than silently dropped: how much of the
+    web was actually consulted is part of what a research snapshot claims.
+    """
+
+    async def fetch(self, *, url: str) -> FetchedSource | None: ...
+
+
 __all__ = [
     "Completion",
+    "FetchedSource",
+    "SearchHit",
+    "SourceFetcher",
     "StructuredCompletion",
     "Usage",
     "UsageRecorder",
+    "WebSearch",
     "safe_validation_errors",
 ]

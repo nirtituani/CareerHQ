@@ -59,6 +59,13 @@ from careerhq.domain.models.profile import (
     WorkExperience,
 )
 from careerhq.domain.models.provenance import ImportStatus, ItemDecision, Source
+from careerhq.domain.models.research import (
+    CompanyResearchSnapshot,
+    FetchStatus,
+    ResearchSource,
+    ResearchStatus,
+    RoleResearchSnapshot,
+)
 from careerhq.domain.models.tailoring import (
     IN_FLIGHT_STATUSES,
     ExportedDocument,
@@ -82,11 +89,13 @@ __all__ = [
     "ApplicationStatusHistory",
     "Certification",
     "Company",
+    "CompanyResearchSnapshot",
     "ContactInformation",
     "Education",
     "ExperienceBullet",
     "ExportedDocument",
     "ExtractionItem",
+    "FetchStatus",
     "FindingKind",
     "ImportStatus",
     "ImportedResume",
@@ -107,10 +116,13 @@ __all__ = [
     "ProposalDecision",
     "RequirementKind",
     "RequirementVerdict",
+    "ResearchSource",
+    "ResearchStatus",
     "ResumeProfile",
     "ResumeVersion",
     "ResumeVersionItem",
     "ReviewerFinding",
+    "RoleResearchSnapshot",
     "RunStatus",
     "Shortfall",
     "Skill",
