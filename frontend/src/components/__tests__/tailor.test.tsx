@@ -11,6 +11,7 @@ import { ApiError } from "@/lib/api";
 import type {
   ExportedVersion,
   ResumeVersion,
+  TailoringRun,
   ReviewerFinding,
   SubmittedVersion,
   VersionItem,
@@ -115,6 +116,49 @@ async function renderTab(value: ResumeVersion | null) {
   });
   if (value) mocked.getVersion.mockResolvedValue(value);
   mocked.getTailoringRun.mockRejectedValue(new ApiError(404, "No run for this version."));
+
+  const rendered = render(<TailorTab applicationId="app-1" />);
+  await waitFor(() => expect(screen.queryByText("Loading…")).toBeNull());
+  return rendered;
+}
+
+/** Render against a version whose run *is* available, with a given model map.
+ *
+ * `renderTab` rejects `getTailoringRun` with a 404, so `run` is null in every
+ * test that uses it — which is why nothing caught the two-model attribution
+ * bug. A run has to actually be present for that line to be testable at all.
+ */
+async function renderTabWithRun(value: ResumeVersion, models: Record<string, string>) {
+  mocked.listVersions.mockResolvedValue({
+    versions: [
+      {
+        id: value.id,
+        name: value.name,
+        status: value.status,
+        confidence_score: value.confidence_score,
+        created_at: value.created_at,
+      },
+    ],
+  });
+  mocked.getVersion.mockResolvedValue(value);
+  mocked.getTailoringRun.mockResolvedValue({
+    id: "run-1",
+    version_id: value.id,
+    status: "succeeded",
+    failure_reason: null,
+    plan: null,
+    attempts: 0,
+    match_analysis_id: "match-1",
+    guidelines_used: [],
+    models,
+    finalisation_rules_version: "v1",
+    input_tokens: 35785,
+    output_tokens: 18808,
+    cost: value.cost ?? "0",
+    is_fixture: false,
+    started_at: value.created_at,
+    finished_at: value.created_at,
+  } satisfies TailoringRun);
 
   const rendered = render(<TailorTab applicationId="app-1" />);
   await waitFor(() => expect(screen.queryByText("Loading…")).toBeNull());
@@ -417,6 +461,23 @@ describe("provenance", () => {
     expect(line).toHaveTextContent(/written by ai/i);
     expect(line).toHaveTextContent("claude-sonnet-5");
     expect(line).toHaveTextContent("0.081000");
+  });
+
+  it("names every model a run used, not only the one that drafted", async () => {
+    // T088 ran Plan and Draft on Sonnet and Review on **Opus**, and the line
+    // reported a single Sonnet beside the run's *total* cost — which reads as
+    // "this model cost $0.31" when Opus billed part of it at 5x the input
+    // price. FR-022 asks the surface to name what produced the draft; on a
+    // two-model run naming one of them is not that.
+    await renderTabWithRun(version(), {
+      tailor_plan: "anthropic/claude-sonnet-5",
+      tailor_draft: "anthropic/claude-sonnet-5",
+      tailor_review: "anthropic/claude-opus-5",
+    });
+
+    const line = screen.getByTestId("version-provenance");
+    expect(line).toHaveTextContent("claude-sonnet-5");
+    expect(line).toHaveTextContent("claude-opus-5");
   });
 
   it("marks fixture output as not real", async () => {
