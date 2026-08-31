@@ -33,6 +33,7 @@ from typing import Protocol
 from careerhq.application.ports import (
     ResearchOutcome,
     ResearchProvider,
+    ResearchProviderRejected,
     ResearchProviderUnavailable,
 )
 from careerhq.application.scoreability import scoreable_posting
@@ -110,12 +111,22 @@ async def perform_research(
         # else — rejection included — propagates to be recorded (FR-017).
         if fallback is None:
             raise
-        outcome = await fallback.research(
-            company_name=context.company_name,
-            domain=context.domain,
-            role_title=context.role_title,
-            posting_text=context.posting_text,
-        )
+        try:
+            outcome = await fallback.research(
+                company_name=context.company_name,
+                domain=context.domain,
+                role_title=context.role_title,
+                posting_text=context.posting_text,
+            )
+        except (ResearchProviderUnavailable, ResearchProviderRejected) as fallback_exc:
+            # The primary's post-POST bill must survive the fallback failing
+            # too: the exception that surfaces is the fallback's, and without
+            # this the row records $0 for a request the provider already
+            # billed. Only fills a gap — a fallback that knows its own spend
+            # keeps it.
+            if fallback_exc.cost_estimate is None:
+                fallback_exc.cost_estimate = exc.cost_estimate
+            raise
         # The attempt's plausible bill must not vanish because the fallback
         # succeeded (review fix). It is deliberately NOT summed into the
         # outcome's cost — that would mix a recorded figure with an estimate —

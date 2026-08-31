@@ -644,3 +644,50 @@ async def test_sources_are_ordered_numerically_so_citations_resolve(
     body = (await _as(client, user).get(f"/api/applications/{application.id}/research")).json()
 
     assert [s["source_id"] for s in body["sources"]] == [f"s{n}" for n in range(1, 13)]
+
+
+async def test_a_double_failure_still_records_the_provider_attempts_bill(
+    client: httpx.AsyncClient, app: Any, db_session: AsyncSession
+) -> None:
+    """Review finding #1: when the provider fails *after* its POST (billed) and
+    the fallback then fails too, the surfaced exception is the fallback's — so
+    without care the row records $0 for a POST the provider already charged
+    for, the slice-005 'reads as free' failure SC-006 exists to prevent.
+
+    Both arms in one test, because the invariant is one sentence: the recorded
+    estimate is exactly what was plausibly billed, and never more. Arm 1 proves
+    the post-POST estimate survives the second failure; arm 2 proves a
+    pre-POST failure (nothing billed) does not acquire an estimate it never
+    earned.
+    """
+    billed = ResearchProviderUnavailable("timed out polling", cost_estimate=Decimal("0.456"))
+    unbilled = ResearchProviderUnavailable("could not be reached")
+
+    # Arm 1: the provider billed, then the fallback failed with no bill of its own.
+    _wire(
+        app,
+        ScriptedResearchProvider(billed),
+        ScriptedResearchProvider(ResearchProviderUnavailable("builtin search down")),
+    )
+    user, application = await _seed(db_session, sub="res-doublefail")
+    await _as(client, user).post(f"/api/applications/{application.id}/research")
+    body = (await _as(client, user).get(f"/api/applications/{application.id}/research")).json()
+
+    assert body["status"] == "failed"
+    assert body["cost_basis"] == "estimate"
+    assert body["cost"] == "0.456000", "the provider attempt's bill was lost"
+
+    # Arm 2: nothing was billed before either failure — no estimate is invented.
+    _wire(
+        app,
+        ScriptedResearchProvider(unbilled),
+        ScriptedResearchProvider(ResearchProviderUnavailable("builtin search down")),
+    )
+    other_user, other = await _seed(db_session, sub="res-doublefail-unbilled")
+    await _as(client, other_user).post(f"/api/applications/{other.id}/research")
+    other_body = (
+        await _as(client, other_user).get(f"/api/applications/{other.id}/research")
+    ).json()
+
+    assert other_body["status"] == "failed"
+    assert other_body["cost"] == "0.000000", "an estimate was invented for an unbilled failure"
