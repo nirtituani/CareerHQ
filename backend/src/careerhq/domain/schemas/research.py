@@ -306,9 +306,112 @@ class RoleResearch(BaseModel):
         return self
 
 
+class CompanyIdentification(BaseModel):
+    """Which company this research is about, and how that was decided.
+
+    **The wrong-entity tripwire** (slice 010, FR-007). The POC's failure mode
+    was research about three unrelated companies sharing a name, and nothing in
+    the output admitting it. An identification that must explain itself makes a
+    wrong resolution visible instead of silent — which is why `how_identified`
+    is required and non-empty, and why the interface shows it.
+    """
+
+    official_name: str = Field(
+        min_length=1, description="The company's official name, as its own materials state it"
+    )
+    website: str = Field(
+        min_length=1, description="The company's own website URL (its primary domain)"
+    )
+    headquarters: str | None = Field(
+        default=None,
+        description=(
+            "Headquarters city and country, ONLY if a primary source (the company's own "
+            "materials or reputable press) states it. Omit rather than repeat a data "
+            "broker's guess."
+        ),
+    )
+    how_identified: str = Field(
+        min_length=1,
+        description=(
+            "How this company was distinguished from unrelated companies with the same or "
+            "a similar name — which details of the job posting (location, domain, team, "
+            "product names) matched which sources. Required: an identification that "
+            "cannot say how it was made is an assertion, not an identification."
+        ),
+    )
+
+
+class ApplicationResearch(BaseModel):
+    """Slice 010's sections-first research result (`app-v1`).
+
+    **The shape the interface renders and the shape the provider returns** — one
+    schema, because with a research provider the serialised JSON Schema is the
+    entire prompt-side contract. Two consequences, both load-bearing:
+
+    * **Every property carries a `description`.** The provider refuses schemas
+      without them (measured), and the descriptions are the only channel through
+      which conditional rules reach the model — `model_validator(mode="after")`
+      does not serialise (the slice 005 lesson, still true here).
+    * **No tier vocabulary.** Decision 3B: fact/interpretation/inference was
+      internal validation vocabulary that leaked into the product. Provenance
+      travels as sources and attribution instead (FR-009/FR-010).
+
+    **Role-aware by design** (FR-002, retiring 008's FR-021): the role and
+    posting come from the application. The user's profile has no field to
+    arrive through — that absence is asserted by the SC-007 sentinel test.
+    """
+
+    company_identification: CompanyIdentification = Field(
+        description="Which company entity this research is about, and how it was disambiguated"
+    )
+    company_overview: str = Field(
+        min_length=1,
+        description="What the company does and why it matters. Concise and scannable.",
+    )
+    products_and_services: str = Field(
+        min_length=1, description="The important products and services, and who buys them"
+    )
+    business_and_market: str = Field(
+        min_length=1,
+        description=(
+            "Business model, market position, competitors, and ownership/leadership/size "
+            "where a source states them. Attach dates to time-sensitive facts (funding, "
+            "acquisitions, expansions) and do not present old news as current."
+        ),
+    )
+    relevant_to_your_role: str = Field(
+        min_length=1,
+        description=(
+            "Company and engineering context connected to the specific position and job "
+            "posting: the team, the technology, the domain challenges. When NO job posting "
+            "was provided, say so explicitly and give general engineering-organisation "
+            "context instead — never invent a role."
+        ),
+    )
+    what_to_know_before_the_interview: list[str] = Field(
+        min_length=1,
+        max_length=12,
+        description=(
+            "The most useful takeaways for the candidate, one per entry. When no job "
+            "posting was provided, keep these company-level and say that the role was "
+            "not specified."
+        ),
+    )
+    questions_worth_asking: list[str] = Field(
+        min_length=1,
+        max_length=12,
+        description=(
+            "Questions the candidate could ask in the interview, one per entry, specific "
+            "to this company (and to the role, when a posting was provided)."
+        ),
+    )
+
+
 __all__ = [
+    "ApplicationResearch",
     "Claim",
     "ClaimTier",
+    "CompanyIdentification",
     "CompanyResearch",
     "Evidence",
     "ResearchSection",

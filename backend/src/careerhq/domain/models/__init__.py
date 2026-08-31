@@ -60,11 +60,11 @@ from careerhq.domain.models.profile import (
 )
 from careerhq.domain.models.provenance import ImportStatus, ItemDecision, Source
 from careerhq.domain.models.research import (
+    ApplicationResearchSnapshot,
     CompanyResearchSnapshot,
     FetchStatus,
     ResearchSource,
     ResearchStatus,
-    RoleResearchSnapshot,
 )
 from careerhq.domain.models.tailoring import (
     IN_FLIGHT_STATUSES,
@@ -86,6 +86,7 @@ __all__ = [
     "EMBEDDING_DIMENSIONS",
     "IN_FLIGHT_STATUSES",
     "Application",
+    "ApplicationResearchSnapshot",
     "ApplicationStatusHistory",
     "Certification",
     "Company",
@@ -122,7 +123,6 @@ __all__ = [
     "ResumeVersion",
     "ResumeVersionItem",
     "ReviewerFinding",
-    "RoleResearchSnapshot",
     "RunStatus",
     "Shortfall",
     "Skill",

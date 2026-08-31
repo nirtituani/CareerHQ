@@ -48,7 +48,7 @@ from careerhq.infrastructure.database import Base
 #: table silently failing to register is a failure rather than an empty loop.
 RESEARCH_TABLES = (
     "company_research_snapshots",
-    "role_research_snapshots",
+    "application_research_snapshots",
     "research_sources",
 )
 
@@ -149,7 +149,7 @@ def test_every_research_table_records_when_it_was_retrieved(name: str) -> None:
 # -- FR-018: ownership comes from the session -------------------------------
 
 
-@pytest.mark.parametrize("name", ("company_research_snapshots", "role_research_snapshots"))
+@pytest.mark.parametrize("name", ("company_research_snapshots", "application_research_snapshots"))
 def test_both_snapshot_tables_are_owned_and_cascade(name: str) -> None:
     table = _table(name)
     assert "user_id" in table.columns, f"{name} has no user_id (FR-018)"
@@ -160,28 +160,24 @@ def test_both_snapshot_tables_are_owned_and_cascade(name: str) -> None:
     )
 
 
-# -- FR-023: Layer 2 records the Layer 1 it rests on ------------------------
+# -- Slice 010: the Layer 1 lineage is gone, not nulled ----------------------
 
 
-def test_layer_two_lineage_is_not_nullable() -> None:
-    """FR-023.
-
-    Drilled by making the column nullable; this named it.
-    """
-    table = _table("role_research_snapshots")
-    lineage = table.columns["company_research_snapshot_id"]
-    assert not lineage.nullable, (
-        "role_research_snapshots.company_research_snapshot_id is nullable. FR-023 "
-        "requires Layer 2 to record which Layer 1 snapshot it rests on — and "
-        "therefore how old that was. A nullable column makes that unanswerable."
-    )
+def test_the_layer_one_lineage_column_was_removed_not_nulled() -> None:
+    """008's FR-023 required Layer 2 to record which Layer 1 it rested on.
+    Slice 010 (research.md D2) removed the concept: the snapshot IS the whole
+    research, so the column is dropped rather than left permanently NULL —
+    a nullable vestige would be the unanswerable kind of loss the original
+    docstring warned about, pointed the other way."""
+    table = _table("application_research_snapshots")
+    assert "company_research_snapshot_id" not in table.columns
 
 
-def test_layer_two_is_meaningless_without_an_application() -> None:
-    table = _table("role_research_snapshots")
+def test_research_is_meaningless_without_an_application() -> None:
+    table = _table("application_research_snapshots")
     assert not table.columns["application_id"].nullable, (
-        "role_research_snapshots.application_id is nullable, but Layer 2 without a "
-        "job has nothing to be role-specific about (FR-022)"
+        "application_research_snapshots.application_id is nullable, but "
+        "application-scoped research without an application has no scope (FR-012)"
     )
 
 
@@ -190,7 +186,7 @@ def test_layer_two_is_meaningless_without_an_application() -> None:
 AUDIT_COLUMNS = ("model_config_used", "prompt_version", "input_tokens", "output_tokens", "cost")
 
 
-@pytest.mark.parametrize("name", ("company_research_snapshots", "role_research_snapshots"))
+@pytest.mark.parametrize("name", ("company_research_snapshots", "application_research_snapshots"))
 def test_both_snapshot_tables_carry_the_audit_record(name: str) -> None:
     """FR-012 and Principle V. Slice 007 compares like with like using these."""
     columns = _table(name).columns
@@ -198,7 +194,7 @@ def test_both_snapshot_tables_carry_the_audit_record(name: str) -> None:
     assert missing == [], f"{name} is missing audit columns {missing} (FR-012, Principle V)"
 
 
-@pytest.mark.parametrize("name", ("company_research_snapshots", "role_research_snapshots"))
+@pytest.mark.parametrize("name", ("company_research_snapshots", "application_research_snapshots"))
 def test_a_failed_run_is_a_recorded_run(name: str) -> None:
     """plan.md §5: "a failed run is a recorded run, not an absent one"."""
     columns = _table(name).columns

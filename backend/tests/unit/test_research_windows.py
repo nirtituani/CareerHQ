@@ -75,13 +75,15 @@ def test_research_inside_the_reuse_window_is_still_labelled_fresh() -> None:
     assert freshness(_ago(20), now=NOW) is Freshness.FRESH
 
 
-def test_research_past_reuse_but_inside_the_stale_window_is_still_fresh() -> None:
+def test_research_past_reuse_but_inside_the_stale_window_is_aging() -> None:
     """The gap between the windows is where they visibly differ. At 45 days a
-    snapshot is too old to reuse but not old enough to warn about — and
-    collapsing the two would either overspend or cry wolf."""
+    snapshot is too old to reuse but not old enough to warn about — slice 010
+    (FR-013) names that middle state `aging`: still shown, age visible, no
+    flag. Two states could not express it, and collapsing the windows would
+    either overspend or cry wolf."""
     age = _ago((RESEARCH_REUSE_DAYS + RESEARCH_STALE_DAYS) // 2)
     assert not is_reusable(age, now=NOW)
-    assert freshness(age, now=NOW) is Freshness.FRESH
+    assert freshness(age, now=NOW) is Freshness.AGING
 
 
 # -- staleness: a read-time label -------------------------------------------
@@ -92,7 +94,10 @@ def test_old_research_is_marked_stale_never_hidden() -> None:
 
 
 def test_the_stale_boundary_is_inclusive() -> None:
-    assert freshness(_ago(RESEARCH_STALE_DAYS), now=NOW) is Freshness.FRESH
+    """Exactly 90 days old is not yet stale — the same boundary generosity as
+    the reuse window, and since slice 010 the not-yet-stale side reads
+    `aging`, not `fresh`."""
+    assert freshness(_ago(RESEARCH_STALE_DAYS), now=NOW) is Freshness.AGING
 
 
 # -- FR-033: a brief is only as fresh as what it rests on -------------------

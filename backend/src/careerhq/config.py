@@ -226,6 +226,28 @@ class Settings(BaseSettings):
     #: that redaction is driven off the annotation rather than off a list of
     #: names, so a new secret is covered without anyone remembering to add it.
     tavily_api_key: SecretStr | None = None
+    # -- Slice 010: role-aware research ---------------------------------------
+    #
+    #: Which adapter is the primary research producer. `tavily-research` is the
+    #: external research service (specs/010 D1, chosen on the three-company POC
+    #: measurement); `builtin` selects the retained 008 pipeline directly. The
+    #: selection is stamped into every snapshot as `produced_by`, so a result
+    #: never hides which path made it (FR-005).
+    research_provider: Literal["tavily-research", "builtin"] = "tavily-research"
+    #: What a provider failure does: run the builtin pipeline (recorded as the
+    #: producer) or fail the run honestly with a recorded reason. Never a silent
+    #: degrade (FR-017, D8).
+    research_fallback_enabled: bool = True
+    #: Provider HTTP timeout. Distinct from `research_max_duration_seconds`
+    #: (the abandonment ceiling): this bounds one request, that bounds the run.
+    #: POC measured 32-53 s for a mini-tier research call; 300 s is headroom,
+    #: not an expectation.
+    research_provider_timeout_seconds: int = 300
+    #: Posting text beyond this is truncated FROM THE END before being sent
+    #: (requirements and role context concentrate early in postings), and the
+    #: truncation is recorded in the snapshot's `model_config_used` — an
+    #: unexpectedly thin result on a huge posting must be diagnosable (C4).
+    research_posting_max_chars: int = 20000
     # -- Slice 007: evaluation ------------------------------------------------
     #
     #: **Opus, and set explicitly rather than left to fall back.** `docs/08` §5.2

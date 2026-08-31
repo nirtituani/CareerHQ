@@ -67,6 +67,7 @@ class Freshness(enum.StrEnum):
     """
 
     FRESH = "fresh"
+    AGING = "aging"
     STALE = "stale"
 
 
@@ -118,8 +119,14 @@ def freshness(retrieved_at: datetime, *, now: datetime | None = None) -> Freshne
     caller, because only it knows which layer it is holding.
     """
     moment = now or datetime.now(UTC)
-    if moment - _aware(retrieved_at) > timedelta(days=RESEARCH_STALE_DAYS):
+    age = moment - _aware(retrieved_at)
+    if age > timedelta(days=RESEARCH_STALE_DAYS):
         return Freshness.STALE
+    if age > timedelta(days=RESEARCH_REUSE_DAYS):
+        # Slice 010 (FR-013): between the windows the research is still shown,
+        # with its age visible — old enough that a refresh would re-run, not
+        # old enough to flag. Two states could not express that middle.
+        return Freshness.AGING
     return Freshness.FRESH
 
 
