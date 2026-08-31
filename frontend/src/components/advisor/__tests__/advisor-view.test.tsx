@@ -209,3 +209,69 @@ describe("SidebarNav", () => {
     expect(link.textContent).not.toContain("Soon");
   });
 });
+
+describe("the lifecycle surface (T029)", () => {
+  it("badges a memory with what the latest run did to it", async () => {
+    api.getAdvisor.mockResolvedValue(
+      state({
+        memories: [
+          memory({
+            last_disposition: {
+              action: "confirmed",
+              run_id: "run-9",
+              reason: null,
+              evidence_delta: { facts: [] },
+            },
+          }),
+        ],
+        latest_run: run({ id: "run-9", status: "ready", ops: { proposed: 0, applied: 0, discarded: 0 } }),
+      }),
+    );
+    render(<AdvisorView />);
+    const badge = await screen.findByTestId("since-last-run");
+    expect(badge.textContent).toBe("Confirmed");
+  });
+
+  it("does not badge against a stale run — the disposition must belong to the latest one", async () => {
+    api.getAdvisor.mockResolvedValue(
+      state({
+        memories: [
+          memory({
+            last_disposition: {
+              action: "confirmed",
+              run_id: "run-old",
+              reason: null,
+              evidence_delta: null,
+            },
+          }),
+        ],
+        latest_run: run({ id: "run-9", status: "ready", ops: { proposed: 0, applied: 0, discarded: 0 } }),
+      }),
+    );
+    render(<AdvisorView />);
+    await screen.findByTestId(`memory-${memory().id}`);
+    expect(screen.queryByTestId("since-last-run")).toBeNull();
+  });
+
+  it("opens a superseded memory's lineage and renders every predecessor", async () => {
+    const head = memory({ supersedes_id: "22222222-2222-4222-8222-222222222222" });
+    api.getAdvisor.mockResolvedValue(state({ memories: [head] }));
+    api.getMemory.mockResolvedValue({
+      memory: head,
+      lineage: [
+        memory({
+          id: "22222222-2222-4222-8222-222222222222",
+          claim: "2 of 4 of your applications ended rejected",
+          status: "superseded",
+        }),
+      ],
+      dispositions: [],
+    });
+    render(<AdvisorView />);
+    const card = await screen.findByTestId(`memory-${head.id}`);
+    await userEvent.click(within(card).getByRole("button", { name: "How this evolved" }));
+    const lineage = await within(card).findByTestId("lineage");
+    expect(lineage.textContent).toContain("2 of 4 of your applications ended rejected");
+    expect(api.getMemory).toHaveBeenCalledWith(head.id);
+  });
+});

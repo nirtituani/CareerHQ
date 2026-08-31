@@ -57,6 +57,8 @@ from sqlalchemy import (
     func,
     text,
 )
+from sqlalchemy import event as sa_event
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -318,3 +320,51 @@ class MemoryDisposition(Base):
 
     def __repr__(self) -> str:
         return f"<MemoryDisposition {self.action} {self.memory_id}>"
+
+
+class MemoryContentFrozen(RuntimeError):
+    """A frozen column of a persisted memory was written (FR-012).
+
+    A distinct type for the `VersionLocked` reason: an immutability refusal
+    must not be swallowed by a handler written for validation errors, and a
+    silent no-op on an immutability guarantee is indistinguishable from
+    success — Constitution IV makes that a release blocker.
+    """
+
+
+#: The content columns, frozen at insert. The mutable remainder — `status`
+#: (forward only), `retired_reason` (set with the transition), `priority`,
+#: `priority_reason` (a confirming run may re-rank) and `last_confirmed_at` —
+#: is the lifecycle, and the lock is about content, not the row.
+_FROZEN_MEMORY_COLUMNS: tuple[str, ...] = (
+    "claim",
+    "kind",
+    "scope_kind",
+    "scope_value",
+    "evidence",
+    "advisor_run_id",
+    "supersedes_id",
+    "recreates_dismissed_id",
+    "user_id",
+    "created_at",
+)
+
+
+@sa_event.listens_for(CareerMemory, "before_update")
+def _refuse_frozen_memory_writes(
+    mapper: object, connection: object, target: CareerMemory
+) -> None:
+    """Enforced by a listener rather than by care: every UPDATE against a
+    memory passes through here, whatever module issued it — including one the
+    boundary gate's whitelist would have allowed."""
+    state = sa_inspect(target)
+    tampered = [
+        column
+        for column in _FROZEN_MEMORY_COLUMNS
+        if state.attrs[column].history.has_changes()
+    ]
+    if tampered:
+        raise MemoryContentFrozen(
+            "a career memory's content is frozen at insert; changed understanding is a "
+            f"new memory that supersedes this one. Frozen column(s) written: {tampered}"
+        )

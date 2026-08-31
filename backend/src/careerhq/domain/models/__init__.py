@@ -22,6 +22,7 @@ from careerhq.domain.models.advisor import (
     AdvisorRunStatus,
     CareerMemory,
     DispositionAction,
+    MemoryContentFrozen,
     MemoryDisposition,
     MemoryStatus,
 )
@@ -123,6 +124,7 @@ __all__ = [
     "MatchBand",
     "MatchRequirement",
     "MatchStatus",
+    "MemoryContentFrozen",
     "MemoryDisposition",
     "MemoryStatus",
     "MilitaryService",
