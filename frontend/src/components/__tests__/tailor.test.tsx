@@ -475,9 +475,17 @@ describe("provenance", () => {
       tailor_review: "anthropic/claude-opus-5",
     });
 
-    const line = screen.getByTestId("version-provenance");
-    expect(line).toHaveTextContent("claude-sonnet-5");
-    expect(line).toHaveTextContent("claude-opus-5");
+    // **`waitFor`, because two effects race here.** `getTailoringRun` resolves
+    // in its own effect while `setLoading(false)` belongs to the *version*
+    // fetch, so "Loading…" disappearing does not mean the run has landed. A
+    // bare `getByTestId` therefore samples whichever arrived first and sees
+    // the `version.model` fallback — one model, and the assertion fails on the
+    // other. Measured at roughly 1 run in 8 before this.
+    await waitFor(() => {
+      const line = screen.getByTestId("version-provenance");
+      expect(line).toHaveTextContent("claude-sonnet-5");
+      expect(line).toHaveTextContent("claude-opus-5");
+    });
   });
 
   it("marks fixture output as not real", async () => {
