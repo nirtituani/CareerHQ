@@ -121,15 +121,36 @@ recreated; change evidence materially → recreated as new with history visible.
 
 ## Phase 7: Polish, verification, documentation
 
-- [ ] T039 [P] Extend `backend/tests/integration/test_profile_content.py`-style content coverage to the advisor read path: every stored memory column the contract exposes reaches the API (the suite has never caught a display bug — this is the mechanism that comes closest)
-- [ ] T040 [P] Confirm the architecture import gate covers the new modules (`test_the_application_layer_imports_no_provider_sdk` walks `application/` — verify the new files are in its walk and the walked-module count went **up**; if the count is not asserted today, assert it now)
-- [ ] T041 Run the full backend gates on the host from `backend/` (`pytest` with PostgreSQL up — skipped tests cover nothing and trip the coverage gate; `ruff format --check`, `ruff check`, `mypy` strict) and the frontend gates (`lint`, `typecheck`, `test`, `build`); record the numbers
-- [ ] T042 Execute [quickstart.md](quickstart.md) against the Docker stack in a browser with a scratch `@example.com` user (never `.test`): all seven scenarios including the lifecycle walk, dismissal, failure honesty (`docker compose up -d backend` after the `.env` change — `restart` does not reread it; `build` first — the backend mounts nothing); delete everything seeded by hand and count the real profile's rows before and after
-- [ ] T043 Measure and record in this file's completion notes: wall-clock per run, cost per run from `advisor_runs` (SC-006, SC-007), and the SC-004 outcome against production-shaped data
-- [ ] T044 Update the living documents truthfully: `docs/05_Implementation_Plan.md` and `docs/08_Technical_Spec.md` slice-009 rows (status + what shipped), `docs/07_Capabilities.md` §3.5 (mark the lightweight-prioritization delivery and the **explicitly deferred** richer roadmap — clarification Q1, never silently dropped), `CLAUDE.md` architecture section if the advisor earns a durable subsection; HANDOFF per `/handoff`
-- [ ] T045 Deploy: merge-gated by review; after deploy, `alembic upgrade head` ran in pre-deploy (read the deploy log), readiness 200, `/advisor` serves for the real account with the honest coverage line ("N of 97 analysed") — read the live version from the **commit**, never the deployment id
+- [x] T039 [P] Extend `backend/tests/integration/test_profile_content.py`-style content coverage to the advisor read path: every stored memory column the contract exposes reaches the API (the suite has never caught a display bug — this is the mechanism that comes closest)
+- [x] T040 [P] Confirm the architecture import gate covers the new modules (`test_the_application_layer_imports_no_provider_sdk` walks `application/` — verify the new files are in its walk and the walked-module count went **up**; if the count is not asserted today, assert it now)
+- [x] T041 Run the full backend gates on the host from `backend/` (`pytest` with PostgreSQL up — skipped tests cover nothing and trip the coverage gate; `ruff format --check`, `ruff check`, `mypy` strict) and the frontend gates (`lint`, `typecheck`, `test`, `build`); record the numbers
+- [x] T042 Execute [quickstart.md](quickstart.md) against the Docker stack in a browser with a scratch `@example.com` user (never `.test`): all seven scenarios including the lifecycle walk, dismissal, failure honesty (`docker compose up -d backend` after the `.env` change — `restart` does not reread it; `build` first — the backend mounts nothing); delete everything seeded by hand and count the real profile's rows before and after
+- [x] T043 Measure and record in this file's completion notes: wall-clock per run, cost per run from `advisor_runs` (SC-006, SC-007), and the SC-004 outcome against production-shaped data
+- [x] T044 Update the living documents truthfully: `docs/05_Implementation_Plan.md` and `docs/08_Technical_Spec.md` slice-009 rows (status + what shipped), `docs/07_Capabilities.md` §3.5 (mark the lightweight-prioritization delivery and the **explicitly deferred** richer roadmap — clarification Q1, never silently dropped), `CLAUDE.md` architecture section if the advisor earns a durable subsection; HANDOFF per `/handoff`
+- [ ] T045 **Open — deliberately.** Implementation stopped before merge/push/PR/deploy per instruction; this task runs after review. Deploy: merge-gated by review; after deploy, `alembic upgrade head` ran in pre-deploy (read the deploy log), readiness 200, `/advisor` serves for the real account with the honest coverage line ("N of 97 analysed") — read the live version from the **commit**, never the deployment id
 
 ---
+
+## Measured actuals (T043, 2026-09-01, local Docker stack, real Anthropic calls)
+
+- **Wall clock per run** (SC-006 ≤ 2 min): 41 s, ~40 s, ~40 s across three real runs.
+- **Cost per run** (SC-007, recorded from seam usage): **$0.0475**, $0.0445, $0.0237 —
+  match-analysis order, Sonnet only (grouping skipped: 0 analysed applications).
+- **The gate earned its keep against a real model, twice**: run 1 discarded a claim whose
+  "10" was not in its cited fact; run 3 discarded another for the same reason. Both
+  recorded (`ops_discarded=1`), both visible in the run summary.
+- **SC-002 live**: run 2 dispositioned all 4 prior memories (superseded, with lineage —
+  "4 of 10 (40%) rejected" → "6 of 12 (50%)"); run 3 confirmed all 3 actives and did
+  **not** recreate the dismissed claim.
+- **SC-004 shape**: with 0 analysed applications the advisor produced outcome/volume/
+  self-rating memories plus the coverage insufficient-data answer — and the floor forced
+  the 4-sample self-rating claim `tentative` on its own.
+- **SC-005 live**: broken-key run → `failed`, "The analysis could not be completed.",
+  memory-set hash identical before/after; cost 0.000000 correctly (auth was refused
+  before billing — an unbilled failure records nothing rather than inventing a zero-token
+  entry).
+- **Cleanup verified by counting**: 24 users / 33 applications / 0 memories / 0 runs,
+  before and after, exactly.
 
 ## Dependencies & execution order
 
