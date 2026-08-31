@@ -69,21 +69,40 @@
 > new tab was not attempted.
 
 
-**Last updated:** 2026-08-31 · **`main` @ `d68c85e`** · every number below was measured by a
+**Last updated:** 2026-08-31 · **`main` @ `880d4c1`** · every number below was measured by a
 command run at the time it was written, not carried forward.
 
-**`origin/main` is `d68c85e`** — the merge of PR #22, which brought Slice 010 onto `main`. Both
-services are deployed at that commit and production readiness answers **HTTP 200**: `database ok ·
-cache not_configured · object_storage ok · ai_provider ok`.
+**`origin/main` is `880d4c1`** — the merge of PR #24. **Backend and frontend are both deployed at
+exactly this commit** (`railway deployment list`, `SUCCESS`, 2026-08-31T19:37:20Z) and production
+readiness answers **HTTP 200**: `database ok 11.0 ms · cache not_configured · object_storage ok
+148 ms · ai_provider ok`. Alembic head in production is `0020_application_research`.
+
+**Every slice is complete: 567 / 567 tasks across eight slices, no task open.** Measured with
+`grep -cE '^- \[[xX]\]'` — 001 69/69, 002 52/52, 003 109/109, 004 89/89, 005 101/101,
+006 57/57, 007 50/50, 010 40/40. There is no `specs/009`; the Career Advisor was never started
+and is the documented droppable slice.
+
+**Tests on `880d4c1`**: backend **1,273 passed**, coverage **87.53%** (gate 80%); frontend
+**224 passed** across 17 files; CI green on the merge commit.
+
+**Production data**: 1 user, 97 applications, 90 companies, 1 resume version, 2 application
+research snapshots.
+
+> ⚠️ **One branch is unpushed**: `poc/008-research-comparison` holds `874ce1e`, the
+> research-provider comparison harness from the Pango entity-resolution test — three files under
+> `poc/008-research-comparison/`. It is on this machine only. Everything else is pushed;
+> `git log --branches --not --remotes` shows nothing else.
 
 > **`010-role-aware-research` is merged.** An earlier revision of this file warned that the branch
 > was unpushed and existed on one machine only. It was pushed, reviewed and merged as PR #22; the
 > warning is kept here in past tense rather than deleted, because "the only copy is on a laptop"
 > recurred often enough in this project to be worth remembering.
 
-Merged this session: **#15** (the Slice 008 handoff, written by a session that has since been
-cleared), **#16** (three small follow-ups plus this file's correction), **#18** (the tailor
-model-attribution test flake) and **#17** (**T083**, the JobTracker import screen). Earlier: **#8**
+Merged 2026-08-31, latest first: **#24** (the last stale Slice 010 status line), **#23** (three
+Slice 010 status statements), **#22** (**Slice 010** itself), **#21** (the submission-readiness
+pass — see the box below), **#20** (T047), **#19**, **#18** (the tailor model-attribution test
+flake), **#17** (**T083**), **#16**, **#15**. **#12 was closed, not merged** — superseded by
+`main`, and merging it would have reintroduced an older copy of this file. Earlier: **#8**
 (Slice 003 JobTracker import), **#9** (Slice 006 item D), **#10** (the frontend healthcheck),
 **#11** (documentation reconciliation), **#13** (per-worktree test databases) and **#14** (Slice
 008).
@@ -1168,7 +1187,7 @@ evaluation evidence were untouched throughout: the original 8 versions / 13 runs
 1 submission / $3.253255 are byte-identical, and benchmark rows sit alongside them
 under `google_sub LIKE 'benchmark|%'`.
 
-### The follow-up session (2026-08-31) — six things worth keeping
+### The follow-up sessions (2026-08-31) — nine things worth keeping
 
 1. **A gate with nothing to examine, the fifth time — and this one guarded a real bug.**
    `renderTab` in `tailor.test.tsx` rejects `getTailoringRun` with a **404**, so `run` was `null`
@@ -1204,7 +1223,32 @@ under `google_sub LIKE 'benchmark|%'`.
    else's problem. Proved by forcing the run to resolve one macrotask late — failure went to
    **100%** — rather than by re-running until it passed.
 
-6. **Guessing a production URL produced a confident 404.** `curl` against an invented Railway
+6. **A real personal email address and phone number were committed to a public repository, and
+   the PII gate could not see them.** `frontend/src/lib/__tests__/imports.test.ts` used the
+   author's own Gmail address, phone number, name, city and profile links as a contact-block
+   fixture. `test_no_committed_pii.py` scanned **`backend/benchmark` only** — where the project had
+   decided the risk lived — so it never looked at a frontend test. **A gate scoped to where you
+   expect the risk does not cover where the risk actually is.** The scan now covers `backend/src`,
+   `backend/tests` and `frontend/src`, and was drilled by reinstating the address.
+   Its first run produced a **false positive** worth keeping: a connection string carries
+   `user:pass@host` and matches an email pattern without being one.
+
+7. **Documentation drifted three slices behind the code and nothing noticed.** README said Slice
+   003 was *"blocked on a real CSV export"* and that *"the agent capabilities are next"* while all
+   five agent slices were merged and deployed; `docs/08` called 006/007/008 *"Planned"* and cited
+   **189 tests at 81% coverage** against a measured **1,233 at 87.52%**. **Tests gate code and
+   nothing gates prose.** Every count in a status table is a claim that rots silently — re-measure
+   before believing one, including one written by an earlier session of yourself.
+
+8. **A worktree was reset out from under an in-flight edit, twice, and the second time a commit
+   landed on a detached HEAD.** The cause was mundane: **another worktree had checked out the same
+   branch name**, so git detached this one rather than allow two checkouts of one branch — and a
+   subsequent `git push` then published the *branch ref* (still at `main`) rather than the commit.
+   `gh pr create` refused with *"No commits between main and …"*, which is the symptom to
+   recognise. **When several sessions share one clone, do not assume the branch you created is
+   still the branch you are on**: `git branch --show-current` before committing, and after.
+
+9. **Guessing a production URL produced a confident 404.** `curl` against an invented Railway
    hostname returned `Application not found`, which reads as an outage rather than as a wrong
    address. The real domain came from `railway domain --service frontend` and answered 200.
    **Ask the platform for the hostname; never pattern-match it.**
@@ -1212,25 +1256,27 @@ under `google_sub LIKE 'benchmark|%'`.
 ---
 ## 5. Exact next steps
 
-**Nothing is blocked and nothing is unpushed.** `main` is `32f5be2` and
-`git log --branches --not --remotes` is empty. Items **B** (the two ticks) and **C** (T083) of the
-previous revision are **done** and deleted rather than kept — a next-steps list that mostly
-describes finished work stops being read. What they achieved is recorded in §2, §3 and §4.
+**The project is complete and deployed. There is no open task, and nothing is blocked.**
+`main` is `880d4c1`, both services run from it, and every slice is ticked at **567 / 567**. What
+follows is optional work, ordered by what a next session would most plausibly want.
 
-**The next significant work is A. Everything else here is small.**
+### A — **Slice 010's own follow-up list** · owner: whoever picks 010 back up
 
-### A — **Slice 009, Career Advisor** · owner: next session · **unblocked, but do not start with code**
+Recorded at the top of this file by the session that built it, and **deliberately not addressed
+since**. The two worth naming: the recorded `cost_basis="estimate"` constant overstates Tavily
+spend roughly **4× in the conservative direction** (the usage API posted ~129 research + 13 search
+credits hours late), and `docs/09` UI notes were never backfilled for the new research tab.
+Neither is a defect; both are known and written down.
 
-The last planned slice and the clearest demonstration that the system reasons over accumulated
-memory rather than answering one prompt (`docs/05` §5.9).
+### B — **Slice 009, Career Advisor** · owner: next session · **the only unbuilt slice**
 
-> ⚠️ **Its headline capability has no input data, and `docs/05` says otherwise.** §5.9 justifies
-> putting 009 last because the JobTracker import supplies history "immediately rather than after
-> months of use". That is true of statuses, dates and outcomes — **not of posting content.**
-> `EXPORT_COLUMNS` carries `job_desc_link` (a **URL**) and `match_rating`; the write sets neither
-> `job_description` nor `requirements`. So all **96** imported rows have `requirements IS NULL`,
-> which `scoreability.py` **refuses outright** as legacy — they cannot be match-analysed either.
-> *"Python appeared in 14 of 20 roles"* has nothing to count.
+There is no `specs/009`. It was always documented as droppable, and the project satisfies every
+graded requirement without it.
+
+> ⚠️ **Its headline capability still has no input data**, and `docs/05` §5.9 says otherwise. The
+> JobTracker import supplies statuses, dates and outcomes — **not posting content**. All 96
+> imported rows have `requirements IS NULL`, which `scoreability.py` refuses outright as legacy,
+> so *"Python appeared in 14 of 20 roles"* has nothing to count.
 >
 > Verify: `railway ssh --service pgvector "PGHOST=localhost PGPORT=5432 psql -U postgres -d railway`
 > `-c \"SELECT count(*) FILTER (WHERE requirements IS NULL) FROM applications;\""`
@@ -1245,45 +1291,32 @@ links dead, and it **writes to real production rows** — so it needs idempotenc
 Own it in a **fresh worktree** with its own database:
 `CAREERHQ_TEST_DATABASE_URL=…/careerhq_test_009`.
 
-### B — **T047: populate the real sanity set** · owner: **the author only** · deferred by design
+### C — **Push `poc/008-research-comparison`** · owner: either · small, and the only unpushed work
 
-Built, isolated, gitignored and PII-scanned; `REAL_SET_DEFAULT_ROOT` is `~/CareerHQ-benchmark-real`,
-which **does not exist**. **It cannot be completed with synthetic data** — its one question is
-whether the synthetic set overstates the system, so a second synthetic set answers nothing. Filling
-it means a real CV on disk. Spends no money.
+`874ce1e` — the research-provider comparison harness from the Pango entity-resolution test, three
+files under `poc/008-research-comparison/`. It exists on one machine. This project has now had that
+situation three times; twice it was resolved by luck.
 
-Verify: `ls ~/CareerHQ-benchmark-real 2>/dev/null || echo "unpopulated, as intended"`
+### D — **Off-machine backup of the paid evaluation evidence** · owner: the author · **largest unmanaged risk**
 
-### C — **Off-machine backup of the paid evaluation evidence** · owner: the author · **largest unmanaged risk**
+Unchanged. The only backup is `~/CareerHQ-backups/2026-08-29/`, **on the same machine as the
+volumes**, and it predates both T052 arms and the Slice 007 benchmark. Roughly **$8.49** of paid
+evidence across **two** volumes — `careerhq_postgres_data` for rows, `careerhq_minio_data` for the
+exported PDF bytes a submission checksum refers to. Lose the second and re-verification fails
+permanently, by design.
 
-Unchanged and still the biggest one. The only backup is `~/CareerHQ-backups/2026-08-29/`, **on the
-same machine as the volumes**, and predates both T052 arms and the whole Slice 007 benchmark.
-Roughly **$8.49** of paid evidence: $3.562567 (004–006) + $4.925403 (007) + $0.352047 in
-production. It lives in **two** volumes — `careerhq_postgres_data` for rows,
-`careerhq_minio_data` for the exported PDF bytes a submission checksum refers to. Lose the second
-and re-verification fails permanently, by design.
+### E — **Branch and worktree hygiene** · owner: either · cosmetic, and mildly hazardous
 
-### D — **Delete the merged branches and stale worktrees** · owner: either · housekeeping
+**26 local branches** and **23 remote branches** are merged into `main`, plus **15 worktrees**.
+Deleting merged branches loses nothing, but check `git log --branches --not --remotes` first —
+and note item 8 in §4: a shared clone with several worktrees is how an in-flight edit was lost
+twice in one day. **`poc/008-research-comparison` must not be deleted** until it is pushed.
 
-**Measured 2026-08-31: 18 local branches are merged into `main`** and still present, four of them
-from this session — `handoff-post-008`, `fix/small-followups-pre-009`, `t083-jobtracker-import-ui`
-and `fix/tailor-model-test-flake` — the last three also on the remote. **13 worktrees** exist,
-including two created this session (`CareerHQ-t083`, `CareerHQ-flake`) that are finished with.
-
-**Not urgent, and deliberately not done here.** A stale branch costs nothing; deleting one that
-turns out to hold the only copy of something costs a great deal, and §4 records exactly that near
-miss. Check `git log --branches --not --remotes` first — it is empty today.
-
-Verify: `git branch --merged main --format='%(refname:short)' | grep -v '^main$'`
-and `git worktree list`
-
-### E — **The SC-008 gate does not scan `specs/006`** · owner: next session · small, recorded not fixed
+### F — **The SC-008 gate does not scan `specs/006`** · owner: next session · recorded, not fixed
 
 `test_sc008_is_not_relabelled.py` scans `specs/007-*`, `HANDOFF.md` and `CLAUDE.md` — **not**
-`specs/006`, where R15 and R16 live. So the slice's own SC-008 record is unchecked by the gate that
-exists to protect it, and **three pre-existing verdict-rule violations sit in R15** (lines 534, 540,
-546: `3.22` with no "missed" nearby). Widening `_artifacts()` would catch them. Deliberately not
-done here, because changing that test was out of scope for the session that found it.
+`specs/006`, where R15 and R16 live. Three pre-existing verdict-rule violations sit in R15.
+Widening `_artifacts()` would catch them.
 
 ---
 ## 5A. Real data that must not be deleted or modified
