@@ -303,3 +303,42 @@ async def test_the_memory_route_walks_a_three_deep_lineage(
     assert [m["claim"][:12] for m in body["lineage"]] == ["generation 1", "generation 0"]
     assert len(body["lineage"]) == 2, "the whole chain, not one hop"
     assert all(m["status"] == "superseded" for m in body["lineage"])
+
+
+async def test_dismissal_retires_with_the_users_reason_and_refuses_terminal_rows(
+    client: httpx.AsyncClient, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    """T035: 200 retires with user_dismissed; a second dismissal 409s (terminal
+    rows refuse re-termination); a stranger 404s before anything is revealed."""
+    async with session_factory() as session:
+        owner = await _seed(session)
+        stranger = await _seed(session)
+        run = await _run_row(session, owner)
+        memory = CareerMemory(
+            user_id=owner.id,
+            advisor_run_id=run.id,
+            claim="1 of 3 applications ended rejected",
+            kind="outcome_pattern",
+            scope_kind="global",
+            evidence={"facts": []},
+            status=MemoryStatus.ACTIVE,
+        )
+        session.add(memory)
+        await session.commit()
+        memory_id = memory.id
+
+    response = await _as(client, stranger).post(f"/api/advisor/memories/{memory_id}/dismiss")
+    assert response.status_code == 404
+
+    response = await _as(client, owner).post(f"/api/advisor/memories/{memory_id}/dismiss")
+    assert response.status_code == 200
+    body = response.json()["memory"]
+    assert body["status"] == "retired"
+    assert body["retired_reason"] == "user_dismissed"
+
+    response = await _as(client, owner).post(f"/api/advisor/memories/{memory_id}/dismiss")
+    assert response.status_code == 409
+
+    page = (await _as(client, owner).get("/api/advisor")).json()
+    assert page["memories"] == [], "a dismissed memory leaves the active set"
+    assert page["history_counts"]["retired"] == 1

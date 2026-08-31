@@ -312,3 +312,104 @@ async def test_the_lifecycle_walk(
         assert _serialise_memories(after_rows) == before_bytes, (
             "SC-005: a failed run leaves the memory set byte-for-byte unchanged"
         )
+
+
+async def test_dismissal_holds_until_the_evidence_materially_changes(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """T037: dismissed -> re-run on unchanged data -> the claim stays out of
+    the actives and the discard is *recorded* (`ops_discarded > 0`,
+    distinguishable from found-nothing); evidence moves -> recreated as new
+    with the dismissal history visible."""
+    async with session_factory() as session:
+        user = await _seed(session)
+        await session.commit()
+        user_id = user.id
+    await _execute(session_factory, user, _run1_answer)
+
+    # Dismiss the rejection memory the way the route does.
+    async with session_factory() as session:
+        rows = list(
+            (await session.scalars(select(CareerMemory).where(CareerMemory.user_id == user_id))).all()
+        )
+        target = next(m for m in rows if "rejected" in m.claim)
+        target.status = "retired"
+        target.retired_reason = "user_dismissed"
+        await session.commit()
+        dismissed_id = target.id
+
+    # The stubborn model proposes the same claim over unchanged evidence.
+    def stubborn_answer(task: str, parsed: ParsedPrompt) -> dict[str, Any]:
+        assert str(dismissed_id) in parsed.dismissed_ids, (
+            "the dismissal must reach the reasoning input, marked"
+        )
+        num, den = parsed.facts[_REJECTION]
+        return {
+            "created": [
+                {
+                    "claim": f"{num} of {den} applications ended rejected",
+                    "kind": "pattern_outcome_rejection_rate_global",
+                    "scope_kind": "global",
+                    "cited_fact_ids": [_REJECTION],
+                    "tentative": False,
+                }
+            ],
+            "dispositions": [
+                {"memory_id": m, "action": "confirm", "fresh_fact_ids": [_REJECTION]}
+                for m in parsed.memory_ids
+            ],
+        }
+
+    run2_id = await _execute(session_factory, user, stubborn_answer)
+
+    async with session_factory() as session:
+        run2 = await session.get(AdvisorRun, run2_id)
+        assert run2 is not None and run2.status == "ready"
+        assert run2.ops_discarded == 1, "the refusal is recorded, not silent"
+        actives = list(
+            (
+                await session.scalars(
+                    select(CareerMemory).where(
+                        CareerMemory.user_id == user_id,
+                        CareerMemory.status.in_(["active", "tentative"]),
+                    )
+                )
+            ).all()
+        )
+        assert not any("rejected" in m.claim for m in actives), (
+            "the dismissed claim must not return on unchanged evidence"
+        )
+
+    # The world moves: three more rejections — materially different tuples.
+    async with session_factory() as session:
+        company_id = (
+            await session.scalars(select(Company.id).where(Company.user_id == user_id))
+        ).first()
+        for index in range(3):
+            application = Application(
+                user_id=user_id,
+                company_id=company_id,
+                job_title=f"Later role {index}",
+                status="Rejected",
+                normalized_status=NormalizedStatus.REJECTED,
+            )
+            application.date_added = datetime.now(UTC) - timedelta(days=1)
+            session.add(application)
+        await session.commit()
+
+    run3_id = await _execute(session_factory, user, stubborn_answer)
+
+    async with session_factory() as session:
+        run3 = await session.get(AdvisorRun, run3_id)
+        assert run3 is not None and run3.status == "ready"
+        recreated = (
+            await session.scalars(
+                select(CareerMemory).where(
+                    CareerMemory.user_id == user_id,
+                    CareerMemory.recreates_dismissed_id == dismissed_id,
+                )
+            )
+        ).one_or_none()
+        assert recreated is not None, "materially changed evidence recreates the claim"
+        assert recreated.status in ("active", "tentative")
+        assert "5 of 8" in recreated.claim
