@@ -45,6 +45,36 @@ and should stay CRUD. Agents are reserved for work that genuinely requires reaso
 
 ---
 
+# 2a. Status at a glance
+
+**Verified against `main`.** A capability is *implemented* only if it is reachable in the running
+system; design documents do not count.
+
+| Capability | Status | Where |
+|---|---|---|
+| Application Management Core | ✅ **Implemented** | 003 — deterministic CRUD, no model calls |
+| CV import → reviewed Professional Profile | ✅ **Implemented** | 003 |
+| JobTracker history import | ✅ **Implemented** | 003 — run against production |
+| Match Analysis | ✅ **Implemented** | 004 |
+| Resume Optimizer (tailoring workflow) | ✅ **Implemented** | 005 |
+| Reviewer / self-critique | ✅ **Implemented** | 005 — the in-workflow loop |
+| RAG over resume guidelines | ✅ **Implemented** | 006 |
+| PDF export, submit-and-lock | ✅ **Implemented** | 006 |
+| Evaluation harness, metrics, LLM-as-judge | ✅ **Implemented** | 007 — paid benchmark pass run |
+| Company Research — Layer 1 (company) | ✅ **Implemented** | 008 |
+| Company Research — Layer 2 (role) | 🔨 **Built, not wired** | 008 — use case, schema and table exist and are tested; **no route, no UI** |
+| Career Advisor | 📋 **Planned** | 009 — droppable |
+| Interview Coach | 💤 **Deferred** — stretch goal | — |
+| Application Workflow Agent | 💤 **Deferred** — stretch goal | — |
+| Resume Builder / Designer | 🚫 **Non-goal** — scoped out (ADR-013) | — |
+
+**"Agent" is used narrowly here.** A capability is an agent when it plans, acts and revises over
+multiple steps — which, today, means the Resume Optimizer. Match Analysis and research synthesis
+are single structured completions; calling them agents would inflate the architecture. Business
+logic stays deterministic, and every provider call goes through the one AI boundary.
+
+---
+
 # 3. Capabilities
 
 ## 3.1 Application Management Core
@@ -139,7 +169,7 @@ evaluation — four things production agentic systems are judged on.
 | **Does** | Research a company on demand: what it does, its product and customers, market and competitors, publicly visible technology, and interview preparation notes |
 | **Input** | Company name and domain |
 | **Output** | An immutable research snapshot **with sources and retrieval timestamps** |
-| **Tools** | **Web search MCP** |
+| **Tools** | **Web search** behind the `WebSearch` port — plain HTTPS to Tavily, not MCP. The provider returns URLs only; CareerHQ fetches the pages itself, which is what makes verbatim citation checking possible |
 | **Memory** | Snapshots accumulate per company; historical research is never overwritten |
 | **Evaluated by** | Citation accuracy — does each claim trace to a real source? |
 | **Slice** | 008 |
@@ -216,7 +246,7 @@ Mapping capabilities to the project requirements.
 |---|---|
 | Multi-agent | Optimizer, Research, Advisor, and Reviewer coordinated by the workflow engine |
 | RAG | Guideline retrieval over pgvector in the Optimizer (slice 006) |
-| Tools / MCP | Knowledge retrieval, diff, PDF export; **web search MCP** in Research |
+| Tools / MCP | Knowledge retrieval (RAG), PDF export; **web search** in Research — behind a port, over plain HTTPS rather than MCP |
 | Memory | The Core is the memory; the Advisor is what proves it is being used |
 | Self-critique | The Reviewer's revision loop |
 | Human-in-the-loop | Item-level approval before any resume version is created |
@@ -235,7 +265,7 @@ Import CV                    → parsed into the Professional Profile
    ↓
 Add a job                    → Application Management Core
    ↓
-Research the company         → Company Research Agent (web search MCP)
+Research the company         → Company Research (web search, plain HTTPS)
    ↓
 Analyze and score the match  → Resume Optimizer
    ↓
@@ -267,7 +297,7 @@ Two deep agents and a working system beat five shallow ones.
 |---|---|---|
 | 1 | Application Core + Resume Optimizer + Reviewer | The flagship. Everything else builds on it. |
 | 2 | Evaluation | Turns "I built an agent" into "I know how well it works" |
-| 3 | Company Research | Second agent; adds the MCP requirement |
+| 3 | Company Research | Adds the external-tool requirement — web search behind a port |
 | 4 | Career Advisor | Best demonstration of memory; cheap once history exists |
 | 5 | Interview Coach, Application Workflow Agent | Stretch |
 | 6 | Resume Builder | Future |
