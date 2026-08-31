@@ -196,7 +196,7 @@ map plus honest status.
 | **Match analysis** — score a job against the profile | No — one structured call | 004 | ✅ **Built and verified** |
 | **Resume Optimizer** — the flagship | Yes | 005 (workflow), 006 (RAG, PDF) | ✅ **Built and deployed** |
 | **Reviewer / evaluation layer** | Yes | 005 (the loop), 007 (the metrics) | ✅ **Built** — self-critique in 005, metrics and LLM-as-judge in 007 |
-| Company Research | Yes — web search over plain HTTPS | 008 | ✅ **Built** — Layer 1 deployed; Layer 2 built but unwired |
+| Company Research | Yes — web search over plain HTTPS (008); a research provider behind a seam (010) | 008, 010 | ✅ **Built** — 008's Layer 1 deployed; 010 makes research role-aware and keeps 008's pipeline as its fallback (on its branch, unmerged) |
 | Career Advisor | Yes | 009 | 📋 Planned |
 | Interview Coach | Yes | — | 💤 Deferred (stretch) |
 | Application Workflow Agent | Yes | — | 💤 Deferred (stretch) |
@@ -717,8 +717,9 @@ identified gaps demonstrably narrow over time.
 | 005 | **Resume Tailoring** | LangGraph workflow, Reviewer, versions, item-level approval | 004 | ✅ **Complete** — 101/101, deployed, and exercised by a real paid production run (T088). SC-006 met by one run of four; **SC-001 missed by all four** and the target was not adjusted |
 | 006 | Document & Retrieval | RAG over resume guidelines, PDF export, submit-and-lock | 005 | ✅ **Complete** — 57/57, deployed. **SC-008 (006) missed at 3.22%** against a ≤2% threshold; the target was not adjusted |
 | 007 | Evaluation & Benchmark | Benchmark set, metrics, LLM-as-judge, regression runs | 006 | ✅ **Complete** — 50/50. Paid benchmark pass run at **$4.925403** of a $10 ceiling |
-| 008 | Company Research | Search → fetch → synthesise, citation-preserving snapshots | 003 | ✅ **Complete** and merged. Web search over **plain HTTPS, not MCP** — argued in `tavily_search.py`. Layer 2 (role research) is built and tested but **has no route and no UI** |
+| 008 | Company Research | Search → fetch → synthesise, citation-preserving snapshots | 003 | ✅ **Complete** and merged. Web search over **plain HTTPS, not MCP** — argued in `tavily_search.py`. Its **primary path is superseded by 010**, which keeps this pipeline as the configured fallback; Layer 2 (role research) never had a route, and 010's migration `0020` reshaped its table |
 | 009 | Career Advisor | Quantified skill gaps over history | 003, 004 | 📋 Planned — droppable |
+| 010 | Role-Aware Research | ResearchProvider seam, application-scoped and role-aware, sections-first UI | 008 | 🔨 **Built on branch `010-role-aware-research`, unmerged and not deployed.** 40/40 tasks; SC-001 measured on 5 real applications (4 correct, 1 honest-uncertain, 0 wrong) |
 
 **Slices 001–007 are the core** and together satisfy every project requirement. 008 and 009
 add the most product value per unit of effort, but the project is defensible without them.
@@ -754,7 +755,7 @@ twice.
 | Plan with milestones | [docs/05](05_Implementation_Plan.md), §6.1 | ✅ |
 | Agent with backend and frontend | Slice 005 — FastAPI + Next.js, the Tailor tab | ✅ built, not yet deployed |
 | Agent manages memory | Profile, application history, submitted versions; slice 009 reasons over all of it | 📋 |
-| Tools / MCPs | Retrieval, PDF export (006); web search **MCP** (008) | 📋 |
+| Tools / MCPs | Retrieval, PDF export (006); web search + research provider (008/010, plain HTTPS rather than MCP — argued in `tavily_search.py`) | ✅ |
 | Agentic workflow matched to the problem | Self-critique + human approval (005); RAG (006) | ✅ built, not yet deployed |
 | Evaluation, benchmark, metrics | Slice 007, §5.2 | 📋 **graded, and deferred twice** |
 | Deployed using Docker | Slice 002, then continuously | ✅ |

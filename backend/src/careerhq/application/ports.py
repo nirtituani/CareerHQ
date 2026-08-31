@@ -329,9 +329,143 @@ class SourceFetcher(Protocol):
     async def fetch(self, *, url: str) -> FetchedSource | None: ...
 
 
+@dataclass(frozen=True, slots=True)
+class ProviderSource:
+    """One source a research run consulted, as the snapshot will record it.
+
+    `excerpt` non-None means **verified**: the producing path checked the
+    passage verbatim against a page it fetched itself (the builtin pipeline
+    can; a research provider cannot, so its sources carry `None` and render as
+    attribution, never as verification — slice 010 FR-010). `fetch_status`
+    keeps FR-009's honesty: a source that could not be read is still a row.
+    """
+
+    source_id: str
+    url: str
+    title: str | None = None
+    excerpt: str | None = None
+    fetch_status: str = "retrieved"
+
+
+@dataclass(frozen=True, slots=True)
+class ResearchOutcome:
+    """What one research run produced, whoever produced it.
+
+    The contract is `specs/010-role-aware-research/contracts/research-provider-seam.md`;
+    its invariants are enforced in `__post_init__` rather than trusted, because
+    the two adapters are written by different slices of work and a pairing bug
+    between them would otherwise surface as a wrong `cost_basis` in an audit row.
+
+    * exactly one of `usage` / `cost_estimate` is set — persistence derives
+      `cost_basis` from which one arrived (D5);
+    * the research shape matches `prompt_version` — `app-v1` carries
+      `ApplicationResearch`, `v2-dense` carries the tiered `CompanyResearch`.
+
+    `run_facts` is the adapter's contribution to `model_config_used` — the
+    posting-truncation record, the provider tier, the documented credit range.
+    Facts about the run, never content from it.
+    """
+
+    research: BaseModel
+    sources: tuple[ProviderSource, ...]
+    produced_by: str
+    prompt_version: str
+    usage: Usage | None = None
+    cost_estimate: Decimal | None = None
+    run_facts: dict[str, object] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if (self.usage is None) == (self.cost_estimate is None):
+            raise ValueError(
+                "a ResearchOutcome must carry exactly one of usage (recorded) or "
+                "cost_estimate (estimate); persistence derives cost_basis from which"
+            )
+        expected = {"app-v1": "ApplicationResearch", "v2-dense": "CompanyResearch"}.get(
+            self.prompt_version
+        )
+        if expected is not None and type(self.research).__name__ != expected:
+            raise ValueError(
+                f"prompt_version {self.prompt_version!r} promises a {expected} payload, "
+                f"got {type(self.research).__name__}"
+            )
+
+
+class ResearchProvider(Protocol):
+    """Produce role-aware company research in one call (slice 010).
+
+    The port speaks the application's language only: an employer, a role, a
+    posting. No model tiers, credit budgets, search depths or timeouts — those
+    are an adapter's configuration, and naming them here would choose the
+    implementation (the `GuidelineSource` refusal, applied again).
+
+    `role_title` and `posting_text` are optional **and their absence is
+    honest**: an adapter given neither must ask for company-only research and
+    let the role sections explain the gap (FR-011, D7) — never invent a role.
+    Nothing profile-shaped can enter: the signature has no parameter for it,
+    and the SC-007 sentinel test asserts the assembled inputs stay clean.
+
+    Two identity attributes travel with the adapter (review fix): `produced_by`
+    is what a pending row is stamped with, so a failed run attributes the path
+    that was actually wired in rather than whatever configuration says today;
+    `attempt_cost_estimate` is the documented spend basis of an interrupted
+    attempt — what an abandoned run of this adapter plausibly billed — or
+    `None` where that is unknowable.
+    """
+
+    produced_by: str
+    attempt_cost_estimate: Decimal | None
+
+    async def research(
+        self,
+        *,
+        company_name: str,
+        domain: str | None,
+        role_title: str | None,
+        posting_text: str | None,
+    ) -> ResearchOutcome: ...
+
+
+class ResearchProviderUnavailable(RuntimeError):
+    """The research provider could not be reached or is not configured.
+
+    The route answers this per configuration: run the retained builtin pipeline,
+    or record an honest failure (slice 010 FR-017/D8). Distinct from
+    `ResearchProviderRejected` because the two demand different reactions — a
+    transport failure may be worth a fallback, while output the schema refused
+    is a fact about this run that a retry against the same input would repeat.
+
+    `cost_estimate` carries whatever spend basis existed at failure, following
+    `ExtractionFailedError`'s lesson: an exception that discards its bill makes
+    the run read as free, and nobody investigates a free run.
+    """
+
+    def __init__(self, message: str, *, cost_estimate: Decimal | None = None) -> None:
+        super().__init__(message)
+        self.cost_estimate = cost_estimate
+
+
+class ResearchProviderRejected(RuntimeError):
+    """The provider answered, and its output could not be accepted.
+
+    Schema-invalid or malformed output is a **failed run, never a partially
+    persisted one** — the same rule the extraction seam states as O2. The
+    message must name the failure kind, never quote the output (which is
+    untrusted web-derived text; `safe_validation_errors` exists for the detail).
+    """
+
+    def __init__(self, message: str, *, cost_estimate: Decimal | None = None) -> None:
+        super().__init__(message)
+        self.cost_estimate = cost_estimate
+
+
 __all__ = [
     "Completion",
     "FetchedSource",
+    "ProviderSource",
+    "ResearchOutcome",
+    "ResearchProvider",
+    "ResearchProviderRejected",
+    "ResearchProviderUnavailable",
     "SearchHit",
     "SourceFetcher",
     "StructuredCompletion",
