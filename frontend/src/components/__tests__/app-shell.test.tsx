@@ -50,11 +50,14 @@ describe("AppShell", () => {
       ["Dashboard", "/dashboard"],
       ["Applications", "/applications"],
       ["Profile", "/profile"],
+      // Live since slice 009 — the Soon marker came off in the same slice
+      // that built the page behind it (the stale-marker rule).
+      ["Career Advisor", "/advisor"],
     ] as const) {
       expect(screen.getByRole("link", { name: label })).toHaveAttribute("href", href);
     }
 
-    for (const label of ["Career Advisor", "CV Builder", "Settings"]) {
+    for (const label of ["CV Builder", "Settings"]) {
       const item = screen.getByText(label).closest("[aria-disabled]");
       expect(item).toHaveAttribute("aria-disabled", "true");
       expect(item?.tagName).not.toBe("A");
