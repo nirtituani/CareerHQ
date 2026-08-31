@@ -117,6 +117,12 @@ export function ResearchSections({ research }: { research: ResearchPayload }) {
         <ul className="space-y-2">
           {research.sources.map((source) => (
             <li key={source.source_id} className="text-muted-foreground text-xs">
+              {/* The citation number the prose refers to (review fix, FR-010):
+                  s2 renders as [2], so "(source 2)" resolves by label rather
+                  than by position in a list that sorts s10 before s2. */}
+              <span className="mr-1 font-mono" data-source-label>
+                [{source.source_id.replace(/^s(?=\d+$)/, "")}]
+              </span>
               {source.fetch_status === "retrieved" ? (
                 <a
                   href={source.url}

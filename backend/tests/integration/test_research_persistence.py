@@ -347,3 +347,155 @@ async def test_a_fresh_snapshot_is_reusable_and_an_old_one_is_not(
         await _backdate(session, snapshot.id, days=31)
         await session.refresh(snapshot)
         assert await reusable_application_research(session, application) is None
+
+
+async def test_a_late_completion_cannot_resurrect_a_terminal_row(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """Review fix: a background task finishing after its row was marked
+    failed (AbandonedRun, or by any other session) must not flip the terminal
+    state back to succeeded — the replacement run is already in flight, and a
+    terminal transition is terminal (Principle IV)."""
+    async with session_factory() as session:
+        application = await _seed_application(session, sub="prs-late")
+        snapshot = await create_pending_application_research(
+            session, application, produced_by="provider:tavily-research"
+        )
+        await session.commit()
+
+        # Another session marks the row failed — exactly what the abandoned-run
+        # replacement does while the original task is still alive.
+        async with session_factory() as other:
+            stuck = await other.get(ApplicationResearchSnapshot, snapshot.id)
+            assert stuck is not None
+            await fail_research(other, stuck, "AbandonedRun")
+            await other.commit()
+
+        # The original task, holding its stale ORM copy, tries to complete.
+        await complete_application_research(session, snapshot, outcome=_recorded_outcome())
+        await session.commit()
+
+    async with session_factory() as check:
+        stored = await check.get(ApplicationResearchSnapshot, snapshot.id)
+        assert stored is not None
+        assert stored.status == ResearchStatus.FAILED, "a terminal row was resurrected"
+        assert stored.sections == {}, "the late result must not be persisted onto it"
+
+
+async def test_a_late_failure_cannot_overwrite_a_terminal_row(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        application = await _seed_application(session, sub="prs-late-fail")
+        snapshot = await create_pending_application_research(
+            session, application, produced_by="provider:tavily-research"
+        )
+        await complete_application_research(session, snapshot, outcome=_recorded_outcome())
+        await session.commit()
+
+        async with session_factory() as other:
+            done = await other.get(ApplicationResearchSnapshot, snapshot.id)
+            assert done is not None
+            await fail_research(other, done, "TooLate")
+            await other.commit()
+
+    async with session_factory() as check:
+        stored = await check.get(ApplicationResearchSnapshot, snapshot.id)
+        assert stored is not None
+        assert stored.status == ResearchStatus.SUCCEEDED
+
+
+async def test_an_abandoned_only_history_reads_as_nothing_so_recovery_is_reachable(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """Review fix: a first-ever run that died uncommitted must not be served as
+    'running' forever — the read path answers None, the tab offers the start
+    button, and the next POST replaces the stuck row."""
+    async with session_factory() as session:
+        application = await _seed_application(session, sub="prs-abandoned-only")
+        stuck = await create_pending_application_research(
+            session, application, produced_by="provider:tavily-research"
+        )
+        await session.flush()
+        await _backdate(session, stuck.id, seconds=901)
+        session.expunge_all()
+
+        application = (await session.scalars(select(Application))).one()
+        assert await current_application_research(session, application) is None
+
+
+async def test_an_abandoned_provider_run_is_failed_with_its_estimated_bill(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """Review fix: a run nothing will finish still plausibly billed — the
+    replacement stamps the stuck row with the caller-supplied estimate rather
+    than leaving a $0 row that reads as free."""
+    async with session_factory() as session:
+        application = await _seed_application(session, sub="prs-abandon-bill")
+        stuck = await create_pending_application_research(
+            session, application, produced_by="provider:tavily-research"
+        )
+        await session.flush()
+        await _backdate(session, stuck.id, seconds=901)
+
+        await create_pending_application_research(
+            session,
+            application,
+            produced_by="provider:tavily-research",
+            abandoned_cost_estimate=Decimal("0.456"),
+        )
+        await session.refresh(stuck)
+        assert stuck.status == ResearchStatus.FAILED
+        assert stuck.cost == Decimal("0.456")
+        assert stuck.cost_basis == "estimate"
+
+
+async def test_reuse_is_refused_when_the_posting_context_changed(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """Review fix (US2 acceptance 2): a snapshot is reusable only for the
+    context it was produced from. A missing stored fingerprint is a mismatch —
+    never a free pass."""
+    from careerhq.application.research_application import context_fingerprint
+
+    async with session_factory() as session:
+        application = await _seed_application(session, sub="prs-fingerprint")
+        snapshot = await create_pending_application_research(
+            session, application, produced_by="provider:tavily-research"
+        )
+        old_print = context_fingerprint(role_title=None, posting_text=None)
+        await complete_application_research(
+            session, snapshot, outcome=_recorded_outcome(), context_fingerprint=old_print
+        )
+
+        assert (
+            await reusable_application_research(session, application, context_fingerprint=old_print)
+            is not None
+        ), "unchanged context reuses"
+
+        new_print = context_fingerprint(
+            role_title="Senior Backend", posting_text="Join the Parking Domain."
+        )
+        assert (
+            await reusable_application_research(session, application, context_fingerprint=new_print)
+            is None
+        ), "a changed posting context must re-run"
+
+
+async def test_a_snapshot_without_a_stored_fingerprint_is_not_reused_against_one(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    from careerhq.application.research_application import context_fingerprint
+
+    async with session_factory() as session:
+        application = await _seed_application(session, sub="prs-nofingerprint")
+        snapshot = await create_pending_application_research(
+            session, application, produced_by="provider:tavily-research"
+        )
+        await complete_application_research(session, snapshot, outcome=_recorded_outcome())
+
+        current = context_fingerprint(role_title=None, posting_text=None)
+        assert (
+            await reusable_application_research(session, application, context_fingerprint=current)
+            is None
+        )

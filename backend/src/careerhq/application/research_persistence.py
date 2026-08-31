@@ -31,6 +31,7 @@ honest thing to show.
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from decimal import Decimal
 
@@ -38,7 +39,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from careerhq.application.ports import ResearchOutcome
+from careerhq.application.ports import ResearchOutcome, Usage
 from careerhq.application.research_windows import is_reusable
 from careerhq.config import get_settings
 from careerhq.domain.models import (
@@ -49,6 +50,8 @@ from careerhq.domain.models import (
     ResearchSource,
     ResearchStatus,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class ConcurrentResearchRun(RuntimeError):
@@ -105,13 +108,24 @@ def is_abandoned(
 
 
 async def reusable_application_research(
-    session: AsyncSession, application: Application, *, now: datetime | None = None
+    session: AsyncSession,
+    application: Application,
+    *,
+    context_fingerprint: str | None = None,
+    now: datetime | None = None,
 ) -> ApplicationResearchSnapshot | None:
-    """The snapshot fresh enough to skip a re-run, or `None`.
+    """The snapshot fresh enough — and about the same job — to skip a re-run.
 
     Per application (decision 1A): the newest *succeeded* row inside the reuse
     window. A run still in flight is not reusable — this is a spend decision,
     and the caller answers an in-flight run with a conflict, not a reuse.
+
+    When `context_fingerprint` is given, the stored fingerprint must match it
+    (review fix, US2 acceptance 2): research produced for a different posting
+    context — company-only before a JD was pasted, or an edited JD — is not a
+    reuse candidate, whatever its age. A snapshot that stored no fingerprint
+    never matches one, because "unknown context" cannot honestly answer
+    "same context".
     """
     latest = await session.scalar(
         select(ApplicationResearchSnapshot)
@@ -124,7 +138,13 @@ async def reusable_application_research(
     )
     if latest is None:
         return None
-    return latest if is_reusable(latest.retrieved_at, now=now) else None
+    if not is_reusable(latest.retrieved_at, now=now):
+        return None
+    if context_fingerprint is not None:
+        stored = (latest.model_config_used or {}).get("context_fingerprint")
+        if stored != context_fingerprint:
+            return None
+    return latest
 
 
 async def create_pending_application_research(
@@ -132,6 +152,7 @@ async def create_pending_application_research(
     application: Application,
     *,
     produced_by: str,
+    abandoned_cost_estimate: Decimal | None = None,
     now: datetime | None = None,
 ) -> ApplicationResearchSnapshot:
     """Reserve a row for a run. Committing it is the caller's job.
@@ -160,7 +181,12 @@ async def create_pending_application_research(
         .execution_options(populate_existing=True)
     )
     if in_flight is not None and is_abandoned(in_flight, now=now):
-        await fail_research(session, in_flight, "AbandonedRun")
+        # The stuck run plausibly billed before it died; the caller supplies
+        # the documented estimate so the failed row does not read as free
+        # (review fix). None when the attempt's spend is unknowable.
+        await fail_research(
+            session, in_flight, "AbandonedRun", cost_estimate=abandoned_cost_estimate
+        )
 
     snapshot = ApplicationResearchSnapshot(
         user_id=application.user_id,
@@ -185,6 +211,7 @@ async def complete_application_research(
     snapshot: ApplicationResearchSnapshot,
     *,
     outcome: ResearchOutcome,
+    context_fingerprint: str | None = None,
 ) -> None:
     """Write a finished run — sections, provenance, accounting, sources.
 
@@ -193,12 +220,28 @@ async def complete_application_research(
     own invariant), so the derivation cannot be wrong without the outcome being
     invalid first (D5).
     """
+    # Terminal is terminal (Principle IV, review fix). The caller's ORM copy
+    # can be stale — the abandoned-run replacement may have marked this row
+    # failed from another session while the original task was still running —
+    # so the status is re-read from the database, not trusted from memory.
+    await session.refresh(snapshot)
+    if snapshot.status != ResearchStatus.RUNNING:
+        logger.warning(
+            "stale research completion discarded",
+            extra={"snapshot_id": str(snapshot.id), "status": snapshot.status},
+        )
+        return
+
     snapshot.sections = outcome.research.model_dump(mode="json")
     snapshot.produced_by = outcome.produced_by
     snapshot.prompt_version = outcome.prompt_version
     snapshot.status = ResearchStatus.SUCCEEDED
 
     facts: dict[str, object] = dict(outcome.run_facts)
+    if context_fingerprint is not None:
+        #: What this research was produced from — the reuse decision's other
+        #: half (review fix, US2 acceptance 2).
+        facts["context_fingerprint"] = context_fingerprint
     if outcome.usage is not None:
         snapshot.input_tokens = outcome.usage.input_tokens
         snapshot.output_tokens = outcome.usage.output_tokens
@@ -235,6 +278,7 @@ async def fail_research(
     reason: str,
     *,
     cost_estimate: Decimal | None = None,
+    usage: Usage | None = None,
 ) -> None:
     """A failed run is a recorded run, not an absent one.
 
@@ -244,11 +288,28 @@ async def fail_research(
     on failures too. The read path never prefers a failed row over a success,
     which is what "failure never evicts the last research" means structurally.
     """
+    await session.refresh(snapshot)
+    if snapshot.status != ResearchStatus.RUNNING:
+        logger.warning(
+            "stale research failure discarded",
+            extra={"snapshot_id": str(snapshot.id), "status": snapshot.status},
+        )
+        return
+
     snapshot.status = ResearchStatus.FAILED
     snapshot.failure_reason = reason
-    if cost_estimate is not None and isinstance(snapshot, ApplicationResearchSnapshot):
-        snapshot.cost = cost_estimate
-        snapshot.cost_basis = "estimate"
+    if isinstance(snapshot, ApplicationResearchSnapshot):
+        if usage is not None:
+            # An exception that carries exact seam usage (the builtin path's
+            # ExtractionFailedError) records it as `recorded` — a billed
+            # synthesis must never read as free (review fix, slice-005 lesson).
+            snapshot.input_tokens = usage.input_tokens
+            snapshot.output_tokens = usage.output_tokens
+            snapshot.cost = usage.cost
+            snapshot.cost_basis = "recorded"
+        elif cost_estimate is not None:
+            snapshot.cost = cost_estimate
+            snapshot.cost_basis = "estimate"
     await session.flush()
 
 
@@ -285,13 +346,21 @@ async def current_application_research(
     if latest is not None:
         return latest
 
-    any_row: ApplicationResearchSnapshot | None = await session.scalar(
+    # Terminal rows only (review fix): the sole way a RUNNING row reaches this
+    # leg is by being abandoned, and serving it as live would pin the tab on
+    # "Researching…" with the recovering POST disabled. An abandoned-only
+    # history reads as nothing, so the start button comes back and the next
+    # request replaces the stuck row.
+    terminal: ApplicationResearchSnapshot | None = await session.scalar(
         select(ApplicationResearchSnapshot)
-        .where(ApplicationResearchSnapshot.application_id == application.id)
+        .where(
+            ApplicationResearchSnapshot.application_id == application.id,
+            ApplicationResearchSnapshot.status != ResearchStatus.RUNNING,
+        )
         .order_by(ApplicationResearchSnapshot.retrieved_at.desc())
         .limit(1)
     )
-    return any_row
+    return terminal
 
 
 # -- legacy company research (008-era, read-only) ----------------------------
@@ -313,12 +382,19 @@ async def current_company_research(
         pointed: CompanyResearchSnapshot | None = await session.get(
             CompanyResearchSnapshot, company.current_research_snapshot_id
         )
-        if pointed is not None:
+        if pointed is not None and pointed.status == ResearchStatus.SUCCEEDED:
             return pointed
 
+    # SUCCEEDED only (review fix): with the legacy write path gone, a pre-010
+    # row stuck at 'running' can never be finished or failed — serving it as
+    # live would freeze the tab forever with recovery disabled, and a legacy
+    # failure has nothing left to retry. History means finished history.
     newest: CompanyResearchSnapshot | None = await session.scalar(
         select(CompanyResearchSnapshot)
-        .where(CompanyResearchSnapshot.company_id == company.id)
+        .where(
+            CompanyResearchSnapshot.company_id == company.id,
+            CompanyResearchSnapshot.status == ResearchStatus.SUCCEEDED,
+        )
         .order_by(CompanyResearchSnapshot.retrieved_at.desc())
         .limit(1)
     )

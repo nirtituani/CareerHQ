@@ -18,6 +18,8 @@ more than this producer can spend.
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 from careerhq.application.ports import (
     ProviderSource,
     ResearchOutcome,
@@ -34,6 +36,11 @@ PRODUCED_BY = "builtin"
 
 class BuiltinResearch:
     """`ResearchProvider` over the unchanged 008 pipeline."""
+
+    produced_by = PRODUCED_BY
+    #: Unknowable: an interrupted builtin run may have billed search credits
+    #: and part of a synthesis, but no documented single figure describes it.
+    attempt_cost_estimate: Decimal | None = None
 
     def __init__(
         self,

@@ -28,6 +28,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from decimal import Decimal
 from typing import Any
 
@@ -158,6 +159,11 @@ class TavilyResearch:
     tests, not configuration.
     """
 
+    produced_by = PRODUCED_BY
+    #: What an interrupted run plausibly billed — the same documented figure
+    #: every other estimate in this adapter uses.
+    attempt_cost_estimate: Decimal | None = COST_ESTIMATE_USD
+
     def __init__(
         self,
         post: Any | None = None,
@@ -210,7 +216,11 @@ class TavilyResearch:
         estimate, because the provider may have billed for the attempt.
         """
         deadline = get_settings().research_provider_timeout_seconds
-        waited = 0.0
+        # Wall clock, not summed sleeps (review fix): each poll GET can itself
+        # take seconds, and a budget that counted only the sleeps would let a
+        # slow provider run for hours past the configured bound — and past the
+        # abandonment ceiling built on top of it.
+        started = time.monotonic()
         while isinstance(payload, dict) and payload.get("status") in {
             "pending",
             "running",
@@ -222,13 +232,12 @@ class TavilyResearch:
                     "The research provider answered pending without a request id.",
                     cost_estimate=COST_ESTIMATE_USD,
                 )
-            if waited > deadline:
+            if time.monotonic() - started > deadline:
                 raise ResearchProviderUnavailable(
                     "The research provider did not finish within the configured timeout.",
                     cost_estimate=COST_ESTIMATE_USD,
                 )
             await asyncio.sleep(self._poll_seconds)
-            waited += max(self._poll_seconds, 1.0)
             payload = await self._get(request_id)
 
         if isinstance(payload, dict) and payload.get("status") == "failed":
@@ -274,9 +283,14 @@ class TavilyResearch:
             "output_schema": _tavily_output_schema(),
         }
 
+        # Two failure regimes, split on the POST (review fix): before it
+        # succeeds nothing was billed, so an Unavailable carries no estimate;
+        # after it, the attempt plausibly billed, so every failure keeps the
+        # estimate — and the port's own exception classes pass through
+        # untouched, because rewrapping a Rejected as Unavailable would hand a
+        # rejection-class failure to the fallback its contract forbids.
         try:
             payload = await self._post(body)
-            payload = await self._await_completion(payload)
         except ResearchProviderUnavailable:
             raise
         except Exception as exc:
@@ -289,6 +303,20 @@ class TavilyResearch:
             raise ResearchProviderUnavailable(
                 "The research provider could not be reached.",
                 cost_estimate=None,
+            ) from exc
+
+        try:
+            payload = await self._await_completion(payload)
+        except (ResearchProviderUnavailable, ResearchProviderRejected):
+            raise
+        except Exception as exc:
+            logger.warning(
+                "research provider poll failed",
+                extra={"error": exc.__class__.__name__},
+            )
+            raise ResearchProviderUnavailable(
+                "The research provider could not be reached while polling.",
+                cost_estimate=COST_ESTIMATE_USD,
             ) from exc
 
         return self._outcome_from(payload, run_facts)

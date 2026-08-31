@@ -26,6 +26,8 @@ function payload(overrides: Partial<ResearchPayload> = {}): ResearchPayload {
   return {
     snapshot_id: "snap-1",
     status: "succeeded",
+    company: "Pango",
+    last_failure: null,
     shape: "sections",
     produced_by: "provider:tavily-research",
     failure_reason: null,
@@ -176,5 +178,24 @@ describe("the identification website link (security-review hardening)", () => {
     const links = Array.from(container.querySelectorAll("a")).map((a) => a.getAttribute("href"));
     expect(links).not.toContain("javascript:alert(1)");
     expect(container.textContent).toContain("javascript:alert(1)"); // shown as text, defused
+  });
+});
+
+describe("numbered source ids (review fix, FR-010)", () => {
+  it("labels every source with its citation number so prose references resolve", () => {
+    const twelve = payload({
+      sources: Array.from({ length: 12 }, (_, i) => ({
+        source_id: `s${i + 1}`,
+        url: `https://example.com/${i + 1}`,
+        title: `Source ${i + 1}`,
+        fetch_status: "retrieved" as const,
+        excerpt: null,
+      })),
+    });
+    const { container } = render(<ResearchSections research={twelve} />);
+    const labels = Array.from(container.querySelectorAll("[data-source-label]")).map(
+      (el) => el.textContent,
+    );
+    expect(labels).toEqual(Array.from({ length: 12 }, (_, i) => `[${i + 1}]`));
   });
 });

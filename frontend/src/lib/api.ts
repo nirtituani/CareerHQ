@@ -804,6 +804,12 @@ export type TieredResearch = Record<string, ResearchSection>;
 
 export type ResearchPayload = {
   snapshot_id: string;
+  /** The entity this research was requested for — the tiered shape's only
+   *  visible identity (review fix, FR-014). */
+  company: string;
+  /** A newer failed refresh riding along the still-current result: FR-016
+   *  keeps the success, US3 keeps the failure visible (review fix). */
+  last_failure: { failure_reason: string | null; retrieved_at: string } | null;
   status: "running" | "succeeded" | "failed";
   /** The renderer dispatch — never sniff the payload. */
   shape: "sections" | "tiered";

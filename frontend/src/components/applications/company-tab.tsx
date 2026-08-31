@@ -34,6 +34,7 @@ export function CompanyTab({ applicationId }: { applicationId: string }) {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   // Guards every `setState` after an await. Without it, switching applications
   // mid-request lands the previous job's research on the new job's tab.
@@ -78,8 +79,16 @@ export function CompanyTab({ applicationId }: { applicationId: string }) {
   const run = async () => {
     setBusy(true);
     setError(null);
+    setNotice(null);
     try {
-      await startResearch(applicationId);
+      const started = await startResearch(applicationId);
+      // A reuse is an answer, not a run — say so, or the button reads as
+      // broken (review fix). It re-runs by itself when the posting changes.
+      if (started.reused && live.current) {
+        setNotice(
+          "This research is up to date and was reused. It re-runs automatically when the job posting changes, or once it is more than 30 days old.",
+        );
+      }
       await load();
     } catch (cause: unknown) {
       if (live.current) setError(cause instanceof Error ? cause.message : String(cause));
@@ -120,6 +129,18 @@ export function CompanyTab({ applicationId }: { applicationId: string }) {
         </p>
       </header>
 
+      {payload.last_failure && (
+        // A newer failed refresh riding along the current research: the
+        // success stays the body (FR-016), the failure stays visible (US3) —
+        // both, or one of them is being hidden (review fix).
+        <div className="border-destructive/40 mb-4 rounded border p-3">
+          <p className="text-destructive text-sm">
+            The latest refresh did not finish ({payload.last_failure.failure_reason ?? "unknown"}
+            ) — showing the previous research below. You can try again.
+          </p>
+        </div>
+      )}
+
       {failed && (
         <div className="border-destructive/40 mb-4 rounded border p-3">
           <p className="text-destructive text-sm">
@@ -148,6 +169,7 @@ export function CompanyTab({ applicationId }: { applicationId: string }) {
         <Button onClick={run} disabled={busy || running} variant="outline">
           {busy ? "Starting…" : "Refresh research"}
         </Button>
+        {notice && <p className="text-muted-foreground mt-3 text-sm">{notice}</p>}
         {error && <p className="text-destructive mt-3 text-sm">{error}</p>}
       </div>
     </div>

@@ -37,9 +37,10 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy import select
 
 from careerhq.api.deps import CurrentUser, DbSession
-from careerhq.application.ports import ResearchProvider
+from careerhq.application.ports import ResearchProvider, Usage
 from careerhq.application.research_application import (
     ResearchContext,
+    context_fingerprint,
     context_for,
     perform_research,
 )
@@ -111,6 +112,7 @@ async def _owned_application(
 async def _research_in_background(
     snapshot_id: uuid.UUID,
     context: ResearchContext,
+    fingerprint: str,
     provider: ResearchProvider,
     fallback: ResearchProvider | None,
 ) -> None:
@@ -133,16 +135,23 @@ async def _research_in_background(
                 extra={"snapshot_id": str(snapshot_id), "error": exc.__class__.__name__},
             )
             estimate = getattr(exc, "cost_estimate", None)
+            # ExtractionFailedError (the builtin path) carries exact usage
+            # instead of an estimate; both channels reach the audit row
+            # (review fix — a billed synthesis must never read as free).
+            billed = getattr(exc, "usage", None)
             await fail_research(
                 session,
                 snapshot,
                 exc.__class__.__name__,
                 cost_estimate=estimate if isinstance(estimate, Decimal) else None,
+                usage=billed if isinstance(billed, Usage) else None,
             )
             await session.commit()
             return
 
-        await complete_application_research(session, snapshot, outcome=outcome)
+        await complete_application_research(
+            session, snapshot, outcome=outcome, context_fingerprint=fingerprint
+        )
         await session.commit()
 
 
@@ -170,28 +179,67 @@ async def start_research(
     if company is None:  # pragma: no cover - a company row is required by the FK
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Company not found.")
 
-    existing = await reusable_application_research(session, application)
+    # The context is assembled before the reuse decision because it IS part of
+    # the reuse decision (review fix): research produced for a different
+    # posting context must not answer for this one.
+    context = context_for(application, company)
+    fingerprint = context_fingerprint(
+        role_title=context.role_title, posting_text=context.posting_text
+    )
+
+    existing = await reusable_application_research(
+        session, application, context_fingerprint=fingerprint
+    )
     if existing is not None:
         return {"snapshot_id": str(existing.id), "status": existing.status, "reused": True}
 
-    settings = get_settings()
-    intended = "builtin" if settings.research_provider == "builtin" else "provider:tavily-research"
+    # Identity comes from the adapter actually wired in, never re-derived
+    # from configuration (review fix): a failed row must attribute the path
+    # that was attempted, dependency overrides included — and the abandoned
+    # estimate is that adapter's documented figure for an interrupted attempt.
     try:
         snapshot = await create_pending_application_research(
-            session, application, produced_by=intended
+            session,
+            application,
+            produced_by=provider.produced_by,
+            abandoned_cost_estimate=provider.attempt_cost_estimate,
         )
     except ConcurrentResearchRun as exc:
         # 409 rather than 202. The partial unique index is the real enforcement;
         # this is its surface. Success here would let five clicks bill five runs.
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
-    # The context is assembled while the entities are in session — the
-    # background task must not lazy-load anything (MissingGreenlet).
-    context = context_for(application, company)
-
     await session.commit()
-    background.add_task(_research_in_background, snapshot.id, context, provider, fallback)
+    background.add_task(
+        _research_in_background, snapshot.id, context, fingerprint, provider, fallback
+    )
     return {"snapshot_id": str(snapshot.id), "status": snapshot.status, "reused": False}
+
+
+def _source_sort_key(source: ResearchSource) -> tuple[str, int, str]:
+    """Natural order for minted ids (review fix, FR-010): s2 before s10.
+
+    Ids are ours — `s{n}` for consulted sources, `f{n}` for failed fetches —
+    so the numeric suffix is authoritative and matches the provider's own
+    numbering, which the prose's numbered citations resolve against.
+    """
+    head = source.source_id.rstrip("0123456789")
+    tail = source.source_id[len(head) :]
+    return (head, int(tail) if tail else 0, source.source_id)
+
+
+def _failure_info(snapshot: ApplicationResearchSnapshot) -> dict[str, Any]:
+    """The newer failure that rides along a still-current result (review fix).
+
+    FR-016 keeps the last success current; US3 requires the failure to be
+    visible. Both hold by shipping them together — the body is the research
+    worth showing, `last_failure` is the honest note that the newest attempt
+    did not replace it.
+    """
+    return {
+        "failure_reason": snapshot.failure_reason,
+        "retrieved_at": snapshot.retrieved_at.isoformat(),
+    }
 
 
 def _payload(
@@ -201,8 +249,16 @@ def _payload(
     produced_by: str,
     cost_basis: str,
     sources: list[ResearchSource],
+    company: str,
+    last_failure: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
+        "last_failure": last_failure,
+        #: The entity this research was requested for (review fix, FR-014):
+        #: the tiered shape carries no identification block, so without this a
+        #: fallback run — the path with the known wrong-entity risk — would
+        #: render with no visible entity at all.
+        "company": company,
         "snapshot_id": str(snapshot.id),
         "status": snapshot.status,
         "shape": shape,
@@ -245,14 +301,34 @@ async def read_research(
     is the normal starting state, not a failure.
     """
     application = await _owned_application(session, user, application_id)
+    company = await session.get(Company, application.company_id)
+    company_name = company.name if company is not None else ""
 
     snapshot = await current_application_research(session, application)
-    if snapshot is not None:
+
+    # The newer failure that did not replace what is shown (review fix): when
+    # the newest row is a failure and something older is still the body, the
+    # failure travels as `last_failure` rather than vanishing.
+    newest_failed: ApplicationResearchSnapshot | None = await session.scalar(
+        select(ApplicationResearchSnapshot)
+        .where(
+            ApplicationResearchSnapshot.application_id == application.id,
+            ApplicationResearchSnapshot.status == "failed",
+        )
+        .order_by(ApplicationResearchSnapshot.retrieved_at.desc())
+        .limit(1)
+    )
+
+    if snapshot is not None and snapshot.status != "failed":
+        riding = (
+            _failure_info(newest_failed)
+            # Both timestamps come straight from PostgreSQL and are aware.
+            if newest_failed is not None and newest_failed.retrieved_at > snapshot.retrieved_at
+            else None
+        )
         sources = (
             await session.scalars(
-                select(ResearchSource)
-                .where(ResearchSource.application_snapshot_id == snapshot.id)
-                .order_by(ResearchSource.source_id)
+                select(ResearchSource).where(ResearchSource.application_snapshot_id == snapshot.id)
             )
         ).all()
         return _payload(
@@ -260,20 +336,21 @@ async def read_research(
             shape=_SHAPES.get(snapshot.prompt_version or "", "tiered"),
             produced_by=snapshot.produced_by,
             cost_basis=snapshot.cost_basis,
-            sources=list(sources),
+            sources=sorted(sources, key=_source_sort_key),
+            company=company_name,
+            last_failure=riding,
         )
 
-    # Legacy leg (FR-014): an 008-era company snapshot is shown only when the
-    # application has no snapshot of its own — never over one.
-    company = await session.get(Company, application.company_id)
+    # Legacy leg (FR-014, widened by the review fix): an 008-era company
+    # snapshot is shown when the application has nothing better — including
+    # when its only own rows are failures, because a failed refresh must not
+    # make still-valid history vanish. The failure rides along.
     if company is not None:
         legacy = await current_company_research(session, company)
         if legacy is not None:
             sources = (
                 await session.scalars(
-                    select(ResearchSource)
-                    .where(ResearchSource.company_snapshot_id == legacy.id)
-                    .order_by(ResearchSource.source_id)
+                    select(ResearchSource).where(ResearchSource.company_snapshot_id == legacy.id)
                 )
             ).all()
             return _payload(
@@ -283,8 +360,21 @@ async def read_research(
                 #: Legacy rows recorded exact seam usage; saying "estimate"
                 #: would launder a recorded figure into a vaguer one.
                 cost_basis="recorded",
-                sources=list(sources),
+                sources=sorted(sources, key=_source_sort_key),
+                company=company_name,
+                last_failure=_failure_info(snapshot) if snapshot is not None else None,
             )
+
+    if snapshot is not None:
+        # A failure with nothing to stand in front of is itself the answer.
+        return _payload(
+            snapshot,
+            shape=_SHAPES.get(snapshot.prompt_version or "", "tiered"),
+            produced_by=snapshot.produced_by,
+            cost_basis=snapshot.cost_basis,
+            sources=[],
+            company=company_name,
+        )
 
     return {"status": "none"}
 

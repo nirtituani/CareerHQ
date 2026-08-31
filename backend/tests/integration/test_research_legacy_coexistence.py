@@ -138,3 +138,54 @@ async def test_a_new_run_takes_precedence_and_leaves_the_legacy_bytes_alone(
 
     after = await _sections_hash(db_session, legacy.id)
     assert after == before, "the legacy snapshot's stored sections changed byte-for-byte"
+
+
+async def test_a_failed_only_application_row_does_not_hide_legacy_research(
+    client: httpx.AsyncClient, app: object, db_session: AsyncSession
+) -> None:
+    """Review fix: a failed refresh must not make still-valid 008-era research
+    vanish — the legacy body is served with the failure riding along."""
+    from careerhq.application.research_persistence import (
+        create_pending_application_research,
+        fail_research,
+    )
+
+    _wire(app, ScriptedResearchProvider())
+    user, application, legacy = await _seed_with_legacy(db_session, sub="legacy-failonly")
+    bad = await create_pending_application_research(
+        db_session, application, produced_by="provider:tavily-research"
+    )
+    await fail_research(db_session, bad, "ResearchProviderUnavailable")
+    await db_session.commit()
+
+    body = (await _as(client, user).get(f"/api/applications/{application.id}/research")).json()
+    assert body["status"] == "succeeded"
+    assert body["produced_by"] == "legacy-company"
+    assert body["snapshot_id"] == str(legacy.id)
+    assert body["last_failure"]["failure_reason"] == "ResearchProviderUnavailable"
+
+
+async def test_a_stuck_legacy_running_row_is_not_served_as_live(
+    client: httpx.AsyncClient, app: object, db_session: AsyncSession
+) -> None:
+    """Review fix: a pre-010 company row stuck at 'running' has no write path
+    left to finish it — serving it as live would pin the tab on 'Researching…'
+    forever with recovery disabled. It reads as nothing instead."""
+    from careerhq.domain.models import CompanyResearchSnapshot
+
+    _wire(app, ScriptedResearchProvider())
+    user, application, legacy = await _seed_with_legacy(db_session, sub="legacy-stuck")
+    stuck = await db_session.get(CompanyResearchSnapshot, legacy.id)
+    assert stuck is not None
+    stuck.status = "running"
+    company_id = stuck.company_id
+    from sqlalchemy import text
+
+    await db_session.execute(
+        text("UPDATE companies SET current_research_snapshot_id = NULL WHERE id = :id"),
+        {"id": company_id},
+    )
+    await db_session.commit()
+
+    body = (await _as(client, user).get(f"/api/applications/{application.id}/research")).json()
+    assert body["status"] == "none"
