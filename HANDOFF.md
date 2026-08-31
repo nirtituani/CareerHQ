@@ -1,13 +1,33 @@
 # HANDOFF
 
-**Last updated:** 2026-08-30 (**everything below merged, deployed and verified in production this session**)
+**Last updated:** 2026-08-31 · **`main` @ `32f5be2`** · **every number below was measured by a
+command run this session, not carried forward**
 
-**`origin/main` is `e6335bc`** — the Slice 008 merge (PR #14). Backend and frontend both report
-`SUCCESS` on it, and Company Research has been exercised end to end against the live site.
+**`origin/main` is `32f5be2`** — the merge of PR #17. Production readiness answers **HTTP 200**:
+`database ok (18.5 ms) · cache not_configured · object_storage ok (178 ms) · ai_provider ok`.
+**Nothing is unpushed anywhere** — `git log --branches --not --remotes` is empty.
 
-Earlier the same day: **#8** (Slice 003 JobTracker import), **#9** (Slice 006 item D, the corpus
-verification), **#10** (the frontend healthcheck), **#11** (documentation reconciliation) and
-**#13** (per-worktree test databases).
+Merged this session: **#15** (the Slice 008 handoff, written by a session that has since been
+cleared), **#16** (three small follow-ups plus this file's correction), **#18** (the tailor
+model-attribution test flake) and **#17** (**T083**, the JobTracker import screen). Earlier: **#8**
+(Slice 003 JobTracker import), **#9** (Slice 006 item D), **#10** (the frontend healthcheck),
+**#11** (documentation reconciliation), **#13** (per-worktree test databases) and **#14** (Slice
+008).
+
+> ⚠️ **The last deployment observed was at `c904380`** (`railway deployment list`, `SUCCESS`,
+> 2026-08-30T21:17:35Z). `32f5be2` adds a frontend screen and two documentation changes; **whether
+> it has deployed was not checked this session.** Read it from the commit, never the deployment id.
+
+> ## Slice 003 is complete, and so is Slice 005
+>
+> **T083** shipped in PR #17 and **T084**, **T088** are ticked. All three were verified rather than
+> assumed: T084 and T088 against the deployed database on 2026-08-31, T083 in a browser.
+>
+> **The `tasks.md` disagreement recorded in the previous revision is resolved.** `003` is now
+> **109 / 109** and `005` is **101 / 101**. T084's tick had been lost by §4's *"replace-script that
+> asserts before writing"*; T088's had been **withheld on purpose** pending a paid production run,
+> which is a different thing and is recorded as such in its task. **T047 is now the only open task
+> in the project.**
 
 > ## The Railway frontend blocker is FIXED
 >
@@ -159,29 +179,55 @@ deliberately has no `top_k`, no scores and no embedding parameters.
 |---|---|---|
 | 001 platform-foundation | 69 / 69 | none |
 | 002 deployment | 52 / 52 | none |
-| 003 data-foundation | **108 / 109** | **T083** (import screen) — **T084 done 2026-08-30**, see below |
+| 003 data-foundation | **109 / 109** | none — **T083 and T084 done 2026-08-31**, see the header |
 | 004 match-analysis | 89 / 89 | none |
-| 005 resume-tailoring | **101 / 101** | none — **T088 done 2026-08-30**, see the header |
-| 006 document-retrieval | **57 / 57** | none — T048 and T057 ticked 2026-08-30; both were already done |
-| 007 evaluation-benchmark | **49 + 1 partial / 50** | **T047** — the real sanity set is built and isolated, deliberately unpopulated |
-| 008 company-research | **no `tasks.md`** | **COMPLETE and merged** (PR #14). It never went through `/speckit-tasks`, so it cannot be counted here — the absence is a process gap, not open work |
-| **Total** | **525 / 527** | 2 — T083, T047 |
+| 005 resume-tailoring | **101 / 101** | none — **T088 ticked 2026-08-31** against the deployed run |
+| 006 document-retrieval | **57 / 57** | none |
+| 007 evaluation-benchmark | **49 / 50**, T047 marked `[~]` | **T047** — built and isolated, deliberately unpopulated |
+| 008 company-research | **no `tasks.md`** | **COMPLETE and merged** (PR #14). Never went through `/speckit-tasks`, so it cannot be counted — a process gap, not open work. **Layer 2 is built and tested against doubles but has no route and no UI**, and is deliberately *not* scheduled |
+| **Total** | **526 / 527** | **1 — T047**, and it is open by choice rather than by omission |
 
-> ⚠️ **Count these with `grep -cE '^- \[[xX]\]'`.** Slice 005 marks its 100 done tasks `- [X]`
-> with a **capital X** and every other slice uses lowercase, so `grep -c '^- \[x\]'` reports
-> **0 / 1** for a slice that is 100 / 101.
+**The two totals the previous revision carried are now one.** It recorded "as ticked" and "in
+reality" separately because `T084` and `T088` were done but unticked; both are ticked, so the
+figures agree again. That entry is kept in §4 rather than deleted — the reason they diverged is
+worth more than the fact that they did.
+
+> ⚠️ **Count these with `grep -cE '^- \[[xX]\]'`.** Slice 005 marks **100** of its 101 done tasks
+> `- [X]` with a **capital X** while every other slice uses lowercase, so `grep -c '^- \[x\]'`
+> reports **1 / 101** for a slice that is complete. The one lowercase entry is **T088**, ticked on
+> 2026-08-31 — so the file is now mixed-case, and the trap is easier to fall into, not harder.
 
 ### Live system — deployed and verified
 
+**All measured 2026-08-31** — production over `railway ssh --service pgvector`, local over
+`docker compose exec postgres`.
+
 | | Production | Local |
 |---|---|---|
-| Commit | **`73dca63`** (`origin/main`, PR #4), deployment `SUCCESS` | `01030f6` |
-| Alembic head | **`0018_corpus_embedding_model`** | `0018_corpus_embedding_model` |
+| Commit | **`c904380`**, backend *and* frontend `SUCCESS` | `c904380` |
+| Alembic head | **`0019_company_research`** | **`0018_corpus_embedding_model`** — one behind |
 | knowledge documents / chunks | **18 / 79** | 18 / 79 |
-| Recorded embedding model | **`BAAI/bge-small-en-v1.5`** (all 18) | NULL — corpus predates `0018` |
-| Readiness | **HTTP 200** — `database ok · cache not_configured · object_storage ok · ai_provider ok` | — |
-| users / applications / analyses | 1 / 1 / 1, `$0.039222` | — |
-| resume_versions | **0** | 8 |
+| Readiness | **HTTP 200** — `database ok 18.5 ms · cache not_configured · object_storage ok 178 ms · ai_provider ok` | — |
+| users | **1** | 24 |
+| applications / companies | **97 / 90** | 33 / — |
+| match analyses | **1** | 31 |
+| resume_versions | **1** | 31 |
+| company research snapshots | **0** — and that is correct, see below | 0 |
+
+**Local is one migration behind production.** `0019_company_research` shipped with Slice 008 and
+has not been applied locally. Run `docker compose exec backend alembic upgrade head` before
+trusting any local research work; nothing else is affected.
+
+**Local counts are inflated by benchmark rows and are not comparable to production.** The Slice 007
+harness seeds users under `google_sub LIKE 'benchmark|%'`; the 24 users and 31 versions are mostly
+those. §5A's protected records are the subset that matters.
+
+**Production's 0 research snapshots is not a failure.** Slice 008 *was* validated end to end
+against Cloudflare; the verifying session then deleted its temporary user and that user's snapshot
+and source rows, per §6's *"delete anything seeded by hand"*. Its note records the real account's
+**97 applications and 90 companies** counted before and after and unchanged — **independently
+re-measured this session and matching exactly**. Read the 0 as the cleanup rule working, not as
+the feature failing.
 
 **Local and production disagree about the embedding model, and that is expected.** Local `.env`
 sets MiniLM, the image bakes and production uses `bge-small`. The local corpus was embedded with
@@ -193,13 +239,21 @@ proceeds. **Every local measurement — SC-007, SC-008, retrieval quality — wa
 
 | Suite | Result |
 |---|---|
-| Backend, local | **831 passed**, coverage **86.76%** |
-| Backend, CI on `01030f6` | **785 passed** |
-| Frontend | **187 passed**, 12 files |
-| CI overall on `01030f6` | **success**, both jobs |
+| Backend, local on `c904380` | **1,232 passed**, coverage **87.52%** (gate 80%) |
+| Frontend, local on `32f5be2` | **207 passed**, 14 files |
+| CI on `32f5be2` | **success** — Backend and Frontend both |
+| `ruff format` / `ruff check` / `mypy` | clean — 273 files / all checks / 102 source files |
 
-The 46-test gap between local (831) and CI (785) is the parallel session's five untracked Slice
-008 test files. **Do not "fix" the local number.**
+**The backend figure is from `c904380` and still stands**: nothing since has touched `backend/`,
+which was verified byte-identical rather than assumed. The frontend gained 12 tests with T083.
+
+**The old 831-vs-785 gap is gone**: it was Slice 008's untracked test files, which are now on
+`main`. Local and CI measure the same tree again.
+
+**The frontend suite is no longer flaky.** `tailor.test.tsx > "names every model a run used"` had
+been failing **5 runs in 20** — it waited for the version fetch and then asserted on the *run*, two
+effects that resolve independently. PR #18 wrapped the assertion in `waitFor`: **0 in 20** after.
+No production code changed.
 
 ### Success criteria
 
@@ -252,7 +306,44 @@ across the two**, roughly 2.3× the arithmetic the threshold was set on.
 
 ## 3. Files modified
 
+### This session (2026-08-31) — `e6335bc..32f5be2`
+
 Regenerate with:
+
+```bash
+git diff --name-status e6335bc..32f5be2
+git log --oneline e6335bc..32f5be2
+```
+
+**Thirteen files across four PRs** — **#15** (docs only), **#16** (three small follow-ups),
+**#18** (one test assertion) and **#17** (T083). The seven below came from #15/#16; T083 added six
+more, listed with the slice-003 work rather than here.
+
+| File | Why |
+|---|---|
+| `api/routes/imports.py`, `api/routes/applications.py` | `HTTP_413_CONTENT_TOO_LARGE`. One line each; they **must** move together because the second imports `MAX_UPLOAD_BYTES` from the first |
+| `tests/unit/test_architecture.py` | The new gate. Reads `starlette.status.__deprecated__` **at run time**, so it covers all four deprecated names and any future one |
+| `components/applications/tailor-tab.tsx` | `modelsUsed()` — the provenance line names every distinct model from `run.models` |
+| `components/__tests__/tailor.test.tsx` | `renderTabWithRun` — the fixture that made the line testable at all |
+| `specs/006-document-retrieval/research.md` | **R16**, the free re-derivation of SC-008 (006) |
+| `HANDOFF.md` | This file |
+
+**T083's six files** (PR #17), all frontend plus one task record:
+
+| File | Why |
+|---|---|
+| `lib/api.ts` | `importJobtracker()`, `JobtrackerImportReport`, `MAX_IMPORT_BYTES`. Uses `fetch` directly rather than `request()`, because a `FormData` body must not carry a hand-set `Content-Type` |
+| `app/applications/import/page.tsx` | The route. Under `/applications`, **not** beside `/import`, which is the CV extraction flow and shares nothing but the word |
+| `components/applications/jobtracker-import.tsx` | The flow and the four-outcome report |
+| `components/applications/applications-page.tsx` | The Import entry point, secondary to Add Application |
+| `components/__tests__/jobtracker-import.test.tsx` | 12 tests |
+| `specs/003-data-foundation/tasks.md` | T083 and T084 |
+
+**Nothing under `backend/src/careerhq/domain/` or `application/` changed**, and no migration was
+added — `backend/` was verified byte-identical to `main` at each step rather than assumed. The
+deployed schema moved only because Slice 008's `0019` shipped in PR #14, before this session.
+
+### Slice 006 (earlier) — regenerate with
 
 ```bash
 git diff --name-status 1cf9a70~1..HEAD -- backend/src frontend/src
@@ -1003,102 +1094,164 @@ evaluation evidence were untouched throughout: the original 8 versions / 13 runs
 1 submission / $3.253255 are byte-identical, and benchmark rows sit alongside them
 under `google_sub LIKE 'benchmark|%'`.
 
+### The follow-up session (2026-08-31) — six things worth keeping
+
+1. **A gate with nothing to examine, the fifth time — and this one guarded a real bug.**
+   `renderTab` in `tailor.test.tsx` rejects `getTailoringRun` with a **404**, so `run` was `null`
+   in **all 49** tailor tests. The provenance assertion therefore passed off `version.model` alone
+   and could never have seen the two-model attribution bug it appeared to cover. **When a fixture
+   stubs a dependency with a failure, every test in that file is blind to whatever that dependency
+   feeds.** Check what a shared fixture *refuses*, not only what it supplies.
+
+2. **A deprecation that is numerically identical cannot be caught at run time.**
+   `HTTP_413_REQUEST_ENTITY_TOO_LARGE` and `HTTP_413_CONTENT_TOO_LARGE` are both `413`, so no
+   request would ever have failed and no behavioural test could tell them apart. The rule had to
+   live in the **source tree**. Written to read `starlette.status.__deprecated__` at run time
+   rather than to match one string, so it covers the other three deprecated names too.
+
+3. **Correcting an accounting error can make a metric worse, and that is a result.** SC-008 (006)
+   was suspected of being an artefact. R16 re-derived it free from the recorded arms and found the
+   ceiling **honoured** — 1,497 tokens against 1,500, so no implementation defect — but also that
+   `tailor_review` grew **+670** input tokens while consuming *no* guidance, and that the recorded
+   figure is a `plan+draft` proxy where the criterion says *cost per run*. **Do not assume an audit
+   will exonerate.** The finding was worth more than a pass would have been.
+
+4. **A handoff cannot describe the commit that lands it.** PR #15's handoff was written before the
+   follow-ups existed and described them as open; PR #16's correction could not name its own merge
+   SHA. **Every handoff is stale about its own merge** — check the header against
+   `git rev-parse origin/main` before trusting it, which is exactly how this rewrite started.
+
+5. **A test can wait for the wrong thing and pass most of the time.**
+   `tailor.test.tsx > "names every model a run used"` failed **5 runs in 20**. `getTailoringRun`
+   resolves in its **own** effect while `setLoading(false)` belongs to the *version* fetch, so
+   waiting for "Loading…" to disappear said nothing about whether the run had landed; a bare
+   `getByTestId` then sampled whichever won and saw the one-model fallback. **Adding an unrelated
+   test file was enough to tip the scheduling**, which is how a latent race surfaced as someone
+   else's problem. Proved by forcing the run to resolve one macrotask late — failure went to
+   **100%** — rather than by re-running until it passed.
+
+6. **Guessing a production URL produced a confident 404.** `curl` against an invented Railway
+   hostname returned `Application not found`, which reads as an outage rather than as a wrong
+   address. The real domain came from `railway domain --service frontend` and answered 200.
+   **Ask the platform for the hostname; never pattern-match it.**
+
 ---
 ## 5. Exact next steps
 
-**Both of the project's long-standing blockers are gone.** The Railway frontend failure is fixed
-and the frontend is live; Slice 008's implementation is committed and pushed. Steps A–G of the
-previous revision are all **superseded** — they described a state where slice 007 was uncommitted,
-`01030f6` was unmerged, T048/T057 were untidied, item D was unbuilt, T088 was unmet and Railway was
-blocking. **None of that is true any more.** They are deleted rather than kept, because a next-steps
-list that mostly describes finished work stops being read.
+**Nothing is blocked and nothing is unpushed.** `main` is `32f5be2` and
+`git log --branches --not --remotes` is empty. Items **B** (the two ticks) and **C** (T083) of the
+previous revision are **done** and deleted rather than kept — a next-steps list that mostly
+describes finished work stops being read. What they achieved is recorded in §2, §3 and §4.
 
-**Two tasks remain open across the whole project**, and neither is blocked.
+**The next significant work is A. Everything else here is small.**
 
-### A — ~~T084: import a real JobTracker export~~ · **COMPLETE, run in production 2026-08-30**
+### A — **Slice 009, Career Advisor** · owner: next session · **unblocked, but do not start with code**
 
-The owner drove `POST /api/applications/import/jobtracker` with their own session, which is the
-route this task had been waiting on. Verified result:
+The last planned slice and the clearest demonstration that the system reasons over accumulated
+memory rather than answering one prompt (`docs/05` §5.9).
 
-| | |
-|---|---|
-| Rows imported | **96** |
-| **Rejected by the importer** | **0** |
-| Notices | **6** |
-| Companies after import | **90** |
-| Applications after import | **97** |
+> ⚠️ **Its headline capability has no input data, and `docs/05` says otherwise.** §5.9 justifies
+> putting 009 last because the JobTracker import supplies history "immediately rather than after
+> months of use". That is true of statuses, dates and outcomes — **not of posting content.**
+> `EXPORT_COLUMNS` carries `job_desc_link` (a **URL**) and `match_rating`; the write sets neither
+> `job_description` nor `requirements`. So all **96** imported rows have `requirements IS NULL`,
+> which `scoreability.py` **refuses outright** as legacy — they cannot be match-analysed either.
+> *"Python appeared in 14 of 20 roles"* has nothing to count.
+>
+> Verify: `railway ssh --service pgvector "PGHOST=localhost PGPORT=5432 psql -U postgres -d railway`
+> `-c \"SELECT count(*) FILTER (WHERE requirements IS NULL) FROM applications;\""`
 
-**`rejected = 0` and `rejected = 63` are two different things and must never be collapsed.** The
-importer rejected **nothing** — every row it was given was accepted. Separately, **63 rows
-reconciled to `normalized_status = rejected`** under FR-016, which is an *outcome recorded on the
-application*, not a failure of the import. Reading the 63 as import failures would make a clean
-run look two-thirds broken; reading the 0 as "nobody was rejected" would erase the user's actual
-history. This is exactly why FR-016 has no `rejected` **column** — the label says how far you got,
-the normalised status says how it ended.
+**Start with `/speckit-specify` and make the spec resolve that**, not the implementation. Two
+honest routes: scope 009 to what the data supports (role families, outcome and rejection rates —
+**63 of 96** imported rows are `rejected`, time-in-status, `imported_match_rating` as
+self-assessment), or make a **bounded posting backfill** its first user story. The backfill is the
+expensive one: ~96 user-supplied URLs through the SSRF-guarded fetcher plus a completion each, many
+links dead, and it **writes to real production rows** — so it needs idempotency and a dry run.
 
-**The pre-existing Cellebrite application and its company were preserved**, not duplicated — the
-conservative merge keys (company + title + start date) doing what they were designed for, on real
-data rather than a fixture.
+Own it in a **fresh worktree** with its own database:
+`CAREERHQ_TEST_DATABASE_URL=…/careerhq_test_009`.
 
-**The export file is real, unscrubbed personal history and must never enter this repository.** The
-committed fixture is synthetic precisely so that it can be committed; this one cannot.
+### B — **T047: populate the real sanity set** · owner: **the author only** · deferred by design
 
-### B — **T083: the import screen** · owner: the author · unblocked
+Built, isolated, gitignored and PII-scanned; `REAL_SET_DEFAULT_ROOT` is `~/CareerHQ-benchmark-real`,
+which **does not exist**. **It cannot be completed with synthetic data** — its one question is
+whether the synthetic set overstates the system, so a second synthetic set answers nothing. Filling
+it means a real CV on disk. Spends no money.
 
-The last slice-003 task. It no longer unblocks anything — T084 was completed by driving the API
-directly — so its only remaining value is sparing the next person that manual step.
+Verify: `ls ~/CareerHQ-benchmark-real 2>/dev/null || echo "unpopulated, as intended"`
 
-### C — **T047: populate the real sanity set** · owner: the author · deliberately open
+### C — **Off-machine backup of the paid evaluation evidence** · owner: the author · **largest unmanaged risk**
 
-Built, isolated, gitignored, PII-scanned and **deliberately unpopulated**: filling it means putting
-a real CV on disk. Spends no money. Open by choice rather than by omission.
+Unchanged and still the biggest one. The only backup is `~/CareerHQ-backups/2026-08-29/`, **on the
+same machine as the volumes**, and predates both T052 arms and the whole Slice 007 benchmark.
+Roughly **$8.49** of paid evidence: $3.562567 (004–006) + $4.925403 (007) + $0.352047 in
+production. It lives in **two** volumes — `careerhq_postgres_data` for rows,
+`careerhq_minio_data` for the exported PDF bytes a submission checksum refers to. Lose the second
+and re-verification fails permanently, by design.
 
-### D — **Off-machine backup of the paid evaluation evidence** · owner: the author · see §5A
+### D — **Delete the merged branches and stale worktrees** · owner: either · housekeeping
 
-Still the largest unmanaged risk in the project. The only backup is dated 2026-08-29, sits **on the
-same machine as the volumes**, and predates both the two T052 arms and the entire Slice 007
-benchmark. Production now holds $0.352047 of its own paid evidence as well.
+**Measured 2026-08-31: 18 local branches are merged into `main`** and still present, four of them
+from this session — `handoff-post-008`, `fix/small-followups-pre-009`, `t083-jobtracker-import-ui`
+and `fix/tailor-model-test-flake` — the last three also on the remote. **13 worktrees** exist,
+including two created this session (`CareerHQ-t083`, `CareerHQ-flake`) that are finished with.
 
-### E — ~~`HTTP_413_REQUEST_ENTITY_TOO_LARGE` is deprecated~~ · **DONE 2026-08-31**
+**Not urgent, and deliberately not done here.** A stale branch costs nothing; deleting one that
+turns out to hold the only copy of something costs a great deal, and §4 records exactly that near
+miss. Check `git log --branches --not --remotes` first — it is empty today.
 
-Both call sites moved together, as this entry always said they had to —
-`api/routes/imports.py`, which owns `MAX_UPLOAD_BYTES`, and `api/routes/applications.py`, which
-imports it. Same numeric value, so nothing observable changed.
+Verify: `git branch --merged main --format='%(refname:short)' | grep -v '^main$'`
+and `git worktree list`
 
-**It needed a source-tree gate, not a behavioural test**, precisely because 413 is 413 either way:
-no request would ever have failed, so nothing at run time could have caught the drift.
-`test_architecture.py::test_no_module_uses_a_deprecated_starlette_status_constant` reads
-`starlette.status.__deprecated__` **at run time** rather than hardcoding the one name it was
-written for, so the next deprecation is caught without anyone remembering to widen it. Watched
-failing first; it named both call sites.
+### E — **The SC-008 gate does not scan `specs/006`** · owner: next session · small, recorded not fixed
 
-### F — ~~The tailoring UI reports one model for a run that used two~~ · **DONE 2026-08-31**
-
-The provenance line now names every distinct model the run used, read from `run.models`, and reads
-`Written by AI · claude-opus-5 + claude-sonnet-5 · $…`. Deliberately not a task-by-task breakdown —
-`RunDetail` already carries that for anyone who opens it.
-
-**The backend was never wrong.** `version.model` is the *drafting* model by design and the full
-per-task map lives on the run endpoint; only the presentation conflated authorship with spend.
-
-⚠️ **The existing test could not have caught this, and the reason generalises.** `renderTab`
-rejects `getTailoringRun` with a 404, so `run` was `null` in all 49 tailor tests and the provenance
-assertion passed off `version.model` alone — a gate with nothing to examine, the fifth in this
-project. The fix required a fixture that supplies a real run before the line was testable at all.
-
-### G — ~~Slice 008~~ · **DONE — merged as PR #14 and validated in production**
-
-See the header. The only Slice 008 work left is **Layer 2**, which is built and tested against
-doubles but has no route and no UI — and it is **not** scheduled here.
+`test_sc008_is_not_relabelled.py` scans `specs/007-*`, `HANDOFF.md` and `CLAUDE.md` — **not**
+`specs/006`, where R15 and R16 live. So the slice's own SC-008 record is unchecked by the gate that
+exists to protect it, and **three pre-existing verdict-rule violations sit in R15** (lines 534, 540,
+546: `3.22` with no "missed" nearby). Widening `_artifacts()` would catch them. Deliberately not
+done here, because changing that test was out of scope for the session that found it.
 
 ---
 ## 5A. Real data that must not be deleted or modified
 
-The project's only evaluation evidence. It was paid for. **All counts measured 2026-08-29.**
+The project's only evaluation evidence. It was paid for. **Tailoring-run counts measured
+2026-08-29; production counts re-measured 2026-08-31.**
 
 **Local totals: 8 versions, 13 runs, 8 analyses, spend `$3.562567`.** Production separately holds
 **1 match analysis at `$0.039222`** — so "the evidence is local-only" is true of tailoring runs
 and not of everything.
+
+### The imported JobTracker history — 96 rows, irreplaceable
+
+**T084's import is real personal history and the file it came from must never enter this
+repository.** Re-measured against the production database on 2026-08-31 and matching the original
+report exactly:
+
+| | Measured |
+|---|---|
+| rows carrying `import_source='jobtracker'` | **96** |
+| manual rows alongside them | **1** (the pre-existing Cellebrite application) |
+| applications / companies total | **97 / 90** |
+| `normalized_status` across all 97 | rejected **63**, applied **30**, wishlist **2**, other **1**, withdrawn **1** |
+| `rejected` **column** in `information_schema` | **0** — the release-blocker invariant holds on the deployed database |
+
+⚠️ **`rejected = 0` and `rejected = 63` are two different things and must never be collapsed.** The
+importer rejected **nothing** — every row it was given was accepted. Separately, **63 rows
+reconciled to `normalized_status = rejected`** under FR-016, which is an *outcome recorded on the
+application*, not a failure of the import. Reading the 63 as import failures would make a clean run
+look two-thirds broken; reading the 0 as "nobody was rejected" would erase the user's actual
+history. This is exactly why FR-016 has no `rejected` **column** — the label says how far you got,
+the normalised status says how it ended.
+
+**The pre-existing Cellebrite application and its company were preserved**, not duplicated — the
+conservative merge keys doing what they were designed for, on real data rather than a fixture. Its
+`updated_at` did not move, and the T088 run's evidence attached to it was untouched.
+
+**Re-import is safe and adds nothing**, resting on 96 distinct source ids with 0 duplicate
+identities plus `uq_applications_import_identity`. Note that a **second production import was
+never run** — that claim rests on the rehearsal and on
+`test_jobtracker_route.py::test_re_uploading_the_same_file_reports_everything_as_skipped`, not on a
+production observation.
 
 | Record | Why it must survive |
 |---|---|
