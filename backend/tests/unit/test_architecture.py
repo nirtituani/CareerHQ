@@ -682,3 +682,48 @@ def test_no_module_uses_a_deprecated_starlette_status_constant() -> None:
     assert not offences, "deprecated starlette.status constants in src/:\n" + "\n".join(
         f"  {o} — Starlette names the replacement in its own deprecation warning" for o in offences
     )
+
+
+def test_the_research_provider_adapters_are_imported_only_where_they_are_chosen() -> None:
+    """Slice 010: the ResearchProvider selection point is `api/routes/research.py`,
+    the same place `get_web_search` lives and for the same reason — swapping the
+    provider must be a change to one file (FR-005, the `build_guideline_source`
+    precedent). An import anywhere else would quietly create a second selection
+    point, and the two would eventually disagree about which provider runs.
+
+    The walk covers all of `src/` and asserts how many files it examined; the
+    adapters' own package is exempt because a package may import itself.
+    """
+    adapters = ("tavily_research", "builtin_provider")
+    allowed = {
+        "api/routes/research.py",
+        "infrastructure/research/tavily_research.py",
+        "infrastructure/research/builtin_provider.py",
+        "infrastructure/research/__init__.py",
+    }
+    offenders: dict[str, list[str]] = {}
+    examined = 0
+
+    for path in SRC.rglob("*.py"):
+        examined += 1
+        relative = str(path.relative_to(SRC))
+        if relative in allowed:
+            continue
+        tree = ast.parse(path.read_text(), filename=str(path))
+        names: list[str] = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                names += [a.name for a in node.names]
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                names.append(node.module)
+        hits = sorted({n for n in names if any(n.endswith(a) or f".{a}." in n for a in adapters)})
+        if hits:
+            offenders[relative] = hits
+
+    assert examined >= 80, (
+        f"this guard examined {examined} files under src/; a walk that finds nothing passes "
+        "whether or not the tree is clean"
+    )
+    assert offenders == {}, (
+        f"the research adapters are chosen in api/routes/research.py and nowhere else: {offenders}"
+    )

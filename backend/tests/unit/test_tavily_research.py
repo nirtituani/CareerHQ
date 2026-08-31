@@ -185,3 +185,27 @@ async def test_an_untruncated_posting_records_nothing_about_truncation() -> None
     post = CapturingPost(_response(_content()))
     outcome = await _run(post)
     assert "posting_truncated" not in outcome.run_facts
+
+
+# -- US2: no posting means honest company-only research (T022) ---------------
+
+
+async def test_without_a_posting_the_request_asks_for_company_only_research() -> None:
+    """D7: the input carries no role framing at all — no posting block, no
+    target position — and explicitly instructs company-only research with the
+    absence stated rather than a role guessed."""
+    post = CapturingPost(_response(_content()))
+    await _run(post, role_title=None, posting_text=None)
+
+    (body,) = post.bodies
+    prompt = body["input"]
+    assert "JOB POSTING" not in prompt
+    assert "TARGET POSITION" not in prompt
+    assert "No job posting was provided" in prompt
+    assert "invent a role" in prompt  # the clause wraps across a line in the template
+
+
+async def test_without_a_posting_nothing_records_a_truncation() -> None:
+    post = CapturingPost(_response(_content()))
+    outcome = await _run(post, role_title=None, posting_text=None)
+    assert "posting_truncated" not in outcome.run_facts
