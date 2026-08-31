@@ -14,11 +14,10 @@ Built with FastAPI, Next.js, PostgreSQL with pgvector, and LangGraph.
 
 **Live at https://frontend-production-02ac.up.railway.app**
 
-**Slice 001 — Platform Foundation**: complete. **Slice 002 — Deployment**: complete.
-**Slice 003 — Data Foundation**: User Stories 1 and 2 complete; User Story 3 (JobTracker import)
-is blocked on a real CSV export.
+**Slices 001–008 are complete and merged**; the deployed system runs from `main`. Slice 009
+(Career Advisor) is planned and droppable.
 
-Working today, and deployed:
+Working today:
 
 - **Google sign-in** with per-user isolation, and health checks that name each dependency
 - **Import a CV** — upload it, review what was extracted item by item, correct anything wrong, and
@@ -26,12 +25,70 @@ Working today, and deployed:
 - **Record a job** — paste a posting URL and the company, title, location and requirements are
   read from it; or enter them by hand. Every status change is recorded, and the timeline is
   append-only
-- **See where everything stands** — a dashboard whose stat tiles filter the applications table,
-  and a per-application record holding the job description the resume tailoring will work from
+- **Import your history** — a JobTracker CSV export merges into your applications rather than
+  appending, so re-importing the same file adds nothing
+- **Match analysis** — every requirement scored against your profile with quoted evidence, and
+  five verdicts rather than three so the model can say *"your profile does not mention this"*
+  without inventing an absence
+- **Resume tailoring** — a LangGraph workflow (Plan → Draft → Review → Revise) that rewrites your
+  resume for one posting, critiques its own output, and stops at two revisions
+- **Item-level approval** — every proposed change is accepted or rejected individually. A claim
+  the Reviewer finds ungrounded is discarded before it can reach an approve button
+- **Export and submit** — render to PDF, then lock. A submitted version is immutable, and
+  submission re-reads and re-hashes the stored bytes rather than trusting the recorded checksum
+- **Company research** — web search, page fetch and synthesis into a cited brief, where every
+  quoted excerpt is verified verbatim against the page the system itself retrieved
 
-The agent capabilities are next. See [`docs/05_Implementation_Plan.md`](docs/05_Implementation_Plan.md)
-for the roadmap, [`docs/07_Capabilities.md`](docs/07_Capabilities.md) for what each one does, and
-[`docs/08_Technical_Spec.md`](docs/08_Technical_Spec.md) for the whole system in one document.
+Depth lives in [`docs/07_Capabilities.md`](docs/07_Capabilities.md) (what each capability does),
+[`docs/08_Technical_Spec.md`](docs/08_Technical_Spec.md) (the whole system in one document) and
+[`docs/05_Implementation_Plan.md`](docs/05_Implementation_Plan.md) (the slice roadmap).
+
+---
+
+## How it works
+
+**One AI boundary.** Every model call goes through a single seam —
+`complete(task, schema, prompt) -> Completion[T]`. A schema is required, so unvalidated text
+cannot come back; the model is chosen **by task name**, so model-per-node is configuration rather
+than branching; and token usage returns with the result, so the audit record is written in the
+same transaction as the work. A test asserts that **no module under `application/` imports a
+provider SDK**, which is what keeps the boundary real rather than aspirational.
+
+**Where the agent is.** Resume tailoring is the agentic workflow: `Plan → Draft → Review → Revise`,
+orchestrated by LangGraph, with one conditional edge and a hard bound of two revisions. The
+Reviewer judges the *composed resulting resume* rather than the diff, because "which requirements
+are still uncovered" is a question about the document. Draft and Revise return **only changed
+items, by id** — output is the expensive half of a completion.
+
+**Where RAG is.** Resume-writing guidance is retrieved per posting from a curated corpus
+(18 documents, 79 chunks) embedded locally with `fastembed` and searched in PostgreSQL via `pgvector`.
+Retrieval sits behind a port with no `top_k`, no scores and no embedding parameters, so swapping
+the static rubric for retrieval changed no workflow node. Every retrieved rule is recorded with
+its content hash, so a run can say what advice it was given.
+
+**Where the tools are.** Company research uses Tavily web search over **plain HTTPS, not MCP** —
+a deliberate simplification argued in `tavily_search.py`. The search provider returns URLs only;
+**CareerHQ fetches the pages itself**, which is what makes verbatim citation checking possible.
+Job postings are read through a separate fetcher whose SSRF guard resolves every hostname and
+refuses non-global addresses on each redirect hop.
+
+**How grounding is enforced.** Every claim is typed `fact`, `interpretation` or `inference`, and
+each tier carries a different evidence obligation enforced by the schema. Research excerpts are
+checked **verbatim** against the retrieved page — a deterministic string test, not a model call —
+and a claim whose excerpt fails is *removed*, not relabelled. In tailoring, an `ungrounded`
+finding discards the proposal and restores the owner's wording **before any row is written**, so a
+fabricated claim has no persisted representation.
+
+**Memory.** The Professional Profile is the single source of truth and accumulates across the
+lifecycle: imported facts, user corrections that later imports may not overwrite, application
+history with separate `date_added`/`date_applied`, immutable resume versions, and research
+snapshots that record what was known and when.
+
+**How it was evaluated.** A 12-case synthetic benchmark spanning four disciplines drives the real
+shipping path, scored on grounding, requirement coverage, retrieval quality, match calibration and
+an LLM-as-judge. The benchmark set is **fully synthetic and committed**, so anyone can reproduce
+it. Results — including criteria that were **missed** — are in
+[`specs/007-evaluation-benchmark/results/`](specs/007-evaluation-benchmark/results/).
 
 ---
 

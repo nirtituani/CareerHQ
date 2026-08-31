@@ -68,11 +68,11 @@ async def test_returning_user_email_change_does_not_split_the_account(
     await provision_user(db_session, CLAIMS)
     await db_session.commit()
 
-    changed = {**CLAIMS, "email": "nir.tituani@newdomain.com"}
+    changed = {**CLAIMS, "email": "changed.address@example.com"}
     user = await provision_user(db_session, changed)
     await db_session.commit()
 
-    assert user.email == "nir.tituani@newdomain.com"
+    assert user.email == "changed.address@example.com"
     assert await _counts(db_session) == (1, 1)
 
 
@@ -105,7 +105,9 @@ async def test_concurrent_first_sign_in_yields_exactly_one_profile(
 async def test_different_users_get_their_own_profiles(db_session: AsyncSession) -> None:
     """The invariant is one profile *per user*, not one profile overall."""
     await provision_user(db_session, CLAIMS)
-    await provision_user(db_session, {**CLAIMS, "sub": "google-subject-99999", "email": "b@x.com"})
+    await provision_user(
+        db_session, {**CLAIMS, "sub": "google-subject-99999", "email": "second.person@example.com"}
+    )
     await db_session.commit()
 
     assert await _counts(db_session) == (2, 2)
