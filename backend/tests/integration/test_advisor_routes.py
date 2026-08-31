@@ -270,3 +270,36 @@ async def _run_row(session: AsyncSession, user: User) -> AdvisorRun:
     session.add(run)
     await session.flush()
     return run
+
+
+async def test_the_memory_route_walks_a_three_deep_lineage(
+    client: httpx.AsyncClient, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    """T028: the chain renders oldest-last, every hop readable with evidence
+    and reasons (FR-014)."""
+    async with session_factory() as session:
+        user = await _seed(session)
+        run = await _run_row(session, user)
+        chain: list[CareerMemory] = []
+        for generation in range(3):
+            memory = CareerMemory(
+                user_id=user.id,
+                advisor_run_id=run.id,
+                claim=f"generation {generation}: 1 of 3 applications ended rejected",
+                kind="outcome_pattern",
+                scope_kind="global",
+                evidence={"facts": []},
+                status=MemoryStatus.ACTIVE if generation == 2 else MemoryStatus.SUPERSEDED,
+                supersedes_id=chain[-1].id if chain else None,
+            )
+            session.add(memory)
+            await session.flush()
+            chain.append(memory)
+        await session.commit()
+        head_id = chain[-1].id
+
+    body = (await _as(client, user).get(f"/api/advisor/memories/{head_id}")).json()
+    assert body["memory"]["claim"].startswith("generation 2")
+    assert [m["claim"][:12] for m in body["lineage"]] == ["generation 1", "generation 0"]
+    assert len(body["lineage"]) == 2, "the whole chain, not one hop"
+    assert all(m["status"] == "superseded" for m in body["lineage"])

@@ -288,8 +288,17 @@ async def _apply_outcome(
     """Persist everything the gate let through — in the caller's transaction,
     which commits once. A failure before that commit leaves the memory set
     byte-for-byte unchanged (SC-005)."""
+    # Lineage is content and content is frozen at insert (the guard below the
+    # model enforces exactly that), so a create that supersedes must be born
+    # with its `supersedes_id` — resolved from the dispositions first.
+    supersedes_by_create: dict[int, uuid.UUID] = {}
+    for disposition in outcome.dispositions:
+        index = disposition.superseding_create
+        if disposition.action == DispositionAction.SUPERSEDED and index is not None:
+            supersedes_by_create.setdefault(index, disposition.memory_id)
+
     created_rows: list[CareerMemory] = []
-    for planned in outcome.creates:
+    for position, planned in enumerate(outcome.creates):
         proposal = planned.proposal
         memory = CareerMemory(
             user_id=run.user_id,
@@ -302,6 +311,7 @@ async def _apply_outcome(
             priority=proposal.priority,
             priority_reason=proposal.priority_reason,
             status=MemoryStatus.TENTATIVE if planned.tentative else MemoryStatus.ACTIVE,
+            supersedes_id=supersedes_by_create.get(position),
             recreates_dismissed_id=planned.recreates_dismissed_id,
         )
         session.add(memory)
@@ -327,11 +337,6 @@ async def _apply_outcome(
                     memory.status = MemoryStatus.ACTIVE
         elif disposition.action == DispositionAction.SUPERSEDED:
             memory.status = MemoryStatus.SUPERSEDED
-            index = disposition.superseding_create
-            if index is not None and 0 <= index < len(created_rows):
-                replacement = created_rows[index]
-                if replacement.supersedes_id is None:
-                    replacement.supersedes_id = memory.id
         elif disposition.action == DispositionAction.RETIRED:
             memory.status = MemoryStatus.RETIRED
             memory.retired_reason = disposition.reason
