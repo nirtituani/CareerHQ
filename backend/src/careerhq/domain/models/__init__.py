@@ -16,6 +16,15 @@ complete, so importing this package is what registers the whole schema. That is
 why the re-exports are load-bearing rather than a convenience.
 """
 
+from careerhq.domain.models.advisor import (
+    USER_DISMISSED,
+    AdvisorRun,
+    AdvisorRunStatus,
+    CareerMemory,
+    DispositionAction,
+    MemoryDisposition,
+    MemoryStatus,
+)
 from careerhq.domain.models.application import (
     Application,
     ApplicationStatusHistory,
@@ -85,13 +94,18 @@ from careerhq.domain.models.tailoring import (
 __all__ = [
     "EMBEDDING_DIMENSIONS",
     "IN_FLIGHT_STATUSES",
+    "USER_DISMISSED",
+    "AdvisorRun",
+    "AdvisorRunStatus",
     "Application",
     "ApplicationResearchSnapshot",
     "ApplicationStatusHistory",
+    "CareerMemory",
     "Certification",
     "Company",
     "CompanyResearchSnapshot",
     "ContactInformation",
+    "DispositionAction",
     "Education",
     "ExperienceBullet",
     "ExportedDocument",
@@ -109,6 +123,8 @@ __all__ = [
     "MatchBand",
     "MatchRequirement",
     "MatchStatus",
+    "MemoryDisposition",
+    "MemoryStatus",
     "MilitaryService",
     "NormalizedStatus",
     "ProfessionalProfile",
