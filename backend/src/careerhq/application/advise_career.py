@@ -23,13 +23,41 @@ anywhere leaves the memory set byte-for-byte unchanged (SC-005).
 from __future__ import annotations
 
 import logging
+import uuid
+from collections.abc import Sequence
 from datetime import UTC, datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from careerhq.application.advisor_rules import ADVISOR_RULES_VERSION, RUN_ABANDONED_AFTER
-from careerhq.domain.models import Application, AdvisorRun, AdvisorRunStatus, User
+from careerhq.application.advisor_evidence import build_evidence_pack
+from careerhq.application.advisor_grounding import (
+    DispositionDefect,
+    GateOutcome,
+    apply_gate,
+    freeze_evidence,
+)
+from careerhq.application.advisor_rules import (
+    ACTIVE_MEMORY_CAP,
+    ADVISOR_RULES_VERSION,
+    RUN_ABANDONED_AFTER,
+    SMALL_SAMPLE_FLOOR,
+)
+from careerhq.application.ports import StructuredCompletion, UsageRecorder
+from careerhq.domain.models import (
+    USER_DISMISSED,
+    AdvisorRun,
+    AdvisorRunStatus,
+    Application,
+    CareerMemory,
+    DispositionAction,
+    MatchAnalysis,
+    MatchStatus,
+    MemoryDisposition,
+    MemoryStatus,
+    User,
+)
+from careerhq.domain.schemas.advisor import AdvisorReasoning, EvidencePack
 
 logger = logging.getLogger(__name__)
 
@@ -86,3 +114,348 @@ async def create_pending_run(session: AsyncSession, user: User) -> AdvisorRun | 
     session.add(run)
     await session.flush()
     return run
+
+
+# -- prompt rendering (T014/T024/T036) ---------------------------------------
+
+_RULES = f"""You are the Career Advisor: you maintain a small set of career memories —
+falsifiable, evidence-backed claims about this person's job search — and you
+revise them as evidence accumulates.
+
+Rules, in order of importance:
+
+1. Every number in a claim must appear verbatim among the facts you cite.
+   You never compute a number yourself; the facts already carry every count,
+   percentage and median you may need.
+2. Every claim states at least one cited fact's numerator and denominator,
+   as "N of M" or "N/M". A claim that cannot state its denominator is not
+   worth remembering.
+3. Word co-occurrence as co-occurrence. Never assert that one thing causes
+   another.
+4. A claim whose cited evidence includes any denominator below the
+   floor of {SMALL_SAMPLE_FLOOR} is tentative — say so in its `tentative` field.
+5. You may keep at most {ACTIVE_MEMORY_CAP} active memories. At that limit, creating a new
+   one means retiring one you now value less, and saying why.
+6. Every prior memory listed as [memory: <id>] below MUST appear in exactly
+   one disposition: confirm it (cite the current facts that still support
+   it), supersede it (point at your replacement claim, which states what
+   changed), retire it (say why), or leave it open (say why the evidence is
+   absent either way). Leaving a memory open is a decision you state, never
+   a silence.
+7. A memory marked [dismissed: ...] was dismissed by this person. Do not
+   recreate its claim unless the evidence has materially changed.
+8. Assign `priority` (0-100, with `priority_reason`) only to memories the
+   person could act on."""
+
+
+def _fact_lines(pack: EvidencePack) -> str:
+    lines = []
+    for fact in pack.facts:
+        span = ""
+        if fact.date_range:
+            span = f", {fact.date_range[0].isoformat()} to {fact.date_range[1].isoformat()}"
+        lines.append(
+            f"[fact: {fact.fact_id}] {fact.value} (n={fact.numerator}/{fact.denominator}{span})"
+        )
+    return "\n".join(lines)
+
+
+def _frozen_figures(memory: CareerMemory) -> str:
+    facts = memory.evidence.get("facts", []) if isinstance(memory.evidence, dict) else []
+    return "; ".join(
+        f"{fact.get('fact_id')}: {fact.get('numerator')}/{fact.get('denominator')}"
+        for fact in facts
+        if isinstance(fact, dict)
+    )
+
+
+def render_reasoning_prompt(
+    *,
+    pack: EvidencePack,
+    active: Sequence[CareerMemory],
+    dismissed: Sequence[CareerMemory],
+    history: Sequence[CareerMemory] = (),
+) -> str:
+    """The reasoning step's whole world.
+
+    Only **active and tentative** memories render as `[memory: ...]` — they
+    are the prior state a run must disposition (FR-013/FR-014). Superseded and
+    retired rows are history and are deliberately not rendered at all
+    (`history` is accepted so call sites cannot accidentally widen the active
+    set: passing them here changes nothing, and the G3 test pins that).
+    Dismissed rows render separately, marked, because their role is a
+    prohibition rather than a prior (FR-021).
+    """
+    del history  # accepted and unused, on purpose — see the docstring
+
+    sections = [_RULES, "\n## The evidence (cite facts by id)\n", _fact_lines(pack)]
+
+    if active:
+        sections.append("\n## Your current memories — disposition every one\n")
+        for memory in active:
+            sections.append(
+                f"[memory: {memory.id}] ({memory.status}, kind={memory.kind}, "
+                f"scope={memory.scope_kind}"
+                + (f":{memory.scope_value}" if memory.scope_value else "")
+                + f", confirmed {memory.last_confirmed_at.date().isoformat()}) "
+                + f'"{memory.claim}" — frozen evidence: {_frozen_figures(memory)}'
+            )
+    else:
+        sections.append(
+            "\n## Your current memories\n\nNone yet — this is your first analysis "
+            "of this person's history."
+        )
+
+    if dismissed:
+        sections.append("\n## Dismissed by the user\n")
+        for memory in dismissed:
+            sections.append(
+                f'[dismissed: {memory.id}] "{memory.claim}" — dismissed by the user; '
+                "do not recreate this claim unless its evidence has materially changed."
+            )
+
+    sections.append(
+        "\n## Your answer\n\nPropose the memories worth keeping (created), and "
+        "disposition every [memory: ...] id above exactly once."
+    )
+    return "\n".join(sections)
+
+
+# -- the run itself (T015/T023) ----------------------------------------------
+
+
+async def _load_inputs(
+    session: AsyncSession, user_id: uuid.UUID
+) -> tuple[list[Application], list[MatchAnalysis], list[CareerMemory], list[CareerMemory]]:
+    applications = list(
+        (
+            await session.scalars(
+                select(Application)
+                .where(Application.user_id == user_id)
+                .order_by(Application.date_added)
+            )
+        ).all()
+    )
+    application_ids = [application.id for application in applications]
+    analyses = (
+        list(
+            (
+                await session.scalars(
+                    select(MatchAnalysis).where(
+                        MatchAnalysis.application_id.in_(application_ids),
+                        MatchAnalysis.status == MatchStatus.READY,
+                    )
+                )
+            ).all()
+        )
+        if application_ids
+        else []
+    )
+    prior = list(
+        (
+            await session.scalars(
+                select(CareerMemory)
+                .where(
+                    CareerMemory.user_id == user_id,
+                    CareerMemory.status.in_([MemoryStatus.ACTIVE, MemoryStatus.TENTATIVE]),
+                )
+                .order_by(CareerMemory.created_at)
+            )
+        ).all()
+    )
+    dismissed = list(
+        (
+            await session.scalars(
+                select(CareerMemory).where(
+                    CareerMemory.user_id == user_id,
+                    CareerMemory.status == MemoryStatus.RETIRED,
+                    CareerMemory.retired_reason == USER_DISMISSED,
+                )
+            )
+        ).all()
+    )
+    return applications, analyses, prior, dismissed
+
+
+async def _apply_outcome(
+    session: AsyncSession,
+    run: AdvisorRun,
+    outcome: GateOutcome,
+    pack: EvidencePack,
+    prior_by_id: dict[uuid.UUID, CareerMemory],
+    now: datetime,
+) -> None:
+    """Persist everything the gate let through — in the caller's transaction,
+    which commits once. A failure before that commit leaves the memory set
+    byte-for-byte unchanged (SC-005)."""
+    created_rows: list[CareerMemory] = []
+    for planned in outcome.creates:
+        proposal = planned.proposal
+        memory = CareerMemory(
+            user_id=run.user_id,
+            advisor_run_id=run.id,
+            claim=proposal.claim,
+            kind=proposal.kind,
+            scope_kind=proposal.scope_kind,
+            scope_value=proposal.scope_value,
+            evidence=freeze_evidence(proposal, pack),
+            priority=proposal.priority,
+            priority_reason=proposal.priority_reason,
+            status=MemoryStatus.TENTATIVE if planned.tentative else MemoryStatus.ACTIVE,
+            recreates_dismissed_id=planned.recreates_dismissed_id,
+        )
+        session.add(memory)
+        created_rows.append(memory)
+
+    # The journal rows below reference the new memories' server-generated ids,
+    # so the inserts must reach the database (same transaction) first.
+    if created_rows:
+        await session.flush()
+
+    for disposition in outcome.dispositions:
+        memory = prior_by_id[disposition.memory_id]
+        if disposition.action == DispositionAction.CONFIRMED:
+            memory.last_confirmed_at = now
+            # A tentative memory whose fresh confirmation clears the floor is
+            # promoted — the T033 path. Frozen evidence stays frozen; the
+            # promotion reads the *delta*.
+            if memory.status == MemoryStatus.TENTATIVE and disposition.evidence_delta:
+                fresh = disposition.evidence_delta.get("facts", [])
+                if fresh and all(
+                    int(fact.get("denominator", 0)) >= SMALL_SAMPLE_FLOOR for fact in fresh
+                ):
+                    memory.status = MemoryStatus.ACTIVE
+        elif disposition.action == DispositionAction.SUPERSEDED:
+            memory.status = MemoryStatus.SUPERSEDED
+            index = disposition.superseding_create
+            if index is not None and 0 <= index < len(created_rows):
+                replacement = created_rows[index]
+                if replacement.supersedes_id is None:
+                    replacement.supersedes_id = memory.id
+        elif disposition.action == DispositionAction.RETIRED:
+            memory.status = MemoryStatus.RETIRED
+            memory.retired_reason = disposition.reason
+        # LEFT_OPEN changes nothing on the row — that is its meaning.
+
+        session.add(
+            MemoryDisposition(
+                run_id=run.id,
+                memory_id=disposition.memory_id,
+                action=disposition.action,
+                reason=disposition.reason,
+                evidence_delta=disposition.evidence_delta,
+            )
+        )
+
+    # Creations are logged in the same journal, so "what did this run do" has
+    # one answer. `created` rows carry no reason (the claim is the reason).
+    for memory in created_rows:
+        session.add(
+            MemoryDisposition(
+                run_id=run.id,
+                memory_id=memory.id,
+                action=DispositionAction.CREATED,
+                reason=None,
+                evidence_delta=None,
+            )
+        )
+
+
+def _fail_run(run: AdvisorRun, recorder: UsageRecorder, reason: str, now: datetime) -> None:
+    run.status = AdvisorRunStatus.FAILED
+    run.error = reason
+    run.completed_at = now
+    _record_usage(run, recorder)
+
+
+def _record_usage(run: AdvisorRun, recorder: UsageRecorder) -> None:
+    """Constitution V, on both paths: what the run actually spent, per call,
+    with per-task model attribution (a two-model run reported as one model is
+    a recorded lesson)."""
+    run.input_tokens = recorder.total_input_tokens
+    run.output_tokens = recorder.total_output_tokens
+    run.cost = recorder.total_cost
+    run.is_fixture = recorder.any_fixture
+    for call in recorder.calls:
+        if call.task == GROUPING_TASK:
+            run.grouping_model = call.model
+        elif call.task == REASON_TASK:
+            run.reason_model = call.model
+
+
+async def run_advisor(
+    session: AsyncSession, *, run_id: uuid.UUID, completion: StructuredCompletion
+) -> None:
+    """Fill in a pending run. Never raises — a background task has nowhere to
+    raise to, and a failure that escaped would strand the row `pending`."""
+    run = await session.get(AdvisorRun, run_id)
+    # `==`, never `is`: this session did not create the row, so `status` is a
+    # plain string here (the twice-shipped gotcha).
+    if run is None or run.status != AdvisorRunStatus.PENDING:
+        return
+
+    recorder = UsageRecorder(inner=completion)
+    now = datetime.now(UTC)
+
+    try:
+        applications, analyses, prior, dismissed = await _load_inputs(session, run.user_id)
+        if not applications:
+            _fail_run(run, recorder, "There is no application history to analyse.", now)
+            await session.flush()
+            return
+
+        pack = build_evidence_pack(applications=applications, analyses=analyses, now=now)
+        prompt = render_reasoning_prompt(pack=pack, active=prior, dismissed=dismissed)
+        result = await recorder.complete(task=REASON_TASK, schema=AdvisorReasoning, prompt=prompt)
+
+        outcome = apply_gate(
+            result.value, pack=pack, active=prior, dismissed=dismissed, run_id=run.id
+        )
+
+        await _apply_outcome(session, run, outcome, pack, {m.id: m for m in prior}, now)
+
+        run.status = AdvisorRunStatus.READY
+        run.completed_at = datetime.now(UTC)
+        run.rules_version = pack.rules_version
+        run.evidence_pack = pack.model_dump(mode="json")
+        run.ops_proposed = outcome.proposed
+        run.ops_applied = outcome.applied
+        run.ops_discarded = outcome.discarded
+        _record_usage(run, recorder)
+        await session.flush()
+
+        logger.info(
+            "advisor run ready",
+            extra={
+                "run_id": str(run.id),
+                "ops_proposed": outcome.proposed,
+                "ops_applied": outcome.applied,
+                "ops_discarded": outcome.discarded,
+                "cost": str(recorder.total_cost),
+            },
+        )
+    except DispositionDefect as defect:
+        logger.warning(
+            "advisor run defective",
+            extra={"run_id": str(run_id), "defect": str(defect)},
+        )
+        await session.rollback()
+        run = await session.get(AdvisorRun, run_id)
+        if run is not None:
+            _fail_run(
+                run,
+                recorder,
+                "The reasoning step returned an incomplete answer.",
+                datetime.now(UTC),
+            )
+            await session.flush()
+    except Exception as exc:  # Recorded on the row, never re-raised.
+        logger.warning(
+            "advisor run failed",
+            extra={"run_id": str(run_id), "error": exc.__class__.__name__},
+        )
+        await session.rollback()
+        run = await session.get(AdvisorRun, run_id)
+        if run is not None:
+            _fail_run(run, recorder, "The analysis could not be completed.", datetime.now(UTC))
+            await session.flush()
