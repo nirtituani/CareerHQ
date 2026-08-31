@@ -85,6 +85,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
 
     from careerhq.api.routes import (
+        advisor,
         applications,
         auth,
         health,
@@ -103,6 +104,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # `/api/versions/{id}`, which are two resources rather than one subtree.
     app.include_router(tailoring.router, prefix="/api")
     app.include_router(research.router, prefix="/api")
+    app.include_router(advisor.router, prefix="/api")
 
     return app
 
