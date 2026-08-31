@@ -719,7 +719,7 @@ identified gaps demonstrably narrow over time.
 | 007 | Evaluation & Benchmark | Benchmark set, metrics, LLM-as-judge, regression runs | 006 | ✅ **Complete** — 50/50. Paid benchmark pass run at **$4.925403** of a $10 ceiling |
 | 008 | Company Research | Search → fetch → synthesise, citation-preserving snapshots | 003 | ✅ **Complete** and merged. Web search over **plain HTTPS, not MCP** — argued in `tavily_search.py`. Its **primary path is superseded by 010**, which keeps this pipeline as the configured fallback; Layer 2 (role research) never had a route, and 010's migration `0020` reshaped its table |
 | 009 | Career Advisor | Quantified skill gaps over history | 003, 004 | 📋 Planned — droppable |
-| 010 | Role-Aware Research | ResearchProvider seam, application-scoped and role-aware, sections-first UI | 008 | 🔨 **Built on branch `010-role-aware-research`, unmerged and not deployed.** 40/40 tasks; SC-001 measured on 5 real applications (4 correct, 1 honest-uncertain, 0 wrong) |
+| 010 | Role-Aware Research | ResearchProvider seam, application-scoped and role-aware, sections-first UI | 008 | ✅ **Complete** — 40/40 tasks, merged as PR #22 and deployed. SC-001 measured on 5 real applications (4 correct, 1 honest-uncertain, 0 wrong) |
 
 **Slices 001–007 are the core** and together satisfy every project requirement. 008 and 009
 add the most product value per unit of effort, but the project is defensible without them.
