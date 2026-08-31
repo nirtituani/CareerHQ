@@ -122,6 +122,7 @@ async def test_a_first_run_persists_grounded_memories_and_discards_the_rest(
     async with session_factory() as session:
         await run_advisor(session, run_id=run_id, completion=seam)
         await session.commit()
+    assert seam.tasks == ["advisor_reason"], "grouping must not have been called"
 
     async with session_factory() as session:
         finished = await session.get(AdvisorRun, run_id)
@@ -133,6 +134,10 @@ async def test_a_first_run_persists_grounded_memories_and_discards_the_rest(
             "found-nothing and discarded-everything must stay distinguishable"
         )
         assert finished.reason_model == "scripted/advisor_reason"
+        assert finished.grouping_model is None, (
+            "no analysed application exists, so the grouping step must be skipped "
+            "— a run must not spend a completion to learn nothing (T031)"
+        )
         assert finished.cost == Decimal("0.01")
         assert finished.evidence_pack is not None
 

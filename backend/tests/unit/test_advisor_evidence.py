@@ -180,3 +180,75 @@ def test_volume_by_month_sums_to_the_total() -> None:
     assert sum(f.numerator for f in monthly) == 5
     for fact in monthly:
         assert fact.denominator == 5
+
+
+# -- Tier 2: grouped skill and role-family facts (T032, US3) -----------------
+
+
+def test_tier2_facts_count_through_the_grouping_and_respect_verdicts() -> None:
+    from careerhq.application.advisor_evidence import tier2_facts
+    from careerhq.domain.models import (
+        MatchRequirement,
+        RequirementKind,
+        RequirementVerdict,
+    )
+    from careerhq.domain.schemas.advisor import EvidenceGrouping
+
+    applications, _ = _sample()
+    analysed = [applications[0], applications[1], applications[3]]
+    analyses = [_analysis(app, score=60 + i * 10) for i, app in enumerate(analysed)]
+    analysis_to_app = {a.id: a.application_id for a in analyses}
+
+    def requirement(analysis, text: str, verdict: RequirementVerdict):  # type: ignore[no-untyped-def]
+        row = MatchRequirement(
+            analysis_id=analysis.id,
+            ordinal=0,
+            text_=text,
+            kind=RequirementKind.MUST_HAVE,
+            importance=70,
+            verdict=verdict,
+            evidence=None if verdict == RequirementVerdict.UNVERIFIED else "quoted",
+        )
+        row.id = uuid.uuid4()
+        return row
+
+    rows = [
+        requirement(analyses[0], "AWS", RequirementVerdict.GAP),
+        requirement(analyses[1], "5+ years of AWS", RequirementVerdict.PARTIAL),
+        requirement(analyses[2], "Amazon Web Services", RequirementVerdict.CONFIRMED),
+        requirement(analyses[0], "Python", RequirementVerdict.CONFIRMED),
+    ]
+    aws_members = [rows[0].id, rows[1].id, rows[2].id]
+    groupings = [
+        EvidenceGrouping(group_id="g_aws", label="AWS", group_kind="skill", member_ids=aws_members),
+        EvidenceGrouping(
+            group_id="g_backend",
+            label="Backend",
+            group_kind="role_family",
+            member_ids=[app.id for app in analysed],
+        ),
+    ]
+
+    facts = tier2_facts(
+        groupings=groupings,
+        requirement_rows=rows,
+        analysis_to_application=analysis_to_app,
+        analysed_application_ids={app.id for app in analysed},
+        analyses=analyses,
+    )
+    by_id = {fact.fact_id: fact for fact in facts}
+    assert len(by_id) >= 3, f"examined {sorted(by_id)}"
+
+    frequency = by_id["tier2.requirement.g_aws"]
+    assert frequency.numerator == 3, "AWS appears in all three analysed postings"
+    assert frequency.denominator == 3, "denominator is analysed postings, never all applications"
+    assert set(frequency.record_ids) == set(aws_members), "counts trace to real requirement rows"
+
+    gap = by_id["tier2.gap.g_aws"]
+    assert gap.numerator == 2, "gap counts gap and partial verdicts, never confirmed"
+    assert gap.denominator == 3
+    assert set(gap.record_ids) == {rows[0].id, rows[1].id}
+
+    score = by_id["tier2.match_score.g_backend"]
+    assert score.numerator == 70, "mean of 60/70/80, precomputed"
+    assert score.denominator == 3

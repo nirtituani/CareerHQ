@@ -27,6 +27,8 @@ from careerhq.application.ports import Completion, Usage
 _FACT = re.compile(r"^\[fact: (?P<id>[^\]]+)\] .*?n=(?P<num>\d+)/(?P<den>\d+)", re.M)
 _MEMORY = re.compile(r"^\[memory: (?P<id>[0-9a-f-]{36})\]", re.M)
 _DISMISSED = re.compile(r"^\[dismissed: (?P<id>[0-9a-f-]{36})\]", re.M)
+_REQ = re.compile(r"^\[req: (?P<id>[0-9a-f-]{36})\] (?P<text>[^(]+)\(", re.M)
+_APP = re.compile(r"^\[app: (?P<id>[0-9a-f-]{36})\] (?P<title>.+)$", re.M)
 
 
 @dataclass(slots=True)
@@ -36,6 +38,10 @@ class ParsedPrompt:
     facts: dict[str, tuple[int, int]]
     memory_ids: list[str]
     dismissed_ids: list[str]
+    #: Grouping-prompt enumerations: requirement rows (id -> verbatim text)
+    #: and application titles (id -> title), parsed the way a model would.
+    req_texts: dict[str, str]
+    app_titles: dict[str, str]
     text: str
 
     def claim_for(self, fact_id: str, template: str = "{num} of {den} applications counted") -> str:
@@ -51,6 +57,12 @@ def parse_prompt(prompt: str) -> ParsedPrompt:
         },
         memory_ids=[match.group("id") for match in _MEMORY.finditer(prompt)],
         dismissed_ids=[match.group("id") for match in _DISMISSED.finditer(prompt)],
+        req_texts={
+            match.group("id"): match.group("text").strip() for match in _REQ.finditer(prompt)
+        },
+        app_titles={
+            match.group("id"): match.group("title").strip() for match in _APP.finditer(prompt)
+        },
         text=prompt,
     )
 
