@@ -30,12 +30,13 @@ from datetime import UTC, datetime
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from careerhq.application.advisor_evidence import build_evidence_pack
+from careerhq.application.advisor_evidence import build_evidence_pack, tier2_facts
 from careerhq.application.advisor_grounding import (
     DispositionDefect,
     GateOutcome,
     apply_gate,
     freeze_evidence,
+    validate_grouping,
 )
 from careerhq.application.advisor_rules import (
     ACTIVE_MEMORY_CAP,
@@ -52,12 +53,19 @@ from careerhq.domain.models import (
     CareerMemory,
     DispositionAction,
     MatchAnalysis,
+    MatchRequirement,
     MatchStatus,
     MemoryDisposition,
     MemoryStatus,
     User,
 )
-from careerhq.domain.schemas.advisor import AdvisorReasoning, EvidencePack
+from careerhq.domain.schemas.advisor import (
+    AdvisorReasoning,
+    EvidenceFact,
+    EvidenceGrouping,
+    EvidencePack,
+    GroupingProposal,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -409,7 +417,14 @@ async def run_advisor(
             await session.flush()
             return
 
-        pack = build_evidence_pack(applications=applications, analyses=analyses, now=now)
+        groupings, extra = await _grouping_step(session, recorder, run, applications, analyses)
+        pack = build_evidence_pack(
+            applications=applications,
+            analyses=analyses,
+            now=now,
+            extra_facts=extra,
+            groupings=groupings,
+        )
         prompt = render_reasoning_prompt(pack=pack, active=prior, dismissed=dismissed)
         result = await recorder.complete(task=REASON_TASK, schema=AdvisorReasoning, prompt=prompt)
 
@@ -464,3 +479,85 @@ async def run_advisor(
         if run is not None:
             _fail_run(run, recorder, "The analysis could not be completed.", datetime.now(UTC))
             await session.flush()
+
+
+# -- the grouping step (US3, research.md D3) ---------------------------------
+
+_GROUPING_RULES = """You bucket the enumerated items into named groups so that counting can
+run over them. Rules:
+
+1. member_ids may contain ONLY ids listed below. Never invent an id.
+2. Group requirement rows ([req: ...]) that name the same skill under one
+   'skill' group — '5+ years of AWS' and 'Amazon Web Services' are the same
+   skill worded twice. An id belongs to at most one skill group.
+3. Group application titles ([app: ...]) into 'role_family' groups — 'Backend
+   Engineer' and 'Backend Developer' are one family. An id belongs to at most
+   one role_family group.
+4. Omit a group you cannot fill with at least 2 members unless the item is
+   clearly a skill worth tracking alone."""
+
+
+def render_grouping_prompt(
+    *,
+    titles: dict[uuid.UUID, str],
+    requirement_rows: Sequence[MatchRequirement],
+) -> str:
+    lines = [_GROUPING_RULES, "\n## Application titles\n"]
+    lines.extend(
+        f"[app: {application_id}] {title}" for application_id, title in sorted(
+            titles.items(), key=lambda item: str(item[0])
+        )
+    )
+    if requirement_rows:
+        lines.append("\n## Requirement rows (verbatim posting wording)\n")
+        lines.extend(
+            f"[req: {row.id}] {row.text_} (verdict: {row.verdict}, importance: {row.importance})"
+            for row in requirement_rows
+        )
+    return "\n".join(lines)
+
+
+async def _grouping_step(
+    session: AsyncSession,
+    recorder: UsageRecorder,
+    run: AdvisorRun,
+    applications: Sequence[Application],
+    analyses: Sequence[MatchAnalysis],
+) -> tuple[list[EvidenceGrouping], list[EvidenceFact]]:
+    """The optional Haiku call. **Skipped entirely when no ready analysis
+    exists** — role-family facts need match scores and skill facts need
+    requirement rows, so with zero analysed applications the call could only
+    return groups nothing can count over, and a run must not spend a
+    completion to learn nothing. (Amends the plan's title-count condition:
+    titles alone produce no countable Tier 2 fact.)"""
+    if not analyses:
+        return [], []
+
+    requirement_rows = list(
+        (
+            await session.scalars(
+                select(MatchRequirement).where(
+                    MatchRequirement.analysis_id.in_([analysis.id for analysis in analyses])
+                )
+            )
+        ).all()
+    )
+    titles = {application.id: application.job_title for application in applications}
+
+    prompt = render_grouping_prompt(titles=titles, requirement_rows=requirement_rows)
+    result = await recorder.complete(
+        task=GROUPING_TASK, schema=GroupingProposal, prompt=prompt
+    )
+
+    known: set[uuid.UUID] = {row.id for row in requirement_rows} | set(titles)
+    surviving, _dropped = validate_grouping(result.value, known_ids=known, run_id=run.id)
+
+    analysis_to_application = {analysis.id: analysis.application_id for analysis in analyses}
+    extra = tier2_facts(
+        groupings=surviving,
+        requirement_rows=requirement_rows,
+        analysis_to_application=analysis_to_application,
+        analysed_application_ids=set(analysis_to_application.values()),
+        analyses=analyses,
+    )
+    return surviving, extra

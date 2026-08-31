@@ -42,7 +42,9 @@ from careerhq.domain.models import USER_DISMISSED, CareerMemory, DispositionActi
 from careerhq.domain.schemas.advisor import (
     AdvisorReasoning,
     EvidenceFact,
+    EvidenceGrouping,
     EvidencePack,
+    GroupingProposal,
     ProposedMemory,
 )
 
@@ -458,3 +460,52 @@ def _discard(
         "advisor insight discarded",
         extra={"run_id": str(run_id), "gate": gate, "detail": detail, "claim": proposal.claim},
     )
+
+
+# -- grouping validation (T030, FR-007) --------------------------------------
+
+
+def validate_grouping(
+    proposal: GroupingProposal, *, known_ids: set[uuid.UUID], run_id: uuid.UUID
+) -> tuple[list[EvidenceGrouping], int]:
+    """The proposal is evidence, not truth: only groups whose every member is
+    an id the prompt actually rendered survive, and an id may belong to one
+    group per kind. Counting runs over survivors only — which is what keeps
+    the model out of the arithmetic even when it invents a member.
+
+    Returns the surviving groups (as the frozen `EvidenceGrouping` shape) and
+    how many proposals were dropped, each drop recorded.
+    """
+    surviving: list[EvidenceGrouping] = []
+    claimed: dict[str, set[uuid.UUID]] = {}
+    dropped = 0
+
+    for group in proposal.groups:
+        unknown = [member for member in group.member_ids if member not in known_ids]
+        already = claimed.setdefault(group.group_kind, set())
+        overlap = [member for member in group.member_ids if member in already]
+        if unknown or overlap or not group.member_ids:
+            dropped += 1
+            logger.info(
+                "advisor grouping dropped",
+                extra={
+                    "run_id": str(run_id),
+                    "gate": "grouping",
+                    "detail": (
+                        f"group {group.group_id!r}: "
+                        + (f"unknown ids {unknown}" if unknown else f"overlapping ids {overlap}")
+                    ),
+                },
+            )
+            continue
+        already.update(group.member_ids)
+        surviving.append(
+            EvidenceGrouping(
+                group_id=group.group_id,
+                label=group.label,
+                group_kind=group.group_kind,
+                member_ids=list(group.member_ids),
+            )
+        )
+
+    return surviving, dropped

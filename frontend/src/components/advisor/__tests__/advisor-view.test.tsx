@@ -275,3 +275,33 @@ describe("the lifecycle surface (T029)", () => {
     expect(api.getMemory).toHaveBeenCalledWith(head.id);
   });
 });
+
+describe("Tier 2 surface (T034)", () => {
+  it("shows the grouping a skill memory's counts ran through — auditable, not implied", async () => {
+    api.getAdvisor.mockResolvedValue(
+      state({
+        memories: [
+          memory({
+            scope: { kind: "skill", value: "AWS" },
+            evidence: {
+              ...memory().evidence,
+              groupings: [
+                {
+                  group_id: "g_aws",
+                  label: "AWS",
+                  group_kind: "skill",
+                  member_ids: ["a", "b", "c", "d"],
+                },
+              ],
+            },
+          }),
+        ],
+      }),
+    );
+    render(<AdvisorView />);
+    const card = await screen.findByTestId(`memory-${memory().id}`);
+    expect(within(card).getByTestId("groupings").textContent).toContain(
+      "read as AWS: 4 requirements",
+    );
+  });
+});

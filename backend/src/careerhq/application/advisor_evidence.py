@@ -20,14 +20,15 @@ same grammar under `tier2.`.
 
 from __future__ import annotations
 
+import uuid
 from collections import Counter, defaultdict
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from statistics import median
 
 from careerhq.application.advisor_rules import ADVISOR_RULES_VERSION
-from careerhq.domain.models import Application, MatchAnalysis, MatchStatus
-from careerhq.domain.schemas.advisor import EvidenceFact, EvidencePack
+from careerhq.domain.models import Application, MatchAnalysis, MatchRequirement, MatchStatus
+from careerhq.domain.schemas.advisor import EvidenceFact, EvidenceGrouping, EvidencePack
 
 
 def _pct(numerator: int, denominator: int) -> int:
@@ -44,6 +45,7 @@ def build_evidence_pack(
     analyses: Sequence[MatchAnalysis],
     now: datetime | None = None,
     extra_facts: Sequence[EvidenceFact] = (),
+    groupings: Sequence[EvidenceGrouping] = (),
 ) -> EvidencePack:
     """Compute the Tier 1 pack. `extra_facts` is where US3's grouping-derived
     Tier 2 facts join, after deterministic counting over proposed groups."""
@@ -62,7 +64,12 @@ def build_evidence_pack(
     facts.extend(extra_facts)
     facts.sort(key=lambda fact: fact.fact_id)
 
-    return EvidencePack(as_of=as_of, rules_version=ADVISOR_RULES_VERSION, facts=facts)
+    return EvidencePack(
+        as_of=as_of,
+        rules_version=ADVISOR_RULES_VERSION,
+        facts=facts,
+        groupings=list(groupings),
+    )
 
 
 def _status_distribution(applications: Sequence[Application], total: int) -> list[EvidenceFact]:
@@ -219,3 +226,120 @@ def _coverage(
             ),
         )
     ]
+
+
+# -- Tier 2: facts computed through surviving groupings (US3, FR-007) --------
+
+
+def tier2_facts(
+    *,
+    groupings: Sequence[EvidenceGrouping],
+    requirement_rows: Sequence[MatchRequirement],
+    analysis_to_application: dict[uuid.UUID, uuid.UUID],
+    analysed_application_ids: set[uuid.UUID],
+    analyses: Sequence[MatchAnalysis],
+) -> list[EvidenceFact]:
+    """Counting runs **after** grouping and **before** claiming — the one
+    ordering that keeps the model out of the arithmetic while still solving
+    verbatim-text clustering (research.md D3). Every denominator here is
+    scoped to analysed postings, never to all applications: the imported rows
+    without posting content must not inflate a skill count (FR-011).
+    """
+    facts: list[EvidenceFact] = []
+    analysed_total = len(analysed_application_ids)
+    rows_by_id = {row.id: row for row in requirement_rows}
+    scores_by_application: dict[uuid.UUID, int] = {
+        analysis.application_id: analysis.overall_score
+        for analysis in analyses
+        if analysis.overall_score is not None
+    }
+
+    for grouping in groupings:
+        if grouping.group_kind == "skill" and analysed_total:
+            members = [rows_by_id[m] for m in grouping.member_ids if m in rows_by_id]
+            if not members:
+                continue
+            postings = {
+                analysis_to_application[row.analysis_id]
+                for row in members
+                if row.analysis_id in analysis_to_application
+            }
+            facts.append(
+                EvidenceFact(
+                    fact_id=f"tier2.requirement.{grouping.group_id}",
+                    kind="tier2.requirement",
+                    scope_kind="skill",
+                    scope_value=grouping.label,
+                    numerator=len(postings),
+                    denominator=analysed_total,
+                    value=(
+                        f"{grouping.label} appears in {len(postings)} of {analysed_total} "
+                        f"analysed postings ({_pct(len(postings), analysed_total)}%)"
+                    ),
+                    record_ids=sorted((row.id for row in members), key=str),
+                    basis=(
+                        f"match_requirements rows read as {grouping.label!r} per grouping "
+                        f"{grouping.group_id}, counted by distinct analysed posting"
+                    ),
+                )
+            )
+            # Gap counts `gap` and `partial` verdicts — never `confirmed`, and
+            # never `unverified`, which asserts nothing (AI-008's taxonomy).
+            gap_rows = [row for row in members if str(row.verdict) in ("gap", "partial")]
+            gap_postings = {
+                analysis_to_application[row.analysis_id]
+                for row in gap_rows
+                if row.analysis_id in analysis_to_application
+            }
+            facts.append(
+                EvidenceFact(
+                    fact_id=f"tier2.gap.{grouping.group_id}",
+                    kind="tier2.gap",
+                    scope_kind="skill",
+                    scope_value=grouping.label,
+                    numerator=len(gap_postings),
+                    denominator=analysed_total,
+                    value=(
+                        f"{grouping.label} was judged a gap or only partly met in "
+                        f"{len(gap_postings)} of {analysed_total} analysed postings"
+                    ),
+                    record_ids=sorted((row.id for row in gap_rows), key=str),
+                    basis=(
+                        f"rows in grouping {grouping.group_id} with verdict in (gap, partial); "
+                        "confirmed and unverified rows are never counted as gaps"
+                    ),
+                )
+            )
+        elif grouping.group_kind == "role_family":
+            scored = [
+                scores_by_application[member]
+                for member in grouping.member_ids
+                if member in scores_by_application
+            ]
+            if not scored:
+                continue
+            mean_score = round(sum(scored) / len(scored))
+            facts.append(
+                EvidenceFact(
+                    fact_id=f"tier2.match_score.{grouping.group_id}",
+                    kind="tier2.match_score",
+                    scope_kind="role_family",
+                    scope_value=grouping.label,
+                    numerator=mean_score,
+                    denominator=len(scored),
+                    value=(
+                        f"mean match score {mean_score} across the {len(scored)} analysed "
+                        f"{grouping.label} applications"
+                    ),
+                    record_ids=sorted(
+                        (m for m in grouping.member_ids if m in scores_by_application),
+                        key=str,
+                    ),
+                    basis=(
+                        "mean of overall_score over the grouping's analysed applications; "
+                        "numerator is the mean, denominator the sample size"
+                    ),
+                )
+            )
+
+    return facts

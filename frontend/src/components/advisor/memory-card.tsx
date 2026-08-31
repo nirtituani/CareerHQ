@@ -115,6 +115,14 @@ export function MemoryCard({
         ))}
       </ul>
 
+      {memory.evidence.groupings.length > 0 ? (
+        <p className="mt-1 text-xs" style={{ color: "var(--faint)" }} data-testid="groupings">
+          {memory.evidence.groupings
+            .map((g) => `read as ${g.label}: ${g.member_ids.length} requirement${g.member_ids.length === 1 ? "" : "s"}`)
+            .join(" · ")}
+        </p>
+      ) : null}
+
       {memory.recreates_dismissed_id ? (
         <p className="mt-2 text-xs" style={{ color: "var(--muted)" }} data-testid="recreated-note">
           You dismissed an earlier version of this claim; the evidence has since changed.
