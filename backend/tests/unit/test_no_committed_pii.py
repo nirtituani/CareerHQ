@@ -109,3 +109,65 @@ def test_nothing_under_the_real_set_directory_is_tracked_by_git() -> None:
         [_GIT, "ls-files", "benchmark-real/"], cwd=REPO_ROOT, capture_output=True, text=True
     )
     assert result.stdout.strip() == "", f"tracked files under benchmark-real/: {result.stdout}"
+
+
+#: Domains a committed test fixture may use. `example.com` is reserved by RFC 2606
+#: for exactly this, and pydantic's `EmailStr` rejects `.test`/`.invalid` — a scratch
+#: user seeded with one makes `/api/auth/me` return 500.
+_ALLOWED_EMAIL_DOMAINS = ("example.com", "example.org", "example.net", "company.com")
+
+#: Source trees this scan covers. **Not `docs/`**: those carry the author's own byline,
+#: which is correct attribution rather than a leak.
+_SOURCE_TREES = ("backend/src", "backend/tests", "frontend/src")
+
+
+def test_no_source_file_carries_a_personal_email_address() -> None:
+    """A real address in a committed test is the leak the benchmark scan cannot see.
+
+    **This gate exists because the narrower one missed a real one.** The scan above
+    covers `backend/benchmark` only, and a contact-block fixture in
+    `frontend/src/lib/__tests__/imports.test.ts` carried the author's own Gmail
+    address and phone number into a public repository — the exact shape of data this
+    project refuses to commit anywhere else.
+
+    Fixtures may use reserved example domains. Anything else is either a real person's
+    address or looks enough like one that nobody should have to decide at review time.
+    """
+    offences: list[str] = []
+    examined = 0
+
+    for tree in _SOURCE_TREES:
+        root = REPO_ROOT / tree
+        if not root.is_dir():
+            continue
+        for path in sorted(root.rglob("*")):
+            if not path.is_file() or path.suffix not in {".py", ".ts", ".tsx", ".json"}:
+                continue
+            if "node_modules" in path.parts or "__pycache__" in path.parts:
+                continue
+            examined += 1
+            for lineno, line in enumerate(path.read_text(errors="ignore").splitlines(), start=1):
+                # A connection string carries `user:pass@host` and matches the email
+                # pattern without being one. Skipping the whole line is deliberate:
+                # a real address sharing a line with a URL is rarer than the false
+                # positive, and a gate nobody trusts gets deleted.
+                if "://" in line:
+                    continue
+                for address in _EMAIL.findall(line):
+                    domain = address.rsplit("@", 1)[-1].lower().rstrip(".,;:'\")")
+                    if domain.endswith(_ALLOWED_EMAIL_DOMAINS):
+                        continue
+                    # `@types/…` in package manifests, and npm scopes, are not addresses.
+                    if address.startswith("@") or "/" in address:
+                        continue
+                    offences.append(f"{path.relative_to(REPO_ROOT)}:{lineno} — {address}")
+
+    assert examined >= 100, (
+        f"expected the source trees, scanned only {examined} files. "
+        "A scan matching nothing is not a gate."
+    )
+    assert not offences, (
+        "personal-looking email addresses in committed source:\n  "
+        + "\n  ".join(offences)
+        + "\nUse a reserved example domain in fixtures."
+    )

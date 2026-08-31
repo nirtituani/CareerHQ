@@ -35,17 +35,17 @@ truth for their own areas; this document owns the narrative and links down for d
 
 ## 1.2 Status at a glance
 
-**Two of seven slices are complete, a third is two-thirds done, and the system is deployed.**
-Everything in this document carries an explicit status marker so that planned work is never
-mistaken for shipped work.
+**Slices 001–008 are complete and the system is deployed.** Slice 009 (Career Advisor) is
+planned and droppable. Everything in this document carries an explicit status marker so that
+planned work is never mistaken for shipped work.
 
 | | |
 |---|---|
 | **Live at** | **https://frontend-production-02ac.up.railway.app** |
-| **Built and verified** | Slice 001 — Platform Foundation; Slice 002 — Deployment (52/52, all three user stories verified) |
-| **Partly built** | Slice 003 — Data Foundation. User Story 1 (CV → reviewed profile) and User Story 2 (record a job) are complete and deployed. **User Story 3 (JobTracker import) is blocked** on a real CSV export from the source app |
-| **Next** | Finish slice 003, then Slice 004 — Resume Tailoring |
-| **Evidence** | 189 backend tests at 81% coverage, 64 component tests, 6 Playwright smoke tests, CI green on `main` |
+| **Built and verified** | Slices 001–008 — platform, deployment, data foundation, match analysis, resume tailoring, retrieval/export/submission, evaluation, company research. **527 / 527 tasks** across the eight slices |
+| **Not built** | Slice 009 — Career Advisor (planned, droppable). Slice 008's **Layer 2** role research is built and tested but has **no route and no UI** |
+| **Next** | Slice 009, or wiring Layer 2 — neither is scheduled |
+| **Evidence** | **1,232 backend tests at 87.52% coverage** (gate 80%), **207 frontend component tests** across 14 files, 6 Playwright smoke tests, CI green on `main` |
 | **Verified how** | Locally: full quickstart from a fresh clone on wiped volumes. **On the deployed system**: a real Google sign-in taking the database from `0\|0` to `1\|1`; a real CV imported and confirmed non-fixture; migration `0005` applied with constraints C2 and C3 present and no `rejected` column anywhere; a real job posting read end to end through the deployed extraction path — see [`specs/002-deployment/observations.md`](../specs/002-deployment/observations.md) |
 
 ---
@@ -194,10 +194,10 @@ map plus honest status.
 | Application Management Core | No — deliberately CRUD | 003 | ✅ **Built** (JobTracker import outstanding) |
 | Professional Profile + CV import | No | 003 | ✅ **Built and verified** |
 | **Match analysis** — score a job against the profile | No — one structured call | 004 | ✅ **Built and verified** |
-| **Resume Optimizer** — the flagship | Yes | next | ⏭️ **Next** |
-| **Reviewer / evaluation layer** | Yes | 004 loop, 005 metrics | 📋 Planned |
-| Company Research | Yes — research provider behind a seam (slice 010; 008's pipeline is the fallback) | 006 | ✅ **Built** (010 on its branch, unmerged) |
-| Career Advisor | Yes | 007 | 📋 Planned |
+| **Resume Optimizer** — the flagship | Yes | 005 (workflow), 006 (RAG, PDF) | ✅ **Built and deployed** |
+| **Reviewer / evaluation layer** | Yes | 005 (the loop), 007 (the metrics) | ✅ **Built** — self-critique in 005, metrics and LLM-as-judge in 007 |
+| Company Research | Yes — web search over plain HTTPS (008); a research provider behind a seam (010) | 008, 010 | ✅ **Built** — 008's Layer 1 deployed; 010 makes research role-aware and keeps 008's pipeline as its fallback (on its branch, unmerged) |
+| Career Advisor | Yes | 009 | 📋 Planned |
 | Interview Coach | Yes | — | 💤 Deferred (stretch) |
 | Application Workflow Agent | Yes | — | 💤 Deferred (stretch) |
 | Resume Builder | No | — | 🚫 Future (§2.5) |
@@ -712,14 +712,14 @@ identified gaps demonstrably narrow over time.
 |---|---|---|---|---|
 | 001 | Platform Foundation | Containers, Google sign-in, authenticated shell, CI | — | ✅ **Complete** |
 | 002 | Deployment | Public HTTPS URL, redeploy on merge | 001 | ✅ Complete |
-| 003 | Data Foundation | CV import and parsing, profile, applications, JobTracker import | 001 | ✅ US1–US2 complete; US3 blocked |
+| 003 | Data Foundation | CV import and parsing, profile, applications, JobTracker import | 001 | ✅ **Complete** — 109/109, including the JobTracker import run against production |
 | 004 | Match Analysis | Score a job against the profile, per-requirement evidence | 003 | ✅ **Complete**, verified in production |
-| 005 | **Resume Tailoring** | LangGraph workflow, Reviewer, versions, item-level approval | 004 | 🔨 **91/97** — all three user stories built and reachable in a browser. **Not deployed, and no real provider call has been made**: SC-001 and SC-006 are unmeasured targets (T085–T089) |
-| 006 | Document & Retrieval | RAG over resume guidelines, PDF export, submit-and-lock | 005 | 📋 Planned |
-| 007 | Evaluation & Benchmark | Benchmark set, metrics, LLM-as-judge, regression runs | 006 | 📋 Planned |
-| 008 | Company Research | Search→fetch→synthesise pipeline | 003 | ✅ Built; primary path superseded by 010 |
-| 010 | Role-Aware Research | ResearchProvider seam, application-scoped, sections-first UI | 008 | 🔨 Built on branch, unmerged |
-| 009 | Career Advisor | Quantified skill gaps over history | 003, 004 | 📋 Planned |
+| 005 | **Resume Tailoring** | LangGraph workflow, Reviewer, versions, item-level approval | 004 | ✅ **Complete** — 101/101, deployed, and exercised by a real paid production run (T088). SC-006 met by one run of four; **SC-001 missed by all four** and the target was not adjusted |
+| 006 | Document & Retrieval | RAG over resume guidelines, PDF export, submit-and-lock | 005 | ✅ **Complete** — 57/57, deployed. **SC-008 (006) missed at 3.22%** against a ≤2% threshold; the target was not adjusted |
+| 007 | Evaluation & Benchmark | Benchmark set, metrics, LLM-as-judge, regression runs | 006 | ✅ **Complete** — 50/50. Paid benchmark pass run at **$4.925403** of a $10 ceiling |
+| 008 | Company Research | Search → fetch → synthesise, citation-preserving snapshots | 003 | ✅ **Complete** and merged. Web search over **plain HTTPS, not MCP** — argued in `tavily_search.py`. Its **primary path is superseded by 010**, which keeps this pipeline as the configured fallback; Layer 2 (role research) never had a route, and 010's migration `0020` reshaped its table |
+| 009 | Career Advisor | Quantified skill gaps over history | 003, 004 | 📋 Planned — droppable |
+| 010 | Role-Aware Research | ResearchProvider seam, application-scoped and role-aware, sections-first UI | 008 | 🔨 **Built on branch `010-role-aware-research`, unmerged and not deployed.** 40/40 tasks; SC-001 measured on 5 real applications (4 correct, 1 honest-uncertain, 0 wrong) |
 
 **Slices 001–007 are the core** and together satisfy every project requirement. 008 and 009
 add the most product value per unit of effort, but the project is defensible without them.
