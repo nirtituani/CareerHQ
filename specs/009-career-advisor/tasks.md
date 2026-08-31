@@ -114,10 +114,10 @@ wordings; verify counts flow through the stored grouping and verdicts are respec
 **Independent test**: dismiss → gone from active with reason; re-run unchanged → not
 recreated; change evidence materially → recreated as new with history visible.
 
-- [ ] T035 [P] [US4] Write failing tests: `POST /api/advisor/memories/{id}/dismiss` → 200 retires with `user_dismissed`, 409 on terminal rows (re-termination refused), 404 cross-user; the deterministic recreation gate (same `(kind, scope)`, identical `(fact_id, numerator, denominator)` tuples → discard-with-record; changed tuples → survives carrying `recreates_dismissed_id`)
-- [ ] T036 [US4] Implement the dismiss route and the recreation gate (`advisor.py` routes + `advisor_grounding.py`); dismissed memories render in the reasoning input as `[dismissed: <uuid>] "<claim>" — dismissed by the user; do not recreate` (extend T024's renderer test: the marker is present, **and its id set is asserted against the dismissed rows** — count what you examined)
-- [ ] T037 [US4] Lifecycle-level dismissal test in `test_advisor_lifecycle.py`: dismiss → run on unchanged data → claim absent from actives and the discard recorded on the run (`ops_discarded > 0` distinguishable from found-nothing); mutate evidence → run → recreated as new, `recreates_dismissed_id` set, dismissal readable in history
-- [ ] T038 [US4] Frontend: dismiss action on a memory card (explicit, not hidden behind a second render path — the affordance-per-render-path lesson), "dismissed by you" in history, dismissal lineage on a recreated memory; Vitest tests
+- [x] T035 [P] [US4] Write failing tests: `POST /api/advisor/memories/{id}/dismiss` → 200 retires with `user_dismissed`, 409 on terminal rows (re-termination refused), 404 cross-user; the deterministic recreation gate (same `(kind, scope)`, identical `(fact_id, numerator, denominator)` tuples → discard-with-record; changed tuples → survives carrying `recreates_dismissed_id`)
+- [x] T036 [US4] Implement the dismiss route and the recreation gate (`advisor.py` routes + `advisor_grounding.py`); dismissed memories render in the reasoning input as `[dismissed: <uuid>] "<claim>" — dismissed by the user; do not recreate` (extend T024's renderer test: the marker is present, **and its id set is asserted against the dismissed rows** — count what you examined)
+- [x] T037 [US4] Lifecycle-level dismissal test in `test_advisor_lifecycle.py`: dismiss → run on unchanged data → claim absent from actives and the discard recorded on the run (`ops_discarded > 0` distinguishable from found-nothing); mutate evidence → run → recreated as new, `recreates_dismissed_id` set, dismissal readable in history
+- [x] T038 [US4] Frontend: dismiss action on a memory card (explicit, not hidden behind a second render path — the affordance-per-render-path lesson), "dismissed by you" in history, dismissal lineage on a recreated memory; Vitest tests
 
 ## Phase 7: Polish, verification, documentation
 

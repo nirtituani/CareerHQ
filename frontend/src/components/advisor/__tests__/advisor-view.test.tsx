@@ -305,3 +305,20 @@ describe("Tier 2 surface (T034)", () => {
     );
   });
 });
+
+describe("dismissal surface (T038)", () => {
+  it("shows the dismissal history on a legitimately recreated memory", async () => {
+    api.getAdvisor.mockResolvedValue(
+      state({
+        memories: [
+          memory({ recreates_dismissed_id: "33333333-3333-4333-8333-333333333333" }),
+        ],
+      }),
+    );
+    render(<AdvisorView />);
+    const card = await screen.findByTestId(`memory-${memory().id}`);
+    expect(within(card).getByTestId("recreated-note").textContent).toContain(
+      "You dismissed an earlier version",
+    );
+  });
+});
