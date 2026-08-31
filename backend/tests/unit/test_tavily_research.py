@@ -209,3 +209,74 @@ async def test_without_a_posting_nothing_records_a_truncation() -> None:
     post = CapturingPost(_response(_content()))
     outcome = await _run(post, role_title=None, posting_text=None)
     assert "posting_truncated" not in outcome.run_facts
+
+
+async def test_the_output_schema_is_inlined_to_what_the_provider_accepts() -> None:
+    """Found by the Docker verification, not by any double: the endpoint 400s
+    on anything but `properties` + `required` at the top level — no `$defs`,
+    no `$ref`, no `title`, no top-level `type` — while pydantic's
+    `model_json_schema()` emits all four. The adapter must inline the schema,
+    keeping every description (they are the prompt-side contract)."""
+    post = CapturingPost(_response(_content()))
+    await _run(post)
+
+    (body,) = post.bodies
+    schema = body["output_schema"]
+    assert set(schema.keys()) <= {"properties", "required"}, sorted(schema.keys())
+
+    flattened = json.dumps(schema)
+    assert "$ref" not in flattened and "$defs" not in flattened
+
+    # The nested identification survived inlining, descriptions intact, and
+    # the nullable field collapsed to its base type.
+    ident = schema["properties"]["company_identification"]
+    assert ident["type"] == "object"
+    assert ident["properties"]["how_identified"]["description"]
+    assert ident["properties"]["headquarters"].get("type") == "string"
+    assert "anyOf" not in json.dumps(ident)
+
+
+class PendingThenDone:
+    """POST answers a pending envelope; GET serves the finished record.
+
+    Found by the Docker verification: the endpoint answers `status: "pending"`
+    in under a second and the result must be fetched by request id — the POC
+    harness polled, the first adapter did not.
+    """
+
+    def __init__(self, final: dict[str, Any], *, pending_polls: int = 1) -> None:
+        self.final = final
+        self.pending_polls = pending_polls
+        self.bodies: list[dict[str, Any]] = []
+        self.polled: list[str] = []
+
+    async def post(self, body: dict[str, Any]) -> dict[str, Any]:
+        self.bodies.append(body)
+        return {"request_id": "req-42", "status": "pending"}
+
+    async def get(self, request_id: str) -> dict[str, Any]:
+        self.polled.append(request_id)
+        if len(self.polled) <= self.pending_polls:
+            return {"request_id": request_id, "status": "pending"}
+        return self.final
+
+
+async def test_a_pending_envelope_is_polled_to_completion() -> None:
+    double = PendingThenDone(_response(_content()))
+    adapter = TavilyResearch(post=double.post, get=double.get, poll_seconds=0)
+    outcome = await adapter.research(
+        company_name="Pango", domain=None, role_title=None, posting_text=None
+    )
+    assert outcome.prompt_version == "app-v1"
+    assert double.polled == ["req-42", "req-42"]
+
+
+async def test_a_provider_side_failure_is_unavailable_with_its_bill() -> None:
+    double = PendingThenDone({"request_id": "req-42", "status": "failed"}, pending_polls=0)
+    adapter = TavilyResearch(post=double.post, get=double.get, poll_seconds=0)
+    with pytest.raises(ResearchProviderUnavailable) as caught:
+        await adapter.research(
+            company_name="Pango", domain=None, role_title=None, posting_text=None
+        )
+    # The provider may have billed for the failed run; the estimate travels.
+    assert caught.value.cost_estimate is not None

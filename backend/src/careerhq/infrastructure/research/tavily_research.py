@@ -25,6 +25,7 @@ properties of this adapter carry measured POC lessons rather than preference:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from decimal import Decimal
@@ -103,6 +104,52 @@ invent a role.
 """
 
 
+def _inline(node: dict[str, Any], defs: dict[str, Any]) -> dict[str, Any]:
+    """One node of the schema, with every `$ref` resolved and `anyOf`-nullable
+    collapsed to its base type. Descriptions are merged so a `$ref` that
+    carried its own (pydantic puts the Field description on the reference)
+    survives the inlining — they are the prompt-side contract."""
+    resolved = dict(node)
+    ref = resolved.pop("$ref", None)
+    if isinstance(ref, str) and ref.startswith("#/$defs/"):
+        target = _inline(defs[ref.rsplit("/", 1)[-1]], defs)
+        # The reference's own keys (description, mostly) win over the target's.
+        resolved = {**target, **resolved}
+
+    options = resolved.pop("anyOf", None)
+    if isinstance(options, list):
+        concrete = [o for o in options if isinstance(o, dict) and o.get("type") != "null"]
+        if len(concrete) == 1:
+            resolved = {**_inline(concrete[0], defs), **resolved}
+        else:  # pragma: no cover - no schema field is shaped this way
+            resolved["anyOf"] = [_inline(o, defs) for o in options if isinstance(o, dict)]
+
+    resolved.pop("title", None)
+    resolved.pop("default", None)
+    if isinstance(resolved.get("properties"), dict):
+        resolved["properties"] = {
+            name: _inline(prop, defs) for name, prop in resolved["properties"].items()
+        }
+    if isinstance(resolved.get("items"), dict):
+        resolved["items"] = _inline(resolved["items"], defs)
+    return resolved
+
+
+def _tavily_output_schema() -> dict[str, Any]:
+    """`ApplicationResearch`'s schema, in the only dialect the endpoint accepts.
+
+    Measured, twice: the endpoint 400s on any property without a `description`
+    (the POC), and 400s on anything but `properties` + `required` at the top
+    level — no `$defs`, `$ref`, `title` or top-level `type` (the Docker
+    verification of this slice, which is exactly the class of bug a doubles
+    suite cannot see). Pydantic emits all of those, so the schema is inlined
+    here rather than trusted as-is.
+    """
+    raw = ApplicationResearch.model_json_schema()
+    schema = _inline(raw, raw.get("$defs", {}))
+    return {"properties": schema["properties"], "required": schema["required"]}
+
+
 class TavilyResearch:
     """`ResearchProvider` over `POST /research`.
 
@@ -111,8 +158,16 @@ class TavilyResearch:
     tests, not configuration.
     """
 
-    def __init__(self, post: Any | None = None) -> None:
+    def __init__(
+        self,
+        post: Any | None = None,
+        get: Any | None = None,
+        *,
+        poll_seconds: float = 5.0,
+    ) -> None:
         self._post = post or self._post_to_tavily
+        self._get = get or self._get_from_tavily
+        self._poll_seconds = poll_seconds
 
     async def _post_to_tavily(self, body: dict[str, Any]) -> object:
         """One authenticated POST. The key is read at call time, never logged."""
@@ -129,6 +184,59 @@ class TavilyResearch:
             )
             response.raise_for_status()
             return response.json()
+
+    async def _get_from_tavily(self, request_id: str) -> object:
+        """Fetch one research record by id — the poll half of the async API."""
+        settings = get_settings()
+        key = settings.tavily_api_key
+        if key is None:  # pragma: no cover - unreachable after a successful POST
+            raise ResearchProviderUnavailable("The research provider is not configured.")
+        async with httpx.AsyncClient(timeout=settings.research_provider_timeout_seconds) as client:
+            response = await client.get(
+                f"{TAVILY_RESEARCH_URL}/{request_id}",
+                headers={"Authorization": f"Bearer {key.get_secret_value()}"},
+            )
+            response.raise_for_status()
+            return response.json()
+
+    async def _await_completion(self, payload: object) -> object:
+        """Poll a pending research request until it finishes or the timeout ends.
+
+        **Measured, not assumed** (this slice's Docker verification): the
+        endpoint answers `status: "pending"` in under a second and the result
+        is fetched by request id. A `failed` record and a timeout both raise
+        `Unavailable` — the provider was reached but did not deliver, which is
+        exactly what a configured fallback is for — and both carry the cost
+        estimate, because the provider may have billed for the attempt.
+        """
+        deadline = get_settings().research_provider_timeout_seconds
+        waited = 0.0
+        while isinstance(payload, dict) and payload.get("status") in {
+            "pending",
+            "running",
+            "in_progress",
+        }:
+            request_id = payload.get("request_id")
+            if not isinstance(request_id, str) or not request_id:
+                raise ResearchProviderRejected(
+                    "The research provider answered pending without a request id.",
+                    cost_estimate=COST_ESTIMATE_USD,
+                )
+            if waited > deadline:
+                raise ResearchProviderUnavailable(
+                    "The research provider did not finish within the configured timeout.",
+                    cost_estimate=COST_ESTIMATE_USD,
+                )
+            await asyncio.sleep(self._poll_seconds)
+            waited += max(self._poll_seconds, 1.0)
+            payload = await self._get(request_id)
+
+        if isinstance(payload, dict) and payload.get("status") == "failed":
+            raise ResearchProviderUnavailable(
+                "The research provider reported a failed research run.",
+                cost_estimate=COST_ESTIMATE_USD,
+            )
+        return payload
 
     async def research(
         self,
@@ -163,11 +271,12 @@ class TavilyResearch:
             "input": _INSTRUCTIONS.format(company=company, role_block=role_block),
             "model": "mini",
             "citation_format": "numbered",
-            "output_schema": ApplicationResearch.model_json_schema(),
+            "output_schema": _tavily_output_schema(),
         }
 
         try:
             payload = await self._post(body)
+            payload = await self._await_completion(payload)
         except ResearchProviderUnavailable:
             raise
         except Exception as exc:
