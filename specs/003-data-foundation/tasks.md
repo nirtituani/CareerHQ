@@ -626,11 +626,35 @@ derived, and re-running creates nothing.
       Starlette version (same value as `HTTP_413_CONTENT_TOO_LARGE`). It matches `imports.py`, and
       the two call sites must move together; recorded as a follow-up rather than changed here,
       because an unrelated cleanup inside a slice is how a diff stops being reviewable.
-- [ ] T083 [P] [US3] Build the import screen and its report at
+- [x] T083 [P] [US3] Build the import screen and its report at
       `frontend/src/app/applications/import/page.tsx`
-- [ ] T084 👁 **OBSERVE** [US3] Import the real export against the running stack. Confirm counts,
+      ***Built 2026-08-31.*** `JobtrackerImport` renders the report's **four** outcomes as four
+      visually distinct blocks, and an empty one is not drawn at all — "0 rejected" invites a hunt
+      for a problem that does not exist. **`skipped` is presented as a success** ("Already imported
+      previously, so nothing was duplicated"), never as a failure, because re-running an import is
+      safe by design; **`notices` say *imported* first**, because those rows are in the database and
+      showing them beside rejections would send someone looking for history that is already there.
+      A 10 MB client-side pre-check mirrors `MAX_UPLOAD_BYTES` as a convenience while the server's
+      413 is still handled. The working state is **indeterminate by necessity** — the endpoint is
+      synchronous and reports no progress.
+      ***Verified in a browser against the running stack***, not only by tests: the synthetic
+      fixture imported **7 / skipped 1 / 3 notices / 2 rejected**, and re-uploading the identical
+      file reported **8 skipped** with the application count unchanged at 7.
+- [x] T084 👁 **OBSERVE** [US3] Import the real export against the running stack. Confirm counts,
       that rejection arrived as a status value, and that **re-importing the identical file adds
       nothing**. **Failure looks like**: duplicated applications, meaning C3 did not deploy
+      ***Observed in production 2026-08-30***, by driving `POST /api/applications/import/jobtracker`
+      with the owner's own session — so it never needed T083. **96 imported, 0 skipped, 0 rejected,
+      6 notices**; 97 applications and 90 companies after, of which **96 carry
+      `import_source='jobtracker'`** across 96 distinct source ids with 0 duplicate identities.
+      **Rejection arrived as a status value**: 63 rows normalised to `rejected` while
+      `information_schema` reports **0** columns named `rejected`. The pre-existing Cellebrite
+      application and company were reused rather than duplicated and its `updated_at` did not move.
+      ***The tick was lost once and is being restored, not newly earned*** — a replace-script that
+      asserted before writing dropped it (§4). **A second production import was never run**, so
+      "re-importing adds nothing" rests on the rehearsal and on
+      `test_re_uploading_the_same_file_reports_everything_as_skipped`, not on a production
+      observation.
 
 **Checkpoint**: the system holds real history for the slice 007 Career Advisor.
 
