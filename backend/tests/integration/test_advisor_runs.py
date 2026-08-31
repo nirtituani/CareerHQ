@@ -19,9 +19,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from careerhq.application.advise_career import create_pending_run, is_abandoned
 from careerhq.application.provision_user import provision_user
 from careerhq.domain.models import (
-    Application,
     AdvisorRun,
     AdvisorRunStatus,
+    Application,
     Company,
     NormalizedStatus,
     User,
@@ -107,8 +107,7 @@ async def test_an_abandoned_run_reads_as_failed_and_unblocks(
         await session.commit()
         await session.execute(
             text(
-                "UPDATE advisor_runs SET created_at = now() - interval '11 minutes' "
-                "WHERE id = :id"
+                "UPDATE advisor_runs SET created_at = now() - interval '11 minutes' WHERE id = :id"
             ),
             {"id": run.id},
         )
