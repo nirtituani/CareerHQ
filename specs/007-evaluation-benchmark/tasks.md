@@ -359,7 +359,7 @@ the **13 existing runs** with no new model call.
 
 ## Phase 9 — Polish and cross-cutting
 
-- [~] **T047** [P] The **gitignored real sanity set** (D2). Build `benchmark-real/`, run the same
+- [x] **T047** [P] The **gitignored real sanity set** (D2). Build `benchmark-real/`, run the same
       metrics, and **commit only the aggregate comparison**, labelled as coming from an
       unreproducible source (FR-005c, FR-005d).
       ***Built and provably isolated; deliberately unpopulated.*** `load_real_set()` loads it
@@ -368,12 +368,31 @@ the **13 existing runs** with no new model call.
       defence in depth — verified by `git check-ignore -v`, not by reading `.gitignore` — and
       `tests/unit/test_no_committed_pii.py` scans every committed benchmark file, asserting the
       count it examined.
-      ***The remaining half is the author's, on the author's data.*** Populating it means copying a
-      real CV — a home address, a phone number, an employment history — onto disk. Nothing in the
-      non-paid phases needs it, and the comparison it enables spends no money.
-      *It answers one question: **does the synthetic set overstate the system?** If synthetic scores
-      materially better, the benchmark is flattering and T016's cases need hardening.*
-      ***Re-verify with `git check-ignore -v` before any `git add`.***
+      ***Populated and measured 2026-08-31, free tier only — no paid call.*** The set lives at
+      `~/CareerHQ-benchmark-real/v1/`: **6 cases** from the author's own applications and **1
+      profile** from the author's CV, outside the repository throughout. **The answer is that the
+      synthetic set does not overstate retrieval** — `pinned_proportion` **0.5573 synthetic against
+      0.5456 real**, a 1.2-point gap running *against* the synthetic set, both arms drawing from
+      the same 11-rule union. By `real-sanity-set.md`'s reading rule this is the "close" case, so
+      **T016's cases do not need hardening on this evidence**. Only the aggregate is committed, in
+      `results/real-sanity-set-comparison.md`, labelled unreproducible per FR-005d.
+      ***What was NOT measured, and the task closes saying so.*** **`selected_relevance` is `not
+      measured` in both arms** — no relevance judgement has ever been recorded, so whether the
+      retrieved guidance was *right for the posting* is untouched. **LLM-based requirement
+      `coverage` is `not measured`** in both arms: it consumes the Reviewer's `uncovered` findings,
+      which exist only after a paid run. `difficulty_report` was run on both sets as a **structural
+      proxy** and is recorded as one — **it is not coverage and must not be read as coverage**.
+      *Closed on the free tier because FR-005c says the set **MAY** be used for a **limited** sanity
+      check, no success criterion depends on it, and the one question it exists to answer is
+      answered in the direction that requires no action. A paid pass would strengthen the coverage
+      half; it could not flip that answer.*
+      ***A fallback would have looked like a clean null result.*** An early pass returned 12
+      identical rules per case in both arms at `pinned_proportion` 0.0000 — the `StaticGuidelines`
+      rubric, returned because the embedder could not load against a container cache path. The
+      harness now refuses on `last_fallback_reason`, drilled by breaking the embedder and watching
+      it refuse by case name.
+      ***Re-verify with `git check-ignore -v` before any `git add`.*** Done for `testing files/`
+      and `benchmark-real/` before this commit.
 - [x] **T048** [P] Full gates **on the host**: `ruff format`, `ruff check`, `mypy src`, `pytest` ≥80%,
       frontend `lint`/`typecheck`/`test`/`build`.
       *Backend gates never run in the container: `backend/.dockerignore` excludes `tests/`, so an
