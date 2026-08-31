@@ -90,7 +90,7 @@ is written; it is finished when it can be demonstrated against a deployed enviro
 | 007 | Evaluation & Benchmark | Benchmark set, metrics, LLM-as-judge, regression runs, results view | 006 | **Complete** — 50/50, paid benchmark pass run. **Graded** |
 | 008 | Company Research | Search → fetch → synthesise over web search (plain HTTPS, not MCP), citation-preserving snapshots | 003 | **Complete** and merged; **primary path superseded by 010**, retained as its fallback. Its unwired Layer 2 table was reshaped by 010's migration `0020` |
 | 009 | Career Advisor | Quantified recurring skill gaps and learning priorities over history | 003, 004 | Planned — droppable |
-| 010 | Role-Aware Research | Application-scoped research via a ResearchProvider seam (Tavily Research first), sections-first UI | 008 | **Built** on branch `010-role-aware-research`; not merged/deployed |
+| 010 | Role-Aware Research | Application-scoped research via a ResearchProvider seam (Tavily Research first), sections-first UI | 008 | **Complete** — merged as PR #22 and deployed |
 
 Slices 001–007 are the **core**: together they satisfy every project requirement. Slices 008 and
 009 add the most product value per unit of effort and should follow immediately, but the project
