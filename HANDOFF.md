@@ -12,6 +12,59 @@
 > **Status markers below were true when written.** Where a section describes a state that has
 > since moved on, it is kept rather than rewritten — the reasoning is why it is worth reading.
 
+> ## Slice 010 — Role-Aware Research: built on branch `010-role-aware-research`, unmerged
+>
+> **2026-08-31, awaiting review before any merge.** The full speckit cycle
+> (`specs/010-role-aware-research/`) and all 40 tasks are implemented on the branch: research is
+> application-scoped and role-aware through a `ResearchProvider` port (Tavily Research primary,
+> the 008 pipeline as configured fallback), the sections-first UI replaced the tier taxonomy on
+> the surface, and migration `0020` reshaped the provably empty `role_research_snapshots` into
+> `application_research_snapshots` behind an emptiness guard that was watched failing.
+>
+> **Corrections this slice recorded**: the decision document's "no schema change required" was
+> wrong (NOT NULL Layer 1 lineage column — research.md D2); and two provider contract facts cost
+> a real run each to learn — the research endpoint accepts only `properties`+`required` (no
+> `$defs`/`$ref`, so the adapter inlines pydantic's schema) and answers `pending` in <1 s, so the
+> adapter polls by request id. Both are now unit-tested from captured requests.
+>
+> **Measured (2026-08-31)**: SC-001 on five real applications — 4 correct entities, 1
+> honest-uncertain (no public web presence, declared as such), 0 wrong, including one
+> deliberately name-ambiguous employer; provider runs 22–51 s wall; a no-posting collided name
+> resolves to a coin-flip entity, exposed by the identification tripwire. **Cost**: all runs
+> inside the Tavily plan — usage API posted ~129 research + 13 search credits hours late
+> (≈14 credits ≈ $0.11/run at paygo rates), so the recorded `cost_basis="estimate"` of $0.456
+> overstates ~4× in the conservative direction; revisiting the estimate constant is a small open
+> follow-up. LLM spend: two builtin fallback runs ≈ $0.065 (recorded per snapshot).
+>
+> **Operational facts worth keeping**: one Tavily key serves provider *and* fallback, so a bad
+> key downs both (honest failure, last success preserved — verified in Docker with a broken key,
+> and the `RESEARCH_FALLBACK_ENABLED=false` path verified through the environment); the local
+> dev database is migrated to `0020`; the five real research snapshots from the SC-001
+> measurement remain in the dev database as legitimate product data; scratch `@example.com`
+> data was deleted.
+>
+> **A full `/code-review high` ran against the branch (2026-08-31), and its five real-defect
+> clusters and two spec deviations are fixed on the branch** (commit `88cc884`), each behind a
+> watched-failing regression test: reuse now compares a stored posting-context fingerprint so
+> paste-JD-then-refresh actually runs (verified live: `reused: false`, role-aware result, 30 s);
+> the Tavily adapter no longer launders `Rejected` into `Unavailable` across the polling phase
+> and budgets its deadline in wall clock; terminal rows re-read the database and refuse
+> resurrection; failures stay observable (`last_failure` rides along the current research,
+> failed-only histories no longer hide legacy research, abandoned/stuck-running rows read as
+> nothing so recovery stays reachable); cost accounting keeps every channel
+> (`ExtractionFailedError.usage`, the provider attempt behind a successful fallback in
+> `run_facts`, the abandoned run's documented estimate, `produced_by` from the wired adapter);
+> the tiered payload names its company again and sources order naturally with visible citation
+> numbers. The review's follow-up improvements (dead Layer-2 removal, prompt-version registry,
+> connection lifetime, duplicated helpers, polling backoff, the estimate constant) are
+> deliberately NOT done — they are the open follow-up list.
+>
+> **`/security-review` ran against the branch diff**: zero findings at the confidence bar; its
+> one hardening note (scheme-filter the identification website link, matching the source-URL
+> filter) was applied with a test. **Not done**: merge and deploy — stopped for review, per
+> instruction. Backfilling `docs/09` UI notes for the new tab was not attempted.
+
+
 **Last updated:** 2026-08-31 · **`main` @ `96cb22b`** · every number below was measured by a
 command run at the time it was written, not carried forward.
 

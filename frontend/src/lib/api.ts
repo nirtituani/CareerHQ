@@ -755,7 +755,7 @@ export function getTailoringRun(versionId: string): Promise<TailoringRun> {
   return request<TailoringRun>(`/api/versions/${versionId}/run`);
 }
 
-/* -- Company research (slice 008) ---------------------------------------- */
+/* -- Application research (slice 010; tiered shape retained from 008) ----- */
 
 export type ResearchClaim = {
   id: string;
@@ -778,17 +778,58 @@ export type ResearchSource = {
   excerpt: string | null;
 };
 
-export type CompanyResearch = {
+export type CompanyIdentification = {
+  official_name: string;
+  website: string;
+  headquarters: string | null;
+  /** The wrong-entity tripwire (FR-007): how this company was told apart from
+   *  same-named ones. Always shown. */
+  how_identified: string;
+};
+
+/** The slice 010 sections-first result (`shape: "sections"`). */
+export type SectionsResearch = {
+  company_identification: CompanyIdentification;
+  company_overview: string;
+  products_and_services: string;
+  business_and_market: string;
+  relevant_to_your_role: string;
+  what_to_know_before_the_interview: string[];
+  questions_worth_asking: string[];
+};
+
+/** The 008-era tiered result (`shape: "tiered"`): fallback runs and legacy
+ *  company snapshots. */
+export type TieredResearch = Record<string, ResearchSection>;
+
+export type ResearchPayload = {
   snapshot_id: string;
+  /** The entity this research was requested for — the tiered shape's only
+   *  visible identity (review fix, FR-014). */
   company: string;
+  /** A newer failed refresh riding along the still-current result: FR-016
+   *  keeps the success, US3 keeps the failure visible (review fix). */
+  last_failure: { failure_reason: string | null; retrieved_at: string } | null;
   status: "running" | "succeeded" | "failed";
+  /** The renderer dispatch — never sniff the payload. */
+  shape: "sections" | "tiered";
+  /** Truthful producer: `provider:tavily-research`, `builtin`, or
+   *  `legacy-company` (derived for 008-era snapshots). */
+  produced_by: string;
   failure_reason: string | null;
   retrieved_at: string;
-  /** Derived at read time, never stored — a row keeps ageing. */
-  freshness: "fresh" | "stale";
-  sections: Record<string, ResearchSection>;
+  /** Derived at read time, never stored — a row keeps ageing (FR-013). */
+  freshness: "fresh" | "aging" | "stale";
+  cost: string;
+  /** `recorded` is exact seam usage; `estimate` is a documented-rate figure —
+   *  the two must never be summed unlabelled. */
+  cost_basis: "recorded" | "estimate";
+  research: SectionsResearch | TieredResearch;
   sources: ResearchSource[];
 };
+
+/** `{status: "none"}` is an answer: nobody has researched this application. */
+export type ResearchState = ResearchPayload | { status: "none" };
 
 export type ResearchStarted = {
   snapshot_id: string;
@@ -804,7 +845,7 @@ export function startResearch(applicationId: string): Promise<ResearchStarted> {
   });
 }
 
-/** `null` is an answer: this employer has not been researched yet. */
-export function getResearch(applicationId: string): Promise<CompanyResearch | null> {
-  return request<CompanyResearch | null>(`/api/applications/${applicationId}/research`);
+/** Never 404s for an unresearched application; it answers `{status: "none"}`. */
+export function getResearch(applicationId: string): Promise<ResearchState> {
+  return request<ResearchState>(`/api/applications/${applicationId}/research`);
 }

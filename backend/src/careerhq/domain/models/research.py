@@ -1,7 +1,11 @@
-"""Company research, stored: two layers, their sources, and their immutability.
+"""Company research, stored: legacy company snapshots, application snapshots,
+and their sources.
 
-Specified by `specs/008-company-research/plan.md` §5. Three tables, and the
-shape of them is an argument rather than a transcription:
+Originally specified by `specs/008-company-research/plan.md` §5 as two layers;
+reshaped by `specs/010-role-aware-research` (migration 0020), which replaced the
+never-wired Layer 2 table with the application-scoped snapshot that is now the
+primary record. `CompanyResearchSnapshot` remains as the read-only legacy shape
+(FR-014). The shape of what follows is an argument rather than a transcription:
 
 **Two tables, one per layer — not one table with a `scope` discriminator.** A
 single row carrying both layers would duplicate the company understanding for
@@ -195,81 +199,93 @@ class CompanyResearchSnapshot(Base):
         return f"<CompanyResearchSnapshot {self.id} company={self.company_id}>"
 
 
-class RoleResearchSnapshot(Base):
-    """Layer 2 — the role-specific perspective, scoped to one application.
+class ApplicationResearchSnapshot(Base):
+    """One research run for one application (slice 010, decision 1A).
 
-    **Not built.** This is the storage shape only; `research_plan_role_queries`
-    and `research_synthesise_role` do not exist. The table is declared alongside
-    Layer 1's because the lineage below is a foreign key, and a schema that
-    arrives one table at a time gets its relationships added by whoever is least
-    equipped to judge them.
+    **Reshaped in place from `role_research_snapshots` by migration 0020**,
+    which was legitimate only because that table was provably empty — Layer 2
+    was never wired to a route. Two deliberate absences carry the design:
+
+    * **No `company_research_snapshot_id`.** The 008 lineage column pointed a
+      role brief at the Layer 1 snapshot it rested on. In this design there is
+      no Layer 1 underneath — the snapshot *is* the whole research — and a
+      permanently-NULL vestige would be the unanswerable kind of column the
+      original docstring warned about (research.md D2).
+    * **No `updated_at` and no update path.** Immutability by absence, exactly
+      as 008 established (Principle IV); `test_application_research_model.py`
+      asserts it, because an invariant enforced by an absence has nothing else
+      to catch its return.
+
+    `sections` stores **whatever shape the producing path emitted**, unconverted
+    — the `app-v1` section shape from the provider, or 008's tiered
+    `CompanyResearch` from the builtin fallback — discriminated by
+    `prompt_version` (D3). Converting either way would fabricate or discard
+    provenance.
     """
 
-    __tablename__ = "role_research_snapshots"
+    __tablename__ = "application_research_snapshots"
 
     id: Mapped[uuid.UUID] = _snapshot_pk()
     user_id: Mapped[uuid.UUID] = mapped_column(
         PgUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
-    #: **Not nullable** — Layer 2 without a job has nothing to be role-specific
-    #: about (FR-022).
     application_id: Mapped[uuid.UUID] = mapped_column(
         PgUUID(as_uuid=True), ForeignKey("applications.id", ondelete="CASCADE"), nullable=False
-    )
-    #: **The lineage FR-023 requires**, and not nullable: which Layer 1 snapshot
-    #: this rests on, and therefore how old that understanding was when the role
-    #: brief was written. A nullable column makes that permanently unanswerable
-    #: for the rows that omit it — the same shape of loss as slice 005's
-    #: `displaced_position`, which cannot be backfilled either.
-    company_research_snapshot_id: Mapped[uuid.UUID] = mapped_column(
-        PgUUID(as_uuid=True),
-        ForeignKey("company_research_snapshots.id", ondelete="CASCADE"),
-        nullable=False,
     )
 
     retrieved_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
-    #: A **variable** list of `{heading, claims[]}`, shaped by the role — unlike
-    #: Layer 1's fixed sections. What is worth knowing about a backend role at an
-    #: infrastructure company is not the same set of headings as for a design
-    #: role at the same employer, and forcing both into one section list would
-    #: make every brief the shape of whichever role was imagined first.
-    findings: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False, default=list)
+    #: The producing path's result, unconverted. Shape follows `prompt_version`.
+    sections: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+
+    #: `provider:tavily-research` or `builtin` — always truthful about which
+    #: path made this (FR-005). The API's third value, `legacy-company`, is
+    #: derived at read time for 008-era company snapshots and never stored, so
+    #: it deliberately does not appear in any constraint here.
+    produced_by: Mapped[str] = mapped_column(String(32), nullable=False)
 
     model_config_used: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     prompt_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
     input_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     output_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     cost: Mapped[Decimal] = mapped_column(Numeric(12, 6), nullable=False, default=Decimal("0"))
+    #: `recorded` — exact usage from the seam (fallback path) — or `estimate` —
+    #: a documented-rate figure, because the provider's billing is not returned
+    #: with the response (D5). Never NULL: a run that cannot say which kind of
+    #: number it recorded has not recorded one.
+    cost_basis: Mapped[str] = mapped_column(String(16), nullable=False)
 
     status: Mapped[str] = mapped_column(String(16), nullable=False, default=ResearchStatus.RUNNING)
     failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     sources: Mapped[list[ResearchSource]] = relationship(
-        back_populates="role_snapshot",
+        back_populates="application_snapshot",
         cascade="all, delete-orphan",
-        primaryjoin="RoleResearchSnapshot.id == ResearchSource.role_snapshot_id",
+        primaryjoin=("ApplicationResearchSnapshot.id == ResearchSource.application_snapshot_id"),
     )
 
     __table_args__ = (
         CheckConstraint(
             "status IN ('running', 'succeeded', 'failed')",
-            name="ck_role_research_snapshots_status",
+            name="ck_application_research_snapshots_status",
         ),
         CheckConstraint(
             "input_tokens >= 0 AND output_tokens >= 0",
-            name="ck_role_research_snapshots_tokens_non_negative",
+            name="ck_application_research_snapshots_tokens_non_negative",
         ),
-        CheckConstraint("cost >= 0", name="ck_role_research_snapshots_cost_non_negative"),
-        Index("ix_role_research_snapshots_application", "application_id"),
-        # The Layer 2 counterpart, per application rather than per company —
-        # two applications at the same employer may legitimately research their
-        # own roles at the same time, and a company-scoped guard here would
-        # serialise unrelated work.
+        CheckConstraint("cost >= 0", name="ck_application_research_snapshots_cost_non_negative"),
+        CheckConstraint(
+            "cost_basis IN ('recorded', 'estimate')",
+            name="ck_application_research_snapshots_cost_basis",
+        ),
+        Index("ix_application_research_snapshots_application", "application_id"),
+        # Per application, carried over from 0019's Layer 2 guard: two
+        # applications at the same employer may legitimately research at the
+        # same time — that independence is the whole of decision 1A.
         Index(
-            "uq_role_research_one_running_per_application",
+            "uq_application_research_one_running_per_application",
             "application_id",
             unique=True,
             postgresql_where=text("status = 'running'"),
@@ -277,7 +293,7 @@ class RoleResearchSnapshot(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<RoleResearchSnapshot {self.id} application={self.application_id}>"
+        return f"<ApplicationResearchSnapshot {self.id} application={self.application_id}>"
 
 
 class ResearchSource(Base):
@@ -317,9 +333,9 @@ class ResearchSource(Base):
         ForeignKey("company_research_snapshots.id", ondelete="CASCADE"),
         nullable=True,
     )
-    role_snapshot_id: Mapped[uuid.UUID | None] = mapped_column(
+    application_snapshot_id: Mapped[uuid.UUID | None] = mapped_column(
         PgUUID(as_uuid=True),
-        ForeignKey("role_research_snapshots.id", ondelete="CASCADE"),
+        ForeignKey("application_research_snapshots.id", ondelete="CASCADE"),
         nullable=True,
     )
 
@@ -359,8 +375,8 @@ class ResearchSource(Base):
     company_snapshot: Mapped[CompanyResearchSnapshot | None] = relationship(
         back_populates="sources", foreign_keys=[company_snapshot_id]
     )
-    role_snapshot: Mapped[RoleResearchSnapshot | None] = relationship(
-        back_populates="sources", foreign_keys=[role_snapshot_id]
+    application_snapshot: Mapped[ApplicationResearchSnapshot | None] = relationship(
+        back_populates="sources", foreign_keys=[application_snapshot_id]
     )
 
     __table_args__ = (
@@ -372,7 +388,7 @@ class ResearchSource(Base):
         # repository because an application-level check can be raced or
         # forgotten by the next call site; this cannot.
         CheckConstraint(
-            "(company_snapshot_id IS NOT NULL) <> (role_snapshot_id IS NOT NULL)",
+            "(company_snapshot_id IS NOT NULL) <> (application_snapshot_id IS NOT NULL)",
             name="ck_research_sources_exactly_one_snapshot",
         ),
         # **`source_id` is unique within its snapshot, and the database is what
@@ -398,11 +414,11 @@ class ResearchSource(Base):
             postgresql_where=text("company_snapshot_id IS NOT NULL"),
         ),
         Index(
-            "uq_research_sources_role_snapshot_source_id",
-            "role_snapshot_id",
+            "uq_research_sources_application_snapshot_source_id",
+            "application_snapshot_id",
             "source_id",
             unique=True,
-            postgresql_where=text("role_snapshot_id IS NOT NULL"),
+            postgresql_where=text("application_snapshot_id IS NOT NULL"),
         ),
     )
 
@@ -411,9 +427,9 @@ class ResearchSource(Base):
 
 
 __all__ = [
+    "ApplicationResearchSnapshot",
     "CompanyResearchSnapshot",
     "FetchStatus",
     "ResearchSource",
     "ResearchStatus",
-    "RoleResearchSnapshot",
 ]
