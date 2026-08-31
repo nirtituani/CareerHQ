@@ -150,3 +150,31 @@ describe("the sections-first research view (SC-008, FR-008/009/010)", () => {
     expect(container.textContent).toContain("built-in pipeline");
   });
 });
+
+describe("the identification website link (security-review hardening)", () => {
+  it("links http(s) websites and renders anything else as plain text", () => {
+    const linked = render(<ResearchSections research={payload()} />);
+    const hrefs = Array.from(linked.container.querySelectorAll("a")).map((a) =>
+      a.getAttribute("href"),
+    );
+    expect(hrefs).toContain("https://www.pango.co.il");
+    linked.unmount();
+
+    const unsafe = payload({
+      research: sectionsResearch({
+        company_identification: {
+          official_name: "Pango",
+          // A provider (or content that steered it) must not mint a
+          // javascript: anchor — the same scheme filter sources get.
+          website: "javascript:alert(1)",
+          headquarters: null,
+          how_identified: "matched",
+        },
+      }),
+    });
+    const { container } = render(<ResearchSections research={unsafe} />);
+    const links = Array.from(container.querySelectorAll("a")).map((a) => a.getAttribute("href"));
+    expect(links).not.toContain("javascript:alert(1)");
+    expect(container.textContent).toContain("javascript:alert(1)"); // shown as text, defused
+  });
+});

@@ -88,6 +88,39 @@ name, device, cache directory or batch size.
 rather than a change. `static` is not dead code: it is the documented FR-009 fallback and the only
 way to take a cost baseline in the same session as a retrieval run.
 
+### The `ResearchProvider` seam (slice 010)
+
+`application/ports.py` → `ResearchProvider.research(company_name, domain, role_title,
+posting_text) -> ResearchOutcome`. One call in, one validated sections-shaped result out, with
+sources and an explicit cost basis. The role and posting come **from the application** —
+`scoreable_posting()` is the single answer, its third caller — and never from the profile; a
+sentinel test (`test_research_no_profile_leak.py`) asserts the assembled inputs stay clean.
+
+- **Two adapters, chosen in `api/routes/research.py`** (the `build_guideline_source` pattern):
+  `TavilyResearch` (primary; `POST /research`, `model="mini"`) and `BuiltinResearch`, which wraps
+  the unchanged 008 pipeline as the configured fallback. Every snapshot records `produced_by`
+  truthfully; a `legacy-company` value is derived at read time for 008-era rows and never stored.
+- **Provider quirks are measured, not assumed, and both cost a real run to learn**: the endpoint
+  400s any schema property without a `description` **and** anything but `properties`+`required`
+  at the top level (so the adapter inlines pydantic's `$ref`/`$defs`); and it answers
+  `status: "pending"` in under a second — the result is polled by request id.
+- **`cost_basis` is `recorded` or `estimate`, never blank and never mixed.** The provider returns
+  no usage and its usage API lags by hours, so provider runs record a documented-rate estimate
+  (currently the mini-tier midpoint, ~4× above the ~14 credits/run actually observed — a
+  deliberate overstatement, never presented as billing). Failed runs record what they plausibly
+  spent; a run that reads as free is worse than one that reads as unrecorded.
+- **Research is per application** (measured: company-level reuse would have saved ~3% of calls),
+  reuse window 30 days, `aging` between 30 and 90, `stale` past 90 — all derived at read time.
+- **A wrong entity is visible, not silent**: `company_identification.how_identified` is required
+  and shown first. A no-posting application gets honest company-only research — and on a
+  collided name the entity is then a coin flip, which the tripwire exposes (measured: "Pango"
+  with no posting resolved to the wrong Pango; with the posting, the right one).
+- **One Tavily key serves both adapters**, so a broken key downs the fallback too — the fallback
+  protects against research-endpoint failure, not key failure. The failure is still honest:
+  recorded reason, last success still served.
+- **`research_sources.excerpt` non-null means verified verbatim** by a path that fetched the page
+  itself; provider sources carry `NULL` and render as attribution. Do not blur these (FR-010).
+
 ### The tailoring workflow
 
 `Plan → Draft → Review → Revise`, one conditional edge, bounded at two revisions, orchestrated by
