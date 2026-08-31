@@ -407,6 +407,81 @@ export function deleteApplication(id: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// JobTracker import
+
+/** The largest upload the API accepts — `MAX_UPLOAD_BYTES` in `imports.py`.
+ *
+ * Duplicated here **as a convenience, never as the guard**. The server refuses
+ * oversized uploads with a 413 whatever the browser believes; checking first
+ * only spares someone a long upload that was always going to be refused.
+ */
+export const MAX_IMPORT_BYTES = 10 * 1024 * 1024;
+
+/** One row the importer would not map, and why. **It is not in the database.** */
+export type ImportRejection = { source_id: string; reason: string };
+
+/** One row that **did** import but wants a person's eye — an unfamiliar status,
+ *  a date nobody could read. Deliberately not a rejection: the row is there. */
+export type ImportNotice = { source_id: string; message: string };
+
+/**
+ * What an import did — four outcomes, and two pairs that must not be merged.
+ *
+ * `skipped` is a **success**: rows already imported, refused by the C3 unique
+ * index rather than by a check that could be raced. Re-running an import is
+ * safe by design, so a screen that renders this as a failure would make correct
+ * behaviour look broken.
+ *
+ * `notices` are rows that imported. They are separate from `rejected` because
+ * conflating them would send someone looking for history that is already there.
+ */
+export type JobtrackerImportReport = {
+  imported: number;
+  skipped: number;
+  rejected: ImportRejection[];
+  notices: ImportNotice[];
+};
+
+/**
+ * Upload a JobTracker CSV export.
+ *
+ * **Not routed through `request()`**, which would be the tidier call, because a
+ * `FormData` body must be handed to `fetch` without a `Content-Type`: the
+ * browser has to set it itself so the multipart boundary matches. Setting the
+ * header — or letting a helper set it — produces a 422 that reads as a bad
+ * file rather than a bad request.
+ *
+ * Ownership comes from the session cookie; the export's own `user_id` column is
+ * discarded server-side (FR-019), so nothing here identifies a user.
+ */
+export async function importJobtracker(file: File): Promise<JobtrackerImportReport> {
+  const body = new FormData();
+  body.append("file", file);
+
+  let response: Response;
+  try {
+    response = await fetch("/api/applications/import/jobtracker", {
+      method: "POST",
+      credentials: "include",
+      headers: { Accept: "application/json" },
+      body,
+    });
+  } catch (cause) {
+    throw new ApiUnreachableError(cause);
+  }
+
+  if (!response.ok) {
+    const detail = await response
+      .json()
+      .then((payload: { detail?: unknown }) => payload.detail)
+      .catch(() => undefined);
+    throw new ApiError(response.status, messageOf(detail) ?? response.statusText, detail);
+  }
+
+  return (await response.json()) as JobtrackerImportReport;
+}
+
+// ---------------------------------------------------------------------------
 // Resume tailoring
 // ---------------------------------------------------------------------------
 

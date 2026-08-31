@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus } from "lucide-react";
+import { Plus, Upload } from "lucide-react";
 import { useState } from "react";
 
 import { AddApplication } from "@/components/applications/add-application";
@@ -30,10 +30,21 @@ export function ApplicationsPage({ applications }: { applications: Application[]
           </p>
         </div>
 
-        <Button onClick={() => setAdding(true)}>
-          <Plus aria-hidden />
-          Add Application
-        </Button>
+        <div className="flex items-center gap-2">
+          {/* Secondary to Add Application: importing is a one-off, adding is
+              the daily action. */}
+          <Button asChild variant="outline">
+            <a href="/applications/import">
+              <Upload aria-hidden />
+              Import
+            </a>
+          </Button>
+
+          <Button onClick={() => setAdding(true)}>
+            <Plus aria-hidden />
+            Add Application
+          </Button>
+        </div>
       </div>
 
       <AddApplication open={adding} onOpenChange={setAdding} />
