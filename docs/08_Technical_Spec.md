@@ -196,7 +196,7 @@ map plus honest status.
 | **Match analysis** — score a job against the profile | No — one structured call | 004 | ✅ **Built and verified** |
 | **Resume Optimizer** — the flagship | Yes | 005 (workflow), 006 (RAG, PDF) | ✅ **Built and deployed** |
 | **Reviewer / evaluation layer** | Yes | 005 (the loop), 007 (the metrics) | ✅ **Built** — self-critique in 005, metrics and LLM-as-judge in 007 |
-| Company Research | Yes — web search over plain HTTPS (008); a research provider behind a seam (010) | 008, 010 | ✅ **Built** — 008's Layer 1 deployed; 010 makes research role-aware and keeps 008's pipeline as its fallback (on its branch, unmerged) |
+| Company Research | Yes — web search over plain HTTPS (008); a research provider behind a seam (010) | 008, 010 | ✅ **Built** — 008's Layer 1 deployed; 010 makes research role-aware and keeps 008's pipeline as its fallback (merged as PR #22 and deployed) |
 | Career Advisor | Yes | 009 | 📋 Planned |
 | Interview Coach | Yes | — | 💤 Deferred (stretch) |
 | Application Workflow Agent | Yes | — | 💤 Deferred (stretch) |
