@@ -12,9 +12,12 @@
 > **Status markers below were true when written.** Where a section describes a state that has
 > since moved on, it is kept rather than rewritten — the reasoning is why it is worth reading.
 
-> ## Slice 010 — Role-Aware Research: built on branch `010-role-aware-research`, unmerged
+> ## Slice 010 — Role-Aware Research: merged and deployed
 >
-> **2026-08-31, awaiting review before any merge.** The full speckit cycle
+> **2026-08-31 — merged as PR #22 and deployed.** *(This section was written while the slice was
+> still on its branch awaiting review; the status line is updated, and everything below it is kept
+> as written because the corrections and measurements are why it is worth reading.)* The full
+> speckit cycle
 > (`specs/010-role-aware-research/`) and all 40 tasks are implemented on the branch: research is
 > application-scoped and role-aware through a `ResearchProvider` port (Tavily Research primary,
 > the 008 pipeline as configured fallback), the sections-first UI replaced the tier taxonomy on
@@ -61,22 +64,22 @@
 >
 > **`/security-review` ran against the branch diff**: zero findings at the confidence bar; its
 > one hardening note (scheme-filter the identification website link, matching the source-URL
-> filter) was applied with a test. **Not done**: merge and deploy — stopped for review, per
-> instruction. Backfilling `docs/09` UI notes for the new tab was not attempted.
+> filter) was applied with a test. **Merge and deploy were stopped for review at the time; both
+> have since happened** — PR #22, deployed at `d68c85e`. Backfilling `docs/09` UI notes for the
+> new tab was not attempted.
 
 
-**Last updated:** 2026-08-31 · **`main` @ `96cb22b`** · every number below was measured by a
+**Last updated:** 2026-08-31 · **`main` @ `d68c85e`** · every number below was measured by a
 command run at the time it was written, not carried forward.
 
-**`origin/main` is `96cb22b`** — the merge of PR #20, which closed the last open task at
-**527 / 527**. Production readiness answers **HTTP 200**: `database ok · cache not_configured ·
-object_storage ok · ai_provider ok`.
+**`origin/main` is `d68c85e`** — the merge of PR #22, which brought Slice 010 onto `main`. Both
+services are deployed at that commit and production readiness answers **HTTP 200**: `database ok ·
+cache not_configured · object_storage ok · ai_provider ok`.
 
-> ⚠️ **One branch is unpushed and is not on `main`.** `010-role-aware-research` carries **8
-> commits** — an application-scoped research provider seam, a sections-first UI, and full SDD
-> artifacts under `specs/010-role-aware-research/`. It exists on one machine only. Earlier
-> revisions of this file said *"nothing is unpushed anywhere"*; that stopped being true when that
-> branch was created.
+> **`010-role-aware-research` is merged.** An earlier revision of this file warned that the branch
+> was unpushed and existed on one machine only. It was pushed, reviewed and merged as PR #22; the
+> warning is kept here in past tense rather than deleted, because "the only copy is on a laptop"
+> recurred often enough in this project to be worth remembering.
 
 Merged this session: **#15** (the Slice 008 handoff, written by a session that has since been
 cleared), **#16** (three small follow-ups plus this file's correction), **#18** (the tailor
