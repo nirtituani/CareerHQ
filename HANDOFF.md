@@ -1,11 +1,29 @@
-# HANDOFF
+# HANDOFF — engineering log and current state
 
-**Last updated:** 2026-08-31 · **`main` @ `32f5be2`** · **every number below was measured by a
-command run this session, not carried forward**
+> **What this document is.** A working log kept across development sessions, not a design
+> document. Its durable value is **§4 "What failed"** — an append-only record of approaches that
+> did not work, gates that passed while examining nothing, and bugs that survived a green suite.
+> That section is the most expensive knowledge in the repository and is never edited, only added
+> to.
+>
+> **For the product, start with [`README.md`](README.md); for the system, with
+> [`docs/08_Technical_Spec.md`](docs/08_Technical_Spec.md).** This file assumes both.
+>
+> **Status markers below were true when written.** Where a section describes a state that has
+> since moved on, it is kept rather than rewritten — the reasoning is why it is worth reading.
 
-**`origin/main` is `32f5be2`** — the merge of PR #17. Production readiness answers **HTTP 200**:
-`database ok (18.5 ms) · cache not_configured · object_storage ok (178 ms) · ai_provider ok`.
-**Nothing is unpushed anywhere** — `git log --branches --not --remotes` is empty.
+**Last updated:** 2026-08-31 · **`main` @ `96cb22b`** · every number below was measured by a
+command run at the time it was written, not carried forward.
+
+**`origin/main` is `96cb22b`** — the merge of PR #20, which closed the last open task at
+**527 / 527**. Production readiness answers **HTTP 200**: `database ok · cache not_configured ·
+object_storage ok · ai_provider ok`.
+
+> ⚠️ **One branch is unpushed and is not on `main`.** `010-role-aware-research` carries **8
+> commits** — an application-scoped research provider seam, a sections-first UI, and full SDD
+> artifacts under `specs/010-role-aware-research/`. It exists on one machine only. Earlier
+> revisions of this file said *"nothing is unpushed anywhere"*; that stopped being true when that
+> branch was created.
 
 Merged this session: **#15** (the Slice 008 handoff, written by a session that has since been
 cleared), **#16** (three small follow-ups plus this file's correction), **#18** (the tailor

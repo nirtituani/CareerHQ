@@ -27,24 +27,29 @@ group("describe", () => {
     // extracted correctly. The user would have approved the item believing they
     // were never captured, which is the absence of review rather than a shorter
     // version of it.
+    // **Synthetic values, deliberately.** This repository is public, and a
+    // contact block is exactly the shape that carries a real phone number and a
+    // real email. The assertion is about which fields survive rendering, so the
+    // values themselves carry no weight — see `test_no_committed_pii.py` for the
+    // same rule applied to the benchmark set.
     const rendered = describeItem(
       item("contact", {
-        full_name: "Nir Tituani",
-        email: "nirtituani13@gmail.com",
-        phone: "052-4626053",
+        full_name: "Dana Okonkwo",
+        email: "dana.okonkwo@example.com",
+        phone: "050-0000000",
         location: "Tel Aviv",
-        links: ["linkedin.com/in/nir-tituani", "https://github.com/nirtituani"],
+        links: ["linkedin.com/in/dana-okonkwo", "https://github.com/example"],
       }),
     );
 
     const all = [rendered.primary, ...rendered.details].join(" ");
     for (const value of [
-      "Nir Tituani",
-      "nirtituani13@gmail.com",
-      "052-4626053",
+      "Dana Okonkwo",
+      "dana.okonkwo@example.com",
+      "050-0000000",
       "Tel Aviv",
-      "linkedin.com/in/nir-tituani",
-      "https://github.com/nirtituani",
+      "linkedin.com/in/dana-okonkwo",
+      "https://github.com/example",
     ]) {
       expect(all).toContain(value);
     }

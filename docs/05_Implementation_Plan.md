@@ -83,12 +83,12 @@ is written; it is finished when it can be demonstrated against a deployed enviro
 |---|---|---|---|---|
 | 001 | Platform Foundation | Containerized environment, Google sign-in, authenticated shell, CI | — | **Complete** |
 | 002 | Deployment | Public URL, deployed from Docker, redeployed on every merge | 001 | **Live** |
-| 003 | Data Foundation | Resume import and parsing, Professional Profile, applications, JobTracker import | 001 | US1–US2 complete; **US3 blocked** on a JobTracker CSV |
+| 003 | Data Foundation | Resume import and parsing, Professional Profile, applications, JobTracker import | 001 | **Complete** — 109/109, import run against production |
 | 004 | Match Analysis | Score a recorded job against the approved profile, with per-requirement evidence | 003 | **Complete**, verified in production |
-| 005 | **Resume Tailoring** | LangGraph workflow, self-critique Reviewer, versions with lineage, item-level approval | 004 | **Next** — designed 2026-08-22 |
-| 006 | Document & Retrieval | RAG over resume guidelines, PDF export, submit-and-lock | 005 | Planned |
-| 007 | Evaluation & Benchmark | Benchmark set, metrics, LLM-as-judge, regression runs, results view | 006 | Planned — **graded** |
-| 008 | Company Research | Research agent over a web search MCP, citation-preserving snapshots | 003 | Planned — droppable |
+| 005 | **Resume Tailoring** | LangGraph workflow, self-critique Reviewer, versions with lineage, item-level approval | 004 | **Complete** — 101/101, deployed, exercised by a real paid run |
+| 006 | Document & Retrieval | RAG over resume guidelines, PDF export, submit-and-lock | 005 | **Complete** — 57/57, deployed |
+| 007 | Evaluation & Benchmark | Benchmark set, metrics, LLM-as-judge, regression runs, results view | 006 | **Complete** — 50/50, paid benchmark pass run. **Graded** |
+| 008 | Company Research | Search → fetch → synthesise over web search (plain HTTPS, not MCP), citation-preserving snapshots | 003 | **Complete** and merged. Layer 2 built but unwired |
 | 009 | Career Advisor | Quantified recurring skill gaps and learning priorities over history | 003, 004 | Planned — droppable |
 
 Slices 001–007 are the **core**: together they satisfy every project requirement. Slices 008 and
@@ -132,10 +132,11 @@ secrets configured, and the Google OAuth client updated for the deployed domain.
 
 ## 5.3 Slice 003 — Data Foundation
 
-> **Status: User Stories 1 and 2 complete and deployed; User Story 3 blocked.** A CV becomes a
-> reviewed profile, and a job becomes a record carrying the description slice 004 tailors against —
-> both verified on the deployed system. The JobTracker import is blocked on a real CSV export from
-> the source app, which only the author can produce.
+> **Status: complete — 109/109, all three user stories.** A CV becomes a reviewed profile, and a
+> job becomes a record carrying the description slice 004 tailors against — both verified on the
+> deployed system. The JobTracker import, blocked for a time on a CSV export only the author could
+> produce, was **run against production**: 96 rows imported, rejection arriving as a status value
+> rather than a column, and the pre-existing records preserved rather than duplicated.
 >
 > Two things this slice added that the plan below does not describe, both requested during
 > implementation and recorded in `specs/003-data-foundation/tasks.md` Phase 4b: **reading a job
@@ -327,9 +328,12 @@ droppable by design (§5, and [08_Technical_Spec.md](08_Technical_Spec.md) §11)
 market and competitors, publicly visible technologies, and interview-preparation notes — summarized
 into immutable snapshots that preserve their sources and retrieval timestamps.
 
-**Implemented over a web search MCP** rather than a hand-rolled search client. This satisfies the
-Tools/MCP project requirement and is the better design regardless: the tool boundary stays clean
-and the provider is replaceable.
+**Implemented over a web search tool behind a port**, rather than a hand-rolled client inlined
+into the use case. *This was planned as an MCP stdio server and shipped as plain HTTPS to Tavily* —
+the argument is in `infrastructure/research/tavily_search.py`: a single fixed host that no
+untrusted input can influence is a smaller attack surface and one less moving part than a stdio
+subprocess. **The tool boundary is what mattered and it is unchanged** — the provider sits behind
+`WebSearch` in `application/ports.py` and is replaceable.
 
 ---
 
@@ -363,7 +367,7 @@ Where each stated project requirement is satisfied.
 | Plan with milestones | This document |
 | Agent with backend and frontend | Slice 004 (FastAPI + Next.js) |
 | Agent manages memory | Professional Profile, application history, submitted versions, and interview feedback persisted across sessions; slice 007 reasons over all of it |
-| Tools / MCPs | Knowledge retrieval, resume diff, and PDF export tools in slice 004; web search **MCP** in slice 006 |
+| Tools / MCPs | Knowledge retrieval (RAG) and PDF export in 006; **web search** in 008, behind the `WebSearch` port over plain HTTPS rather than MCP |
 | Agentic workflow matched to the problem | Multi-agent with RAG and self-critique, plus human-in-the-loop approval (ADR-004, ADR-008) |
 | Evaluation, benchmark, metrics | Slice 005 |
 | Team roles | Solo project; all roles held by one person. Spec-Driven Development keeps the specification, evaluation, and engineering responsibilities separated as artifacts even when the person is the same. |
