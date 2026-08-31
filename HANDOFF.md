@@ -31,6 +31,22 @@
 > measurement remain in the dev database as legitimate product data; scratch `@example.com`
 > data was deleted.
 >
+> **A full `/code-review high` ran against the branch (2026-08-31), and its five real-defect
+> clusters and two spec deviations are fixed on the branch** (commit `88cc884`), each behind a
+> watched-failing regression test: reuse now compares a stored posting-context fingerprint so
+> paste-JD-then-refresh actually runs (verified live: `reused: false`, role-aware result, 30 s);
+> the Tavily adapter no longer launders `Rejected` into `Unavailable` across the polling phase
+> and budgets its deadline in wall clock; terminal rows re-read the database and refuse
+> resurrection; failures stay observable (`last_failure` rides along the current research,
+> failed-only histories no longer hide legacy research, abandoned/stuck-running rows read as
+> nothing so recovery stays reachable); cost accounting keeps every channel
+> (`ExtractionFailedError.usage`, the provider attempt behind a successful fallback in
+> `run_facts`, the abandoned run's documented estimate, `produced_by` from the wired adapter);
+> the tiered payload names its company again and sources order naturally with visible citation
+> numbers. The review's follow-up improvements (dead Layer-2 removal, prompt-version registry,
+> connection lifetime, duplicated helpers, polling backoff, the estimate constant) are
+> deliberately NOT done — they are the open follow-up list.
+>
 > **`/security-review` ran against the branch diff**: zero findings at the confidence bar; its
 > one hardening note (scheme-filter the identification website link, matching the source-URL
 > filter) was applied with a test. **Not done**: merge and deploy — stopped for review, per
