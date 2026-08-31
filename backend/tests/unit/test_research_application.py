@@ -161,3 +161,31 @@ async def test_rejected_output_never_falls_back() -> None:
     with pytest.raises(ResearchProviderRejected):
         await perform_research(context, provider=provider, fallback=fallback)
     assert fallback.calls == []
+
+
+async def test_a_successful_fallback_keeps_the_provider_attempts_bill_visible() -> None:
+    """Review fix: the provider attempt's estimate must not vanish when the
+    fallback succeeds. It is not summed into the fallback's recorded cost —
+    that would mix bases — it rides in run_facts for the audit trail."""
+    provider = ScriptedProvider(
+        ResearchProviderUnavailable("timed out", cost_estimate=Decimal("0.456"))
+    )
+    fallback = ScriptedProvider(_outcome(produced_by="builtin"))
+    context = context_for(FakeApplication(), FakeCompany())
+
+    outcome = await perform_research(context, provider=provider, fallback=fallback)
+
+    attempt = outcome.run_facts["provider_attempt"]
+    assert attempt["error"] == "ResearchProviderUnavailable"
+    assert attempt["cost_estimate_usd"] == "0.456"
+
+
+async def test_a_fallback_after_an_unbilled_outage_records_the_attempt_without_a_bill() -> None:
+    provider = ScriptedProvider(ResearchProviderUnavailable("down"))
+    fallback = ScriptedProvider(_outcome(produced_by="builtin"))
+    context = context_for(FakeApplication(), FakeCompany())
+
+    outcome = await perform_research(context, provider=provider, fallback=fallback)
+    attempt = outcome.run_facts["provider_attempt"]
+    assert attempt["error"] == "ResearchProviderUnavailable"
+    assert "cost_estimate_usd" not in attempt

@@ -403,7 +403,17 @@ class ResearchProvider(Protocol):
     let the role sections explain the gap (FR-011, D7) — never invent a role.
     Nothing profile-shaped can enter: the signature has no parameter for it,
     and the SC-007 sentinel test asserts the assembled inputs stay clean.
+
+    Two identity attributes travel with the adapter (review fix): `produced_by`
+    is what a pending row is stamped with, so a failed run attributes the path
+    that was actually wired in rather than whatever configuration says today;
+    `attempt_cost_estimate` is the documented spend basis of an interrupted
+    attempt — what an abandoned run of this adapter plausibly billed — or
+    `None` where that is unknowable.
     """
+
+    produced_by: str
+    attempt_cost_estimate: Decimal | None
 
     async def research(
         self,

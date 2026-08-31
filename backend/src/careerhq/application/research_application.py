@@ -26,7 +26,8 @@ testable with scripted doubles and no database.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import hashlib
+from dataclasses import dataclass, replace
 from typing import Protocol
 
 from careerhq.application.ports import (
@@ -56,6 +57,21 @@ class ResearchContext:
     domain: str | None
     role_title: str | None
     posting_text: str | None
+
+
+def context_fingerprint(*, role_title: str | None, posting_text: str | None) -> str:
+    """What a snapshot was produced from, as a comparable value (review fix).
+
+    Reuse must answer "is this research still about this job?", and age alone
+    cannot: a fresh company-only snapshot would swallow the refresh that
+    follows pasting a job description (US2 acceptance 2). The fingerprint
+    covers exactly the role context the provider was sent — company identity
+    needs no covering, because the snapshot is already scoped to the
+    application. Stored on completion, compared at the reuse decision; a
+    snapshot with no stored fingerprint never matches one.
+    """
+    material = f"{role_title or ''}\x1f{posting_text or ''}"
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()
 
 
 def context_for(application: _HasJob, company: _HasIdentity) -> ResearchContext:
@@ -89,17 +105,25 @@ async def perform_research(
             role_title=context.role_title,
             posting_text=context.posting_text,
         )
-    except ResearchProviderUnavailable:
+    except ResearchProviderUnavailable as exc:
         # Only unavailability falls back, and only when configured. Everything
         # else — rejection included — propagates to be recorded (FR-017).
         if fallback is None:
             raise
-        return await fallback.research(
+        outcome = await fallback.research(
             company_name=context.company_name,
             domain=context.domain,
             role_title=context.role_title,
             posting_text=context.posting_text,
         )
+        # The attempt's plausible bill must not vanish because the fallback
+        # succeeded (review fix). It is deliberately NOT summed into the
+        # outcome's cost — that would mix a recorded figure with an estimate —
+        # it rides in run_facts, which persistence lands in model_config_used.
+        attempt: dict[str, object] = {"error": exc.__class__.__name__}
+        if exc.cost_estimate is not None:
+            attempt["cost_estimate_usd"] = str(exc.cost_estimate)
+        return replace(outcome, run_facts={**outcome.run_facts, "provider_attempt": attempt})
 
 
-__all__ = ["ResearchContext", "context_for", "perform_research"]
+__all__ = ["ResearchContext", "context_fingerprint", "context_for", "perform_research"]

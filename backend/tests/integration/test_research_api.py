@@ -136,6 +136,9 @@ class ScriptedResearchProvider:
     that repeats its last answer would make reuse look like spend and a retry
     loop look convergent (testing rule 8)."""
 
+    produced_by = "provider:tavily-research"
+    attempt_cost_estimate: Decimal | None = None
+
     def __init__(self, *answers: ResearchOutcome | Exception) -> None:
         self.answers = list(answers)
         self.calls: list[dict[str, str | None]] = []
@@ -438,3 +441,206 @@ async def test_an_unavailable_provider_falls_back_and_says_so(
     assert body["cost_basis"] == "recorded"
     assert body["research"]["what_the_company_does"]["claims"][0]["tier"] == "fact"
     assert body["sources"][0]["excerpt"] == "mobile parking payments"
+
+
+# -- review fixes: failure and abandonment stay observable and recoverable ---
+
+
+async def test_a_failed_refresh_over_a_success_is_surfaced_not_silent(
+    client: httpx.AsyncClient, app: Any, db_session: AsyncSession
+) -> None:
+    """FR-016 keeps the old success current; US3 still requires the failure to
+    be visible. Both hold: the success is the body, the newer failure rides
+    along as last_failure (review fix — previously unreachable state)."""
+    provider = ScriptedResearchProvider(_provider_outcome(), ResearchProviderRejected("bad output"))
+    _wire(app, provider)
+    user, application = await _seed(db_session, sub="res-lastfail")
+    path = f"/api/applications/{application.id}/research"
+
+    await _as(client, user).post(path)
+    from sqlalchemy import text
+
+    await db_session.execute(
+        text("UPDATE application_research_snapshots SET retrieved_at = now() - interval '31 days'")
+    )
+    await db_session.commit()
+    await _as(client, user).post(path)
+
+    body = (await _as(client, user).get(path)).json()
+    assert body["status"] == "succeeded", "the success stays current (FR-016)"
+    assert body["last_failure"] is not None
+    assert body["last_failure"]["failure_reason"] == "ResearchProviderRejected"
+
+
+async def test_a_successful_current_run_reports_no_last_failure(
+    client: httpx.AsyncClient, app: Any, db_session: AsyncSession
+) -> None:
+    _wire(app, ScriptedResearchProvider(_provider_outcome()))
+    user, application = await _seed(db_session, sub="res-nolastfail")
+    path = f"/api/applications/{application.id}/research"
+    await _as(client, user).post(path)
+    body = (await _as(client, user).get(path)).json()
+    assert body["last_failure"] is None
+
+
+async def test_an_abandoned_first_run_leaves_the_start_button_reachable(
+    client: httpx.AsyncClient, app: Any, db_session: AsyncSession
+) -> None:
+    """Review fix: an abandoned-only history answers status none (not an
+    eternal 'running'), and the next POST replaces the stuck row."""
+    from sqlalchemy import text
+
+    from careerhq.application.research_persistence import create_pending_application_research
+
+    provider = ScriptedResearchProvider(_provider_outcome())
+    _wire(app, provider)
+    user, application = await _seed(db_session, sub="res-abandoned")
+    await create_pending_application_research(
+        db_session, application, produced_by="provider:tavily-research"
+    )
+    await db_session.execute(
+        text(
+            "UPDATE application_research_snapshots "
+            "SET retrieved_at = now() - interval '901 seconds'"
+        )
+    )
+    await db_session.commit()
+
+    body = (await _as(client, user).get(f"/api/applications/{application.id}/research")).json()
+    assert body["status"] == "none"
+
+    restarted = await _as(client, user).post(f"/api/applications/{application.id}/research")
+    assert restarted.status_code == 202
+    assert restarted.json()["reused"] is False
+
+
+async def test_a_failure_carrying_billed_usage_records_it_exactly(
+    client: httpx.AsyncClient, app: Any, db_session: AsyncSession
+) -> None:
+    """Review fix: the builtin path's ExtractionFailedError carries the usage
+    it was billed for; the failure handler must record it as `recorded`, not
+    drop it for want of a cost_estimate attribute (the slice-005 lesson)."""
+
+    class BilledFailure(RuntimeError):
+        def __init__(self) -> None:
+            super().__init__("synthesis output failed validation")
+            self.usage = Usage(
+                model="gemini/x", input_tokens=100, output_tokens=40, cost=Decimal("0.02")
+            )
+
+    _wire(app, ScriptedResearchProvider(BilledFailure()))
+    user, application = await _seed(db_session, sub="res-billedfail")
+
+    await _as(client, user).post(f"/api/applications/{application.id}/research")
+    body = (await _as(client, user).get(f"/api/applications/{application.id}/research")).json()
+
+    assert body["status"] == "failed"
+    assert body["cost_basis"] == "recorded"
+    assert body["cost"] == "0.020000"
+
+
+async def test_the_failed_rows_producer_is_the_injected_provider_not_the_config(
+    client: httpx.AsyncClient, app: Any, db_session: AsyncSession
+) -> None:
+    """Review fix: the intent stamped on a running/failed row must come from
+    the provider actually wired in — re-deriving it from settings mis-labels
+    every overridden or reconfigured run (FR-005 on the failure path)."""
+    provider = ScriptedResearchProvider(ResearchProviderUnavailable("down"))
+    provider.produced_by = "provider:acme-research"
+    _wire(app, provider)
+    user, application = await _seed(db_session, sub="res-producer")
+
+    await _as(client, user).post(f"/api/applications/{application.id}/research")
+    body = (await _as(client, user).get(f"/api/applications/{application.id}/research")).json()
+
+    assert body["status"] == "failed"
+    assert body["produced_by"] == "provider:acme-research"
+
+
+async def test_pasting_a_jd_makes_refresh_actually_run_role_aware_research(
+    client: httpx.AsyncClient, app: Any, db_session: AsyncSession
+) -> None:
+    """US2 acceptance 2, the exact paste-JD → refresh scenario (review fix):
+    a fresh company-only snapshot must not swallow the refresh once a posting
+    exists — the second run happens and carries the posting."""
+    provider = ScriptedResearchProvider(_provider_outcome(), _provider_outcome())
+    _wire(app, provider)
+    user, application = await _seed(db_session, sub="res-pastejd", with_posting=False)
+    path = f"/api/applications/{application.id}/research"
+
+    first = await _as(client, user).post(path)
+    assert first.json()["reused"] is False
+    (company_only,) = provider.calls
+    assert company_only["posting_text"] is None
+
+    # The user pastes the JD onto the application.
+    application.job_description = JD
+    await db_session.commit()
+
+    second = await _as(client, user).post(path)
+    assert second.json()["reused"] is False, "the fresh company-only snapshot swallowed the refresh"
+    assert len(provider.calls) == 2
+    assert provider.calls[1]["posting_text"] == JD
+    assert provider.calls[1]["role_title"] == "Senior Back End Developer - Parking Team"
+
+
+async def test_an_unchanged_context_still_reuses_after_the_fix(
+    client: httpx.AsyncClient, app: Any, db_session: AsyncSession
+) -> None:
+    provider = ScriptedResearchProvider(_provider_outcome())
+    _wire(app, provider)
+    user, application = await _seed(db_session, sub="res-stillreuse")
+    path = f"/api/applications/{application.id}/research"
+
+    await _as(client, user).post(path)
+    again = await _as(client, user).post(path)
+    assert again.json()["reused"] is True
+    assert len(provider.calls) == 1
+
+
+# -- review fixes: the two spec deviations -----------------------------------
+
+
+async def test_every_research_payload_names_the_company_it_was_run_for(
+    client: httpx.AsyncClient, app: Any, db_session: AsyncSession
+) -> None:
+    """FR-014 deviation fix: the tiered shape has no identification block, so
+    the payload itself must carry the entity the research was requested for —
+    the tripwire the fallback path otherwise lacks entirely."""
+    _wire(
+        app,
+        ScriptedResearchProvider(ResearchProviderUnavailable("down")),
+        ScriptedResearchProvider(_builtin_outcome()),
+    )
+    user, application = await _seed(db_session, sub="res-company-field")
+
+    await _as(client, user).post(f"/api/applications/{application.id}/research")
+    body = (await _as(client, user).get(f"/api/applications/{application.id}/research")).json()
+
+    assert body["shape"] == "tiered"
+    assert body["company"] == "Pango"
+
+
+async def test_sources_are_ordered_numerically_so_citations_resolve(
+    client: httpx.AsyncClient, app: Any, db_session: AsyncSession
+) -> None:
+    """FR-010 deviation fix: lexicographic ordering puts s10 before s2, so a
+    reader resolving the prose's numbered citations by position lands on the
+    wrong source once there are more than nine."""
+    many = ResearchOutcome(
+        research=_provider_outcome().research,
+        sources=tuple(
+            ProviderSource(source_id=f"s{n}", url=f"https://example.com/{n}", title=f"S{n}")
+            for n in range(1, 13)
+        ),
+        produced_by="provider:tavily-research",
+        prompt_version="app-v1",
+        cost_estimate=Decimal("0.456"),
+    )
+    _wire(app, ScriptedResearchProvider(many))
+    user, application = await _seed(db_session, sub="res-ordering")
+
+    await _as(client, user).post(f"/api/applications/{application.id}/research")
+    body = (await _as(client, user).get(f"/api/applications/{application.id}/research")).json()
+
+    assert [s["source_id"] for s in body["sources"]] == [f"s{n}" for n in range(1, 13)]

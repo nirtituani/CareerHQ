@@ -280,3 +280,83 @@ async def test_a_provider_side_failure_is_unavailable_with_its_bill() -> None:
         )
     # The provider may have billed for the failed run; the estimate travels.
     assert caught.value.cost_estimate is not None
+
+
+# -- regression: exception classes survive the polling phase (review fix) ----
+
+
+async def test_rejected_during_polling_stays_rejected_and_keeps_its_bill() -> None:
+    """A pending envelope without a request id is a rejection-class failure —
+    it must NOT be laundered into Unavailable (which would trigger the
+    forbidden fallback) and must keep its cost estimate (the POST billed)."""
+
+    class PendingNoId:
+        async def __call__(self, body: dict[str, Any]) -> dict[str, Any]:
+            return {"status": "pending"}
+
+    adapter = TavilyResearch(post=PendingNoId(), poll_seconds=0)
+    with pytest.raises(ResearchProviderRejected) as caught:
+        await adapter.research(
+            company_name="Pango", domain=None, role_title=None, posting_text=None
+        )
+    assert caught.value.cost_estimate is not None
+
+
+async def test_a_poll_transport_failure_is_unavailable_with_the_post_bill() -> None:
+    """The POST succeeded (and plausibly billed) before the poll GET died, so
+    the Unavailable that surfaces must carry the estimate — None would make
+    the attempt read as free."""
+
+    class DeadPoll:
+        async def post(self, body: dict[str, Any]) -> dict[str, Any]:
+            return {"request_id": "req-9", "status": "pending"}
+
+        async def get(self, request_id: str) -> dict[str, Any]:
+            raise ConnectionError("mid-poll death")
+
+    double = DeadPoll()
+    adapter = TavilyResearch(post=double.post, get=double.get, poll_seconds=0)
+    with pytest.raises(ResearchProviderUnavailable) as caught:
+        await adapter.research(
+            company_name="Pango", domain=None, role_title=None, posting_text=None
+        )
+    assert caught.value.cost_estimate is not None
+
+
+async def test_a_post_transport_failure_carries_no_bill() -> None:
+    """Before the POST succeeds nothing was billed; the estimate stays None so
+    the audit row does not invent spend."""
+    post = CapturingPost(ConnectionError("boom"))
+    with pytest.raises(ResearchProviderUnavailable) as caught:
+        await _run(post)
+    assert caught.value.cost_estimate is None
+
+
+async def test_the_poll_deadline_is_wall_clock_not_summed_sleeps(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A provider that answers each poll slowly must still hit the configured
+    deadline: the budget is elapsed time, not a count of sleeps (review fix —
+    summed sleeps let a slow provider run for hours)."""
+    ticks = [0.0]
+
+    def clock() -> float:
+        ticks.append(ticks[-1] + 10_000.0)
+        return ticks[-1]
+
+    monkeypatch.setattr("careerhq.infrastructure.research.tavily_research.time.monotonic", clock)
+
+    class ForeverPending:
+        async def post(self, body: dict[str, Any]) -> dict[str, Any]:
+            return {"request_id": "req-slow", "status": "pending"}
+
+        async def get(self, request_id: str) -> dict[str, Any]:
+            return {"request_id": request_id, "status": "pending"}
+
+    double = ForeverPending()
+    adapter = TavilyResearch(post=double.post, get=double.get, poll_seconds=0)
+    with pytest.raises(ResearchProviderUnavailable, match="timeout") as caught:
+        await adapter.research(
+            company_name="Pango", domain=None, role_title=None, posting_text=None
+        )
+    assert caught.value.cost_estimate is not None

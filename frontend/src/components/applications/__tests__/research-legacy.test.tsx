@@ -10,6 +10,8 @@ function tieredPayload(): ResearchPayload {
   return {
     snapshot_id: "legacy-1",
     status: "succeeded",
+    company: "LegacyCo",
+    last_failure: null,
     shape: "tiered",
     produced_by: "legacy-company",
     failure_reason: null,
@@ -88,5 +90,14 @@ describe("the extracted legacy (tiered) view — FR-014, testing rule 9", () => 
     const fallback = { ...tieredPayload(), produced_by: "builtin" };
     const { container } = render(<ResearchLegacy research={fallback} />);
     expect(container.textContent).toContain("built-in pipeline");
+  });
+});
+
+describe("entity identity on the tiered shape (review fix, FR-014)", () => {
+  it("names the company the research was requested for", () => {
+    // The fixture's company differs from every content string, so this can
+    // only pass if the identity itself is rendered.
+    const { container } = render(<ResearchLegacy research={tieredPayload()} />);
+    expect(container.textContent).toContain("LegacyCo");
   });
 });

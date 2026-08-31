@@ -129,6 +129,10 @@ export function ResearchLegacy({ research }: { research: ResearchPayload }) {
 
   return (
     <div>
+      {/* The tiered shape carries no identification block, so the entity the
+          research was requested for is named here (review fix, FR-014) — the
+          only tripwire the fallback path has. */}
+      <p className="text-foreground mb-3 text-sm font-semibold">{research.company}</p>
       {research.freshness === "aging" && (
         <p className="text-muted-foreground mb-4 text-xs">
           <span className="rounded bg-slate-500/10 px-1.5 py-0.5">Ageing research</span>
