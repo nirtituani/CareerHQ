@@ -1,7 +1,12 @@
 # Slice 008 — Company Research: specification
 
 **Depends on**: slice 003 (Data Foundation) only, per `docs/05_Implementation_Plan.md:91`.
-**Status**: Planned — droppable. Slices 001–007 are the core; 008 and 009 follow if budget allows.
+**Status**: Built and shipped — and **partially superseded by
+[`specs/010-role-aware-research`](../010-role-aware-research/spec.md)** (2026-08-31): the pipeline
+this spec describes is retained as the configured fallback, but the primary research path is now
+application-scoped and role-aware, FR-021's role-independence is retired (010 records why), and
+the tier taxonomy no longer organises the user-facing surface. Where the two specs disagree about
+*intended* behaviour, 010 governs; this document remains the record of what 008 built and why.
 **Companion**: `research.md` carries the evidence behind every decision here.
 
 Requirement numbers below are **slice-scoped** (`FR-001…`), matching the convention in

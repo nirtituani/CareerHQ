@@ -88,8 +88,9 @@ is written; it is finished when it can be demonstrated against a deployed enviro
 | 005 | **Resume Tailoring** | LangGraph workflow, self-critique Reviewer, versions with lineage, item-level approval | 004 | **Next** — designed 2026-08-22 |
 | 006 | Document & Retrieval | RAG over resume guidelines, PDF export, submit-and-lock | 005 | Planned |
 | 007 | Evaluation & Benchmark | Benchmark set, metrics, LLM-as-judge, regression runs, results view | 006 | Planned — **graded** |
-| 008 | Company Research | Research agent over a web search MCP, citation-preserving snapshots | 003 | Planned — droppable |
+| 008 | Company Research | Search→fetch→synthesise pipeline, citation-preserving snapshots | 003 | **Built**; superseded as the primary path by 010, retained as its fallback |
 | 009 | Career Advisor | Quantified recurring skill gaps and learning priorities over history | 003, 004 | Planned — droppable |
+| 010 | Role-Aware Research | Application-scoped research via a ResearchProvider seam (Tavily Research first), sections-first UI | 008 | **Built** on branch `010-role-aware-research`; not merged/deployed |
 
 Slices 001–007 are the **core**: together they satisfy every project requirement. Slices 008 and
 009 add the most product value per unit of effort and should follow immediately, but the project

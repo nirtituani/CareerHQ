@@ -63,14 +63,22 @@ export function ResearchSections({ research }: { research: ResearchPayload }) {
           <span className="text-foreground text-sm font-semibold">
             {identification.official_name}
           </span>
-          <a
-            href={identification.website}
-            target="_blank"
-            rel="noreferrer noopener"
-            className="text-muted-foreground text-xs underline underline-offset-2"
-          >
-            {identification.website}
-          </a>
+          {/* Linked only for http(s) — the same filter the adapter applies to
+              source URLs; anything else renders as text (security-review
+              hardening note, this branch). */}
+          {identification.website.startsWith("http://") ||
+          identification.website.startsWith("https://") ? (
+            <a
+              href={identification.website}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="text-muted-foreground text-xs underline underline-offset-2"
+            >
+              {identification.website}
+            </a>
+          ) : (
+            <span className="text-muted-foreground text-xs">{identification.website}</span>
+          )}
           {identification.headquarters && (
             <span className="text-muted-foreground text-xs">{identification.headquarters}</span>
           )}

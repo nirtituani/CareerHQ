@@ -196,7 +196,7 @@ map plus honest status.
 | **Match analysis** — score a job against the profile | No — one structured call | 004 | ✅ **Built and verified** |
 | **Resume Optimizer** — the flagship | Yes | next | ⏭️ **Next** |
 | **Reviewer / evaluation layer** | Yes | 004 loop, 005 metrics | 📋 Planned |
-| Company Research | Yes — web search MCP | 006 | 📋 Planned |
+| Company Research | Yes — research provider behind a seam (slice 010; 008's pipeline is the fallback) | 006 | ✅ **Built** (010 on its branch, unmerged) |
 | Career Advisor | Yes | 007 | 📋 Planned |
 | Interview Coach | Yes | — | 💤 Deferred (stretch) |
 | Application Workflow Agent | Yes | — | 💤 Deferred (stretch) |
@@ -717,7 +717,8 @@ identified gaps demonstrably narrow over time.
 | 005 | **Resume Tailoring** | LangGraph workflow, Reviewer, versions, item-level approval | 004 | 🔨 **91/97** — all three user stories built and reachable in a browser. **Not deployed, and no real provider call has been made**: SC-001 and SC-006 are unmeasured targets (T085–T089) |
 | 006 | Document & Retrieval | RAG over resume guidelines, PDF export, submit-and-lock | 005 | 📋 Planned |
 | 007 | Evaluation & Benchmark | Benchmark set, metrics, LLM-as-judge, regression runs | 006 | 📋 Planned |
-| 008 | Company Research | Research agent over web search MCP | 003 | 📋 Planned |
+| 008 | Company Research | Search→fetch→synthesise pipeline | 003 | ✅ Built; primary path superseded by 010 |
+| 010 | Role-Aware Research | ResearchProvider seam, application-scoped, sections-first UI | 008 | 🔨 Built on branch, unmerged |
 | 009 | Career Advisor | Quantified skill gaps over history | 003, 004 | 📋 Planned |
 
 **Slices 001–007 are the core** and together satisfy every project requirement. 008 and 009
@@ -754,7 +755,7 @@ twice.
 | Plan with milestones | [docs/05](05_Implementation_Plan.md), §6.1 | ✅ |
 | Agent with backend and frontend | Slice 005 — FastAPI + Next.js, the Tailor tab | ✅ built, not yet deployed |
 | Agent manages memory | Profile, application history, submitted versions; slice 009 reasons over all of it | 📋 |
-| Tools / MCPs | Retrieval, PDF export (006); web search **MCP** (008) | 📋 |
+| Tools / MCPs | Retrieval, PDF export (006); web search + research provider (008/010, plain HTTPS rather than MCP — argued in `tavily_search.py`) | ✅ |
 | Agentic workflow matched to the problem | Self-critique + human approval (005); RAG (006) | ✅ built, not yet deployed |
 | Evaluation, benchmark, metrics | Slice 007, §5.2 | 📋 **graded, and deferred twice** |
 | Deployed using Docker | Slice 002, then continuously | ✅ |
