@@ -61,8 +61,9 @@ system; design documents do not count.
 | RAG over resume guidelines | ✅ **Implemented** | 006 |
 | PDF export, submit-and-lock | ✅ **Implemented** | 006 |
 | Evaluation harness, metrics, LLM-as-judge | ✅ **Implemented** | 007 — paid benchmark pass run |
-| Company Research — Layer 1 (company) | ✅ **Implemented** | 008 |
-| Company Research — Layer 2 (role) | 🔨 **Built, not wired** | 008 — use case, schema and table exist and are tested; **no route, no UI** |
+| Company Research — company-scoped (008) | ✅ **Implemented** | 008 — retained as the configured fallback under 010 |
+| Company Research — role-aware (010) | 🔨 **Built, not deployed** | 010 — the active architecture: application-scoped research behind a `ResearchProvider` port, driven by the job description |
+| Company Research — 008's Layer 2 (role) | 🚫 **Superseded by 010** | Its use case and schema survive as dead code; its `role_research_snapshots` table was reshaped by migration `0020` into the application-scoped store 010 uses |
 | Career Advisor | 📋 **Planned** | 009 — droppable |
 | Interview Coach | 💤 **Deferred** — stretch goal | — |
 | Application Workflow Agent | 💤 **Deferred** — stretch goal | — |
