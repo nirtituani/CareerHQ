@@ -36,8 +36,10 @@ Working today:
   the Reviewer finds ungrounded is discarded before it can reach an approve button
 - **Export and submit** — render to PDF, then lock. A submitted version is immutable, and
   submission re-reads and re-hashes the stored bytes rather than trusting the recorded checksum
-- **Company research** — web search, page fetch and synthesis into a cited brief, where every
-  quoted excerpt is verified verbatim against the page the system itself retrieved
+- **Company research** — role-aware research for one application, driven by the job description
+  rather than the CV. A research provider returns a cited brief whose sources are shown as
+  provider-attributed; the retained built-in pipeline searches, fetches and synthesises here
+  instead, and its stored excerpts are verified verbatim against the pages it retrieved itself
 
 Depth lives in [`docs/07_Capabilities.md`](docs/07_Capabilities.md) (what each capability does),
 [`docs/08_Technical_Spec.md`](docs/08_Technical_Spec.md) (the whole system in one document) and
@@ -66,18 +68,26 @@ Retrieval sits behind a port with no `top_k`, no scores and no embedding paramet
 the static rubric for retrieval changed no workflow node. Every retrieved rule is recorded with
 its content hash, so a run can say what advice it was given.
 
-**Where the tools are.** Company research uses Tavily web search over **plain HTTPS, not MCP** —
-a deliberate simplification argued in `tavily_search.py`. The search provider returns URLs only;
-**CareerHQ fetches the pages itself**, which is what makes verbatim citation checking possible.
-Job postings are read through a separate fetcher whose SSRF guard resolves every hostname and
-refuses non-global addresses on each redirect hop.
+**Where the tools are.** Company research reaches the web over **plain HTTPS, not MCP** — a
+deliberate simplification argued in `tavily_search.py` — behind a `ResearchProvider` port with two
+implementations. The **default** delegates search, source selection and synthesis to Tavily
+Research, which returns a brief plus the sources it consulted; CareerHQ never fetches those pages,
+so they are stored and shown as **provider-attributed** provenance. The **retained built-in
+pipeline**, which serves as the configured fallback, works the older way: the search provider
+returns URLs only, **CareerHQ fetches the pages itself**, and that is what makes verbatim citation
+checking possible there. Job postings are read through a separate fetcher whose SSRF guard
+resolves every hostname and refuses non-global addresses on each redirect hop.
 
-**How grounding is enforced.** Every claim is typed `fact`, `interpretation` or `inference`, and
-each tier carries a different evidence obligation enforced by the schema. Research excerpts are
-checked **verbatim** against the retrieved page — a deterministic string test, not a model call —
-and a claim whose excerpt fails is *removed*, not relabelled. In tailoring, an `ungrounded`
-finding discards the proposal and restores the owner's wording **before any row is written**, so a
-fabricated claim has no persisted representation.
+**How grounding is enforced.** **Provider-attributed content is never presented as though
+CareerHQ had verified it.** Where the built-in pipeline produced the research, every claim is
+typed `fact`, `interpretation` or `inference`, each tier carries a different evidence obligation
+enforced by the schema, and excerpts are checked **verbatim** against the retrieved page — a
+deterministic string test, not a model call — with a claim whose excerpt fails *removed*, not
+relabelled. Where a research provider produced it, there is no page for CareerHQ to check against,
+so the interface shows a quoted excerpt only where one was actually verified and lists the
+provider's sources as attribution instead; the tier vocabulary is not the organising surface
+there. In tailoring, an `ungrounded` finding discards the proposal and restores the owner's
+wording **before any row is written**, so a fabricated claim has no persisted representation.
 
 **Memory.** The Professional Profile is the single source of truth and accumulates across the
 lifecycle: imported facts, user corrections that later imports may not overwrite, application
