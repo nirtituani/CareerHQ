@@ -351,17 +351,13 @@ _FROZEN_MEMORY_COLUMNS: tuple[str, ...] = (
 
 
 @sa_event.listens_for(CareerMemory, "before_update")
-def _refuse_frozen_memory_writes(
-    mapper: object, connection: object, target: CareerMemory
-) -> None:
+def _refuse_frozen_memory_writes(mapper: object, connection: object, target: CareerMemory) -> None:
     """Enforced by a listener rather than by care: every UPDATE against a
     memory passes through here, whatever module issued it — including one the
     boundary gate's whitelist would have allowed."""
     state = sa_inspect(target)
     tampered = [
-        column
-        for column in _FROZEN_MEMORY_COLUMNS
-        if state.attrs[column].history.has_changes()
+        column for column in _FROZEN_MEMORY_COLUMNS if state.attrs[column].history.has_changes()
     ]
     if tampered:
         raise MemoryContentFrozen(

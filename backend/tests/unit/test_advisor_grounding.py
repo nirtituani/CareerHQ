@@ -369,9 +369,7 @@ def test_a_group_with_an_invented_id_is_dropped_and_recorded(
         surviving, dropped = validate_grouping(proposal, known_ids=known, run_id=uuid.uuid4())
     assert surviving == []
     assert dropped == 1
-    records = [
-        r for r in caplog.records if r.name == "careerhq.application.advisor_grounding"
-    ]
+    records = [r for r in caplog.records if r.name == "careerhq.application.advisor_grounding"]
     assert any(getattr(r, "gate", None) == "grouping" for r in records)
 
 
@@ -385,12 +383,12 @@ def test_an_id_in_two_groups_of_one_kind_keeps_only_the_first(
     other = uuid.uuid4()
     proposal = GroupingProposal(
         groups=[
-            ProposedGroup(group_id="g1", label="AWS", group_kind="skill", member_ids=[shared, other]),
+            ProposedGroup(
+                group_id="g1", label="AWS", group_kind="skill", member_ids=[shared, other]
+            ),
             ProposedGroup(group_id="g2", label="Amazon", group_kind="skill", member_ids=[shared]),
         ]
     )
-    surviving, dropped = validate_grouping(
-        proposal, known_ids={shared, other}, run_id=uuid.uuid4()
-    )
+    surviving, dropped = validate_grouping(proposal, known_ids={shared, other}, run_id=uuid.uuid4())
     assert [group.group_id for group in surviving] == ["g1"]
     assert dropped == 1

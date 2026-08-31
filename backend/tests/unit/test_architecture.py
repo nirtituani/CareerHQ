@@ -172,7 +172,7 @@ def test_the_application_layer_imports_no_provider_sdk() -> None:
         if hits:
             offenders[str(path.relative_to(SRC))] = hits
 
-    assert examined >= 15, (
+    assert examined >= 30, (
         f"this guard examined {examined} files in application/; it is meant to walk the whole "
         "layer, and a walk that finds nothing passes whether or not the layer is clean"
     )
