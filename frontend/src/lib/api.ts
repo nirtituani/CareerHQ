@@ -921,6 +921,8 @@ export type AdvisorRun = {
   ops: { proposed: number; applied: number; discarded: number } | null;
   models: { grouping: string | null; reason: string | null };
   cost: string | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
   is_fixture: boolean;
   created_at: string;
   completed_at: string | null;

@@ -94,6 +94,8 @@ function run(overrides: Partial<AdvisorRun> = {}): AdvisorRun {
     ops: null,
     models: { grouping: null, reason: null },
     cost: null,
+    input_tokens: null,
+    output_tokens: null,
     is_fixture: false,
     created_at: "2026-09-01T10:00:00Z",
     completed_at: null,

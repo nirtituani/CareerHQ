@@ -504,9 +504,8 @@ def render_grouping_prompt(
 ) -> str:
     lines = [_GROUPING_RULES, "\n## Application titles\n"]
     lines.extend(
-        f"[app: {application_id}] {title}" for application_id, title in sorted(
-            titles.items(), key=lambda item: str(item[0])
-        )
+        f"[app: {application_id}] {title}"
+        for application_id, title in sorted(titles.items(), key=lambda item: str(item[0]))
     )
     if requirement_rows:
         lines.append("\n## Requirement rows (verbatim posting wording)\n")
@@ -545,9 +544,7 @@ async def _grouping_step(
     titles = {application.id: application.job_title for application in applications}
 
     prompt = render_grouping_prompt(titles=titles, requirement_rows=requirement_rows)
-    result = await recorder.complete(
-        task=GROUPING_TASK, schema=GroupingProposal, prompt=prompt
-    )
+    result = await recorder.complete(task=GROUPING_TASK, schema=GroupingProposal, prompt=prompt)
 
     known: set[uuid.UUID] = {row.id for row in requirement_rows} | set(titles)
     surviving, _dropped = validate_grouping(result.value, known_ids=known, run_id=run.id)

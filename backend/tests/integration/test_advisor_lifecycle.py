@@ -29,8 +29,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from careerhq.application.advise_career import create_pending_run, run_advisor
 from careerhq.application.provision_user import provision_user
 from careerhq.domain.models import (
-    Application,
     AdvisorRun,
+    Application,
     CareerMemory,
     Company,
     MemoryDisposition,
@@ -152,9 +152,7 @@ async def test_the_lifecycle_walk(
     # -- the world moves: two more rejections land ---------------------------
     async with session_factory() as session:
         company_id = (
-            await session.scalars(
-                select(Company.id).where(Company.user_id == user_id)
-            )
+            await session.scalars(select(Company.id).where(Company.user_id == user_id))
         ).first()
         for index in range(2):
             application = Application(
@@ -170,7 +168,9 @@ async def test_the_lifecycle_walk(
 
     async with session_factory() as session:
         rows = list(
-            (await session.scalars(select(CareerMemory).where(CareerMemory.user_id == user_id))).all()
+            (
+                await session.scalars(select(CareerMemory).where(CareerMemory.user_id == user_id))
+            ).all()
         )
         rejection = next(m for m in rows if "rejected" in m.claim)
         applied = next(m for m in rows if "in flight" in m.claim)
@@ -215,7 +215,9 @@ async def test_the_lifecycle_walk(
 
     async with session_factory() as session:
         rows = list(
-            (await session.scalars(select(CareerMemory).where(CareerMemory.user_id == user_id))).all()
+            (
+                await session.scalars(select(CareerMemory).where(CareerMemory.user_id == user_id))
+            ).all()
         )
         confirmed = next(m for m in rows if m.id == rejection.id)
         superseded = next(m for m in rows if m.id == applied.id)
@@ -272,7 +274,9 @@ async def test_the_lifecycle_walk(
 
     async with session_factory() as session:
         snapshot_rows = list(
-            (await session.scalars(select(CareerMemory).where(CareerMemory.user_id == user_id))).all()
+            (
+                await session.scalars(select(CareerMemory).where(CareerMemory.user_id == user_id))
+            ).all()
         )
         before_bytes = _serialise_memories(snapshot_rows)
 
@@ -283,7 +287,9 @@ async def test_the_lifecycle_walk(
         assert run3 is not None and run3.status == "failed"
         assert run3.error == "The reasoning step returned an incomplete answer."
         after_rows = list(
-            (await session.scalars(select(CareerMemory).where(CareerMemory.user_id == user_id))).all()
+            (
+                await session.scalars(select(CareerMemory).where(CareerMemory.user_id == user_id))
+            ).all()
         )
         assert _serialise_memories(after_rows) == before_bytes, (
             "an omission must fail the run and synthesise nothing"
@@ -307,7 +313,9 @@ async def test_the_lifecycle_walk(
         assert run4_row.status == "failed"
         assert run4_row.cost == Decimal("0.007"), "the failed run still records its spend"
         after_rows = list(
-            (await session.scalars(select(CareerMemory).where(CareerMemory.user_id == user_id))).all()
+            (
+                await session.scalars(select(CareerMemory).where(CareerMemory.user_id == user_id))
+            ).all()
         )
         assert _serialise_memories(after_rows) == before_bytes, (
             "SC-005: a failed run leaves the memory set byte-for-byte unchanged"
@@ -330,7 +338,9 @@ async def test_dismissal_holds_until_the_evidence_materially_changes(
     # Dismiss the rejection memory the way the route does.
     async with session_factory() as session:
         rows = list(
-            (await session.scalars(select(CareerMemory).where(CareerMemory.user_id == user_id))).all()
+            (
+                await session.scalars(select(CareerMemory).where(CareerMemory.user_id == user_id))
+            ).all()
         )
         target = next(m for m in rows if "rejected" in m.claim)
         target.status = "retired"

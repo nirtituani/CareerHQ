@@ -174,9 +174,7 @@ async def test_the_floor_forces_tentative_then_promotes(
 
     async with session_factory() as session:
         memory = (
-            await session.scalars(
-                select(CareerMemory).where(CareerMemory.user_id == user_id)
-            )
+            await session.scalars(select(CareerMemory).where(CareerMemory.user_id == user_id))
         ).one()
         assert memory.status == "tentative", (
             "denominator 4 is under the floor of 5 — the gate must overrule the "

@@ -26,9 +26,9 @@ from careerhq.application.advise_career import create_pending_run, run_advisor
 from careerhq.application.provision_user import provision_user
 from careerhq.domain.models import (
     USER_DISMISSED,
-    Application,
     AdvisorRun,
     AdvisorRunStatus,
+    Application,
     CareerMemory,
     Company,
     MemoryDisposition,
@@ -142,9 +142,7 @@ async def test_prior_memories_are_retrieved_reasoned_over_and_dispositioned(
                 await session.scalars(
                     select(CareerMemory).where(
                         CareerMemory.user_id == user_id,
-                        CareerMemory.status.in_(
-                            [MemoryStatus.ACTIVE, MemoryStatus.TENTATIVE]
-                        ),
+                        CareerMemory.status.in_([MemoryStatus.ACTIVE, MemoryStatus.TENTATIVE]),
                     )
                 )
             ).all()
