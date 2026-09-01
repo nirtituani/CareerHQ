@@ -170,6 +170,17 @@ class Settings(BaseSettings):
     #: is a separate task NAME rather than a branch on attempt count, which is
     #: what keeps the escalation in configuration (contracts O4).
     llm_model_tailor_revise_escalated: str = "anthropic/claude-opus-5"
+    #: **Thinking effort for the draft, calibrated by experiment E2 (2026-09-01).**
+    #: Sonnet 5 runs adaptive thinking by default with the effort defaulting to
+    #: high, billed invisibly as output tokens — measured at 59% of the draft's
+    #: billed output. `medium` cut draft cost ~50% and draft latency ~53% across
+    #: 24 treatment runs with judge-equivalent final quality; draft-stage
+    #: `ungrounded` returned to the historical base rate on the confirmation
+    #: pass. Only the draft is configured: every other task sends no thinking
+    #: parameters at all and keeps the provider default, exactly as before.
+    #: Resolved by task name via `effort_for_task`, the same discipline as
+    #: `model_for_task` — a task, never a parameter, is what callers name.
+    llm_effort_tailor_draft: str = "medium"
     # -- Slice 008: company research -----------------------------------------
     #
     #: **Gemini 3.6 Flash, chosen on measurement** (OQ-J). Benchmarked against
@@ -378,6 +389,22 @@ class Settings(BaseSettings):
         if isinstance(configured, str) and configured:
             return configured
         return self.llm_provider_model
+
+    def effort_for_task(self, task: str) -> str | None:
+        """Resolve the thinking effort for a named task, or None for the
+        provider default.
+
+        None means **send no thinking parameters at all** — the request is
+        byte-identical to one made before this setting existed, which is what
+        confines an effort calibration to exactly the tasks it was measured on
+        (E2 measured `tailor_draft` and nothing else). Unlike `model_for_task`
+        there is deliberately no fallback value: an unnamed task must not
+        inherit another task's calibration.
+        """
+        configured = getattr(self, f"llm_effort_{task}", None)
+        if isinstance(configured, str) and configured:
+            return configured
+        return None
 
     @property
     def cache_configured(self) -> bool:
