@@ -146,7 +146,10 @@ def test_the_rules_are_versioned() -> None:
     comparison is meaningless if a threshold changed without the version moving.
     """
     assert FINALISATION_RULES_VERSION
-    assert FINALISATION_RULES_VERSION == "v1-severity"
+    # v2: the discard set is judged on the final pass's findings only, so a
+    # fabrication fixed by revision survives as a proposal. Changing what feeds
+    # the split is a rule change, and FR-020 says a rule change is a new name.
+    assert FINALISATION_RULES_VERSION == "v2-final-pass-severity"
 
 
 def test_an_item_with_no_source_id_is_never_discarded() -> None:

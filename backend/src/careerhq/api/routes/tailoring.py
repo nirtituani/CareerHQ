@@ -145,7 +145,7 @@ def _finding_out(finding: ReviewerFinding) -> dict[str, Any]:
     }
 
 
-def _item_out(item: ResumeVersionItem) -> dict[str, Any]:
+def _item_out(item: ResumeVersionItem, final_attempt: int | None = None) -> dict[str, Any]:
     return {
         "id": str(item.id),
         "source_kind": item.source_kind,
@@ -159,9 +159,19 @@ def _item_out(item: ResumeVersionItem) -> dict[str, Any]:
         "proposed_text": item.proposed_text,
         "final_text": item.final_text,
         "decision": item.decision,
-        # Nested under the item they concern (FR-042). A finding rendered as a
-        # page banner cannot be attributed to one of eleven proposals.
-        "findings": [_finding_out(f) for f in item.findings],
+        # Nested under the item they concern (FR-042), and — given a run —
+        # **the final pass's findings only**. The version is the decision
+        # surface, and the last review re-judged the whole composed resume, so
+        # its findings are a complete statement about the draft as it stands.
+        # A pass-0 `ungrounded` served here would sit under the *fixed*
+        # proposal that survived it, calling the current wording unsupported
+        # and reprinting the fabricated `quoted_text` beside a valid proposal.
+        # Earlier passes stay in the database as the audit record.
+        "findings": [
+            _finding_out(f)
+            for f in item.findings
+            if final_attempt is None or f.attempt == final_attempt
+        ],
     }
 
 
@@ -202,6 +212,10 @@ async def _version_out(
                 select(ReviewerFinding).where(
                     ReviewerFinding.tailoring_run_id == run.id,
                     ReviewerFinding.resume_version_item_id.is_(None),
+                    # Final pass only, same rule as the item findings below: an
+                    # `uncovered` the revision resolved is history; one that
+                    # still holds was re-raised by the last review.
+                    ReviewerFinding.attempt == run.attempts,
                 )
             )
         )
@@ -228,7 +242,9 @@ async def _version_out(
         # what makes that checkable rather than asserted.
         "source_profile_updated_at": _iso(version.source_profile_updated_at),
         "created_at": _iso(version.created_at),
-        "items": [_item_out(item) for item in version.items],
+        "items": [
+            _item_out(item, final_attempt=run.attempts if run else None) for item in version.items
+        ],
         # Only findings with no item — `uncovered`, which concerns the draft as
         # a whole. Manufacturing an item for an unaddressed requirement would
         # repeat slice 004's `unverified`-shortfall mistake exactly.
@@ -427,7 +443,11 @@ async def patch_item(
 
     await decide_item(session, item=item, decision=decision, text=text)
     await session.commit()
-    return _item_out(item)
+    # Same shape and the same final-pass filter as the version payload — the
+    # client swaps this into its item list, and a decided item that regained
+    # earlier passes' findings would differ from its neighbours.
+    run = await _run_of(session, version)
+    return _item_out(item, final_attempt=run.attempts if run else None)
 
 
 @router.post("/versions/{version_id}/approve", summary="Confirm this tailored version")

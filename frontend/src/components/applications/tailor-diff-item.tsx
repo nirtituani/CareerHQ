@@ -11,17 +11,20 @@
  * Remove. A summary and an experience bullet differ only in what they are
  * called, so they differ here only in what they are called.
  *
- * Three item shapes arrive from the API and all three are rendered by this one
- * component:
+ * Three item shapes arrive here and all are rendered by this one component:
  *
- * 1. **A proposal.** `proposed_text` is set. The diff, and the controls.
- * 2. **A discarded proposal.** `proposed_text` is null *and there are
- *    findings*. The agent wrote something the Reviewer could not trace to the
- *    profile, so it was thrown away before it was ever saved (FR-018). There is
- *    nothing to approve and no control is offered — offering one would be the
- *    fabrication reaching a button by another route. The finding stays, because
- *    it is the evidence the guardrail ran.
- * 3. **Unchanged.** Neither. The agent left it alone.
+ * 1. **A rewrite.** `proposed_text` is set. The diff, and the controls.
+ * 2. **A drop.** `proposed_text` is null and `included` is false — the agent
+ *    proposes the line not appear in this version. A removal of existing
+ *    content is exactly the change that most needs the owner's decision
+ *    (FR-024), so it carries the same controls: Accept keeps it out, Reject
+ *    puts the line back, Edit keeps it in the owner's own words.
+ * 3. **Unchanged.** `proposed_text` null, `included` true. The agent left it
+ *    alone — or its proposal was discarded at finalisation (FR-018), which
+ *    persists the same way: the owner's wording stands and there is nothing
+ *    to decide. The tab does not pass these here at all; if one arrives
+ *    anyway it renders as unchanged, with its finding, and never with
+ *    controls.
  *
  * **Nothing here is red.** docs/09 §3 reserves that for things that broke, and
  * a Reviewer note on a draft is the system working exactly as designed.
@@ -179,8 +182,7 @@ export function TailorDiffItem({
   const [draft, setDraft] = useState(item.final_text);
   const [busy, setBusy] = useState(false);
 
-  const discarded = item.proposed_text === null && item.findings.length > 0;
-  const unchanged = item.proposed_text === null && item.findings.length === 0;
+  const unchanged = item.proposed_text === null && item.included;
 
   // Whether this item was objected to across more than one review pass. Only
   // then does naming the pass tell the reader anything.
@@ -233,17 +235,15 @@ export function TailorDiffItem({
           {item.proposed_text !== null ? (
             <Text label="Proposed" value={item.proposed_text} testId="proposed-text" />
           ) : (
-            // A discarded proposal. Saying *what* was removed would reprint the
-            // fabrication next to the profile it contradicts, which is the one
-            // place it must not appear. The finding below quotes the offending
-            // words, which is enough to check the guardrail without restating
-            // the claim as though it were on offer.
+            // A drop. What is proposed is an absence, so it is said as one —
+            // rendering nothing here would make the row read as a rewrite
+            // with the proposal missing.
             <div className="min-w-0">
               <p className="text-xs tracking-wide uppercase" style={{ color: "var(--faint)" }}>
                 Proposed
               </p>
-              <p data-testid="discarded" className="mt-0.5 text-sm" style={{ color: "var(--faint)" }}>
-                Withdrawn before saving — your wording stands.
+              <p data-testid="proposed-removal" className="mt-0.5 text-sm">
+                Remove from this version.
               </p>
             </div>
           )}
@@ -289,10 +289,10 @@ export function TailorDiffItem({
         </div>
       )}
 
-      {/* No controls on a discarded proposal or an unchanged item: there is
-          nothing to decide, and a button that changes nothing is the
-          contradiction the import reviewer's old Keep button had. */}
-      {!editing && !discarded && !unchanged && !disabled && (
+      {/* No controls on an unchanged item: there is nothing to decide, and a
+          button that changes nothing is the contradiction the import
+          reviewer's old Keep button had. */}
+      {!editing && !unchanged && !disabled && (
         <div className="mt-2.5 flex gap-2">
           <Button
             size="sm"

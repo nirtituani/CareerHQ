@@ -248,13 +248,16 @@ describe("the five states", () => {
 // -- FR-018: a discarded claim reaches no button ----------------------------
 
 describe("a claim the Reviewer could not ground", () => {
-  it("offers no way to approve it", async () => {
+  // The discard already happened at persistence (FR-018): the item stands with
+  // the owner's wording and `proposed_text` null, the finding attached as the
+  // audit record. There is no decision to make, so the tab renders **no entry**
+  // — an entry with no controls read as a meaningful verdict on the owner's own
+  // bullet ("Withdrawn before saving"), which it never was.
+  it("renders no entry for it", async () => {
     await renderTab(
       version({
         items: [
           item({
-            // Discarded before persistence: the proposal is gone, the finding
-            // remains as the evidence the guardrail ran.
             proposed_text: null,
             final_text: "Led the payments platform team for six years.",
             findings: [
@@ -265,17 +268,61 @@ describe("a claim the Reviewer could not ground", () => {
               }),
             ],
           }),
+          item({ id: "item-2", source_item_id: "bullet-2" }),
         ],
       }),
     );
 
-    const row = screen.getByTestId("diff-item");
-    expect(within(row).queryByRole("button", { name: /^accept$/i })).toBeNull();
-    expect(within(row).queryByRole("button", { name: /^reject$/i })).toBeNull();
-    expect(within(row).getByTestId("discarded")).toBeInTheDocument();
+    // Only the surviving proposal gets a row, with the ordinary controls.
+    const rows = screen.getAllByTestId("diff-item");
+    expect(rows).toHaveLength(1);
+    expect(within(rows[0]).getByRole("button", { name: /^accept$/i })).toBeInTheDocument();
+    expect(screen.queryByTestId("discarded")).toBeNull();
+    expect(document.body.textContent).not.toMatch(/withdrawn before saving/i);
   });
 
-  it("does not reprint the fabricated wording as though it were on offer", async () => {
+  it("counts it among the items left unchanged", async () => {
+    await renderTab(
+      version({
+        items: [
+          item({
+            proposed_text: null,
+            final_text: "Led the payments platform team for six years.",
+            findings: [finding({ kind: "ungrounded", detail: "Not in the profile.", quoted_text: "Ran Kubernetes clusters" })],
+          }),
+          item({ id: "item-2", source_item_id: "bullet-2" }),
+        ],
+      }),
+    );
+
+    // The document still holds the owner's wording for it — saying so keeps
+    // the count honest without resurrecting the discarded claim.
+    expect(document.body.textContent).toMatch(/1 item left unchanged/i);
+  });
+
+  it("stays out of the way of a proposed drop on the same draft", async () => {
+    // A discarded rewrite and a drop share `proposed_text: null`; only the
+    // drop is a pending decision. The filter must tell them apart by
+    // `included`, not lump them.
+    await renderTab(
+      version({
+        items: [
+          item({
+            proposed_text: null,
+            final_text: "Led the payments platform team for six years.",
+            findings: [finding({ kind: "ungrounded", detail: "Not in the profile.", quoted_text: "Ran Kubernetes clusters" })],
+          }),
+          item({ id: "item-2", source_item_id: "bullet-2", proposed_text: null, included: false }),
+        ],
+      }),
+    );
+
+    const rows = screen.getAllByTestId("diff-item");
+    expect(rows).toHaveLength(1);
+    expect(within(rows[0]).getByTestId("proposed-removal")).toBeInTheDocument();
+  });
+
+  it("never prints the fabricated wording anywhere", async () => {
     const fabricated = "Ran Kubernetes clusters across three regions";
     await renderTab(
       version({
@@ -289,12 +336,46 @@ describe("a claim the Reviewer could not ground", () => {
       }),
     );
 
-    // The finding quotes it once, in the Reviewer's own words, as the thing
-    // that was removed. Showing it a second time under "Proposed" would put
-    // the invented claim back on the page beside an approve control, which is
-    // the discard defeated by presentation rather than by logic.
-    const occurrences = (document.body.textContent ?? "").split(fabricated).length - 1;
-    expect(occurrences).toBe(1);
+    // With no entry rendered, the invented claim appears zero times. Showing
+    // it at all would be the discard defeated by presentation.
+    expect(document.body.textContent ?? "").not.toContain(fabricated);
+  });
+});
+
+// -- FR-024: a drop is a decision, not a fait accompli ----------------------
+
+describe("a proposed drop", () => {
+  const drop = (overrides: Partial<VersionItem> = {}) =>
+    item({
+      proposed_text: null,
+      included: false,
+      final_text: "Led the payments platform team for six years.",
+      ...overrides,
+    });
+
+  it("renders as a decidable removal with the owner's wording", async () => {
+    await renderTab(version({ items: [drop()] }));
+
+    const row = screen.getByTestId("diff-item");
+    expect(within(row).getByTestId("original-text")).toHaveTextContent(
+      "Led the payments platform team for six years.",
+    );
+    expect(within(row).getByTestId("proposed-removal")).toHaveTextContent(
+      /remove from this version/i,
+    );
+    expect(within(row).getByRole("button", { name: /^accept$/i })).toBeInTheDocument();
+    expect(within(row).getByRole("button", { name: /^reject$/i })).toBeInTheDocument();
+    expect(within(row).getByRole("button", { name: /^edit$/i })).toBeInTheDocument();
+  });
+
+  it("counts as a proposed change and never as left unchanged", async () => {
+    await renderTab(version({ items: [drop()] }));
+
+    expect(document.body.textContent).toMatch(/1\s*proposed change/);
+    expect(document.body.textContent).not.toMatch(/left unchanged/i);
+    // FR-025 stays honest: blanket approval will accept this removal, and the
+    // note is what tells the owner an undecided drop is part of that.
+    expect(screen.getByTestId("approve-note")).toHaveTextContent("1 undecided will be accepted");
   });
 });
 

@@ -701,8 +701,20 @@ async def run_tailoring(
         # the defect T093 removes.
         raised = list(result["findings"])
 
-        # Principle III, before anything is written.
-        finalised = finalise(proposed, [entry.finding for entry in raised])
+        # Principle III, before anything is written. Judged on the **final
+        # pass's findings only** — the same rule `active_findings` applies to
+        # the revision gate (T096): the Reviewer re-judges the whole composed
+        # resume every pass, so the last pass is a complete statement about the
+        # draft as it now stands. A pass-0 fabrication the Reviser fixed and
+        # the final review cleared is a legitimate proposal; handing `finalise`
+        # the accumulated history discarded exactly those (4/4 of the real
+        # ungrounded findings on record). `raised` still persists whole below —
+        # the audit record keeps every pass.
+        final_attempt = int(result["attempt"])
+        finalised = finalise(
+            proposed,
+            [entry.finding for entry in raised if entry.attempt == final_attempt],
+        )
 
         by_source = {
             str(item.source_item_id): item
@@ -891,11 +903,21 @@ async def decide_item(
     if decision == ProposalDecision.ACCEPTED:
         item.final_text = item.proposed_text or item.original_text
     elif decision == ProposalDecision.REJECTED:
+        # The owner's original state, whole. For a master item that state is
+        # *present with the original wording*, so a rejected drop
+        # (`included=False`, the agent's proposal to remove the line) comes
+        # back into the document — restoring the text while leaving the line
+        # excluded would record a rejection the export silently ignores.
         item.final_text = item.original_text
+        item.included = True
     elif decision == ProposalDecision.EDITED:
         if not (text or "").strip():
             raise ValueError("an edited item needs text")
         item.final_text = text or ""
+        # "Keep it, worded my way." A line cannot be both excluded and carry
+        # the owner's replacement text — that would store words no document
+        # ever shows. Accepting is the only decision that keeps a drop out.
+        item.included = True
 
     item.decision = decision
     await session.flush()
