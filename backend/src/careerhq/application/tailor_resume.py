@@ -701,8 +701,20 @@ async def run_tailoring(
         # the defect T093 removes.
         raised = list(result["findings"])
 
-        # Principle III, before anything is written.
-        finalised = finalise(proposed, [entry.finding for entry in raised])
+        # Principle III, before anything is written. Judged on the **final
+        # pass's findings only** — the same rule `active_findings` applies to
+        # the revision gate (T096): the Reviewer re-judges the whole composed
+        # resume every pass, so the last pass is a complete statement about the
+        # draft as it now stands. A pass-0 fabrication the Reviser fixed and
+        # the final review cleared is a legitimate proposal; handing `finalise`
+        # the accumulated history discarded exactly those (4/4 of the real
+        # ungrounded findings on record). `raised` still persists whole below —
+        # the audit record keeps every pass.
+        final_attempt = int(result["attempt"])
+        finalised = finalise(
+            proposed,
+            [entry.finding for entry in raised if entry.attempt == final_attempt],
+        )
 
         by_source = {
             str(item.source_item_id): item

@@ -443,9 +443,13 @@ export function TailorTab({ applicationId }: { applicationId: string }) {
   // Content frozen — `LOCKED_STATUSES` in `application/immutability.py`, which
   // is these two and not `ready`.
   const locked = exported || submitted;
-  const proposals = version.items.filter(
-    (item) => item.proposed_text !== null || item.findings.length > 0,
-  );
+  // Only items with a surviving proposal are decisions; they get a row and the
+  // controls. An item whose proposal was discarded at finalisation (FR-018 —
+  // `proposed_text` null, findings attached) is **not rendered**: the owner's
+  // wording already stands, there is nothing to decide, and the old
+  // "Withdrawn before saving" entry read as a verdict on the owner's own
+  // bullet. The finding stays in the run record; it just is not an entry here.
+  const proposals = version.items.filter((item) => item.proposed_text !== null);
   const untouched = version.items.length - proposals.length;
   const undecided = proposals.filter(
     (item) => item.decision === "pending" && item.proposed_text !== null,
