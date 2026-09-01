@@ -40,7 +40,10 @@ from careerhq.domain.schemas.tailoring import DraftedItem, ReviewFinding
 #: findings only (the caller filters; see `run_tailoring`), the same rule
 #: `active_findings` applies to the revision gate. The split itself — what is
 #: discarded versus shown — is unchanged.
-FINALISATION_RULES_VERSION = "v2-final-pass-severity"
+#:
+#: `v3-final-pass-t65` carries v2 forward and calibrates `CONFIDENCE_THRESHOLD`
+#: from 70 to 65 (experiment E1, 2026-09-01) — see the threshold's own comment.
+FINALISATION_RULES_VERSION = "v3-final-pass-t65"
 
 #: Findings that mean *the profile does not support this claim at all*. The
 #: proposal they concern is dropped and the owner's own wording stands.
@@ -49,12 +52,16 @@ _DISCARDING = frozenset({"ungrounded"})
 #: Below this, the Reviewer has not cleared the draft and another revision is
 #: attempted if the budget allows.
 #:
-#: **Uncalibrated.** This first value is a guess, and it is named and versioned
-#: precisely so it can be changed honestly once slice 007 can measure whether it
-#: corresponds to anything. Nothing about it should be read as evidence-based
-#: yet — it is a placeholder with a version number, which is the only kind of
-#: placeholder that does not rot silently.
-CONFIDENCE_THRESHOLD = 70
+#: **Calibrated to 65 by experiment E1 (2026-09-01)**, replacing the original
+#: uncalibrated 70. Measured on true causal pairs (the same draft, shipped
+#: versus revised): revisions triggered at 65-69 only de-overstated one or two
+#: lines the owner sees flagged either way (FR-019), with no judged quality
+#: difference — while low-60s revisions fixed 2-3 overstatements per run. 65
+#: skips the former and keeps the latter. The evidence is directional, not
+#: statistical: two causal pairs plus five historical pass-to-pass deltas.
+#: An `ungrounded` finding still fails the draft at any confidence — the
+#: threshold has never been part of the grounding guarantee.
+CONFIDENCE_THRESHOLD = 65
 
 #: How many revisions may be attempted before the draft is finalised as it
 #: stands. Not extendable at run time (FR-013).
