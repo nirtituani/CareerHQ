@@ -219,8 +219,12 @@ export function TailorDiffItem({
       </div>
 
       {unchanged ? (
+        // `final_text`, not `original_text`: for a genuinely unchanged row the
+        // two are identical, but a sticky row after an edited drop carries the
+        // owner's replacement in `final_text` — and this line must show what
+        // the document will actually contain.
         <p className="mt-1 text-sm" style={{ color: "var(--muted)" }}>
-          {item.original_text}
+          {item.final_text}
         </p>
       ) : (
         <div className="mt-1.5 grid gap-3 sm:grid-cols-2">
