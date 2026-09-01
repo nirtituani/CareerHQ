@@ -984,3 +984,46 @@ async def test_a_failed_run_reports_adherence_without_a_plan(
 
     assert body["plan_adherence"]["planned"] == 0
     assert body["plan_adherence"]["adherence"] is None
+
+
+async def test_the_payload_says_which_items_were_reordered(
+    client: httpx.AsyncClient, db_session: AsyncSession, app: Any
+) -> None:
+    """A position-only proposal moves a line in the rendered document, so the
+    interface must be able to say so — without `displaced_position` it counted
+    a moved item as "left unchanged", which is a false statement about the
+    resume the person is approving. Ordering itself is approved at version
+    level (FR-025); this serves the *fact*, not a new per-item decision.
+    """
+    seeded = await _seeded(db_session, sub="api-reorder", email="api-reorder@example.com")
+    rewritten, moved = seeded.bullet_ids
+    draft = _draft(rewritten)
+    draft["items"].append(
+        {
+            "source_item_id": str(moved),
+            "source_kind": "experience_bullet",
+            "position": 0,
+            "included": True,
+            # No text: a pure reorder.
+        }
+    )
+    script = {
+        "tailor_plan": [_plan()],
+        "tailor_draft": [draft],
+        "tailor_review": [_review(90)],
+    }
+    started, _ = await _tailored(client, app, seeded, script)
+
+    body = (await _as(client, seeded.user).get(f"/api/versions/{started['version_id']}")).json()
+    row = next(i for i in body["items"] if str(i["source_item_id"]) == str(moved))
+    assert row["proposed_text"] is None and row["included"] is True
+    assert row["displaced_position"] is not None, (
+        "the one record that the draft moved this item must reach the client"
+    )
+    untouched = next(
+        i
+        for i in body["items"]
+        if i["proposed_text"] is None
+        and str(i["source_item_id"]) not in (str(moved), str(rewritten))
+    )
+    assert untouched["displaced_position"] is None

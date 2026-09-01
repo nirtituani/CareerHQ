@@ -69,6 +69,7 @@ function item(overrides: Partial<VersionItem> = {}): VersionItem {
     source_kind: "experience_bullet",
     source_item_id: "bullet-1",
     position: 0,
+    displaced_position: null,
     included: true,
     original_text: "Led the payments platform team for six years.",
     proposed_text: "Owned the payments platform for six years.",
@@ -376,6 +377,91 @@ describe("a proposed drop", () => {
     // FR-025 stays honest: blanket approval will accept this removal, and the
     // note is what tells the owner an undecided drop is part of that.
     expect(screen.getByTestId("approve-note")).toHaveTextContent("1 undecided will be accepted");
+  });
+
+  it("shows the owner's words after a drop is edited", async () => {
+    const theDrop = drop();
+    mocked.decideItem.mockResolvedValue(
+      item({
+        id: theDrop.id,
+        proposed_text: null,
+        included: true,
+        decision: "edited",
+        final_text: "Kept, in my own words.",
+      }),
+    );
+    await renderTab(version({ items: [theDrop] }));
+
+    await userEvent.click(screen.getByRole("button", { name: /^edit$/i }));
+    await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+    // The sticky row renders through the unchanged branch, and the document
+    // will carry `final_text` — showing `original_text` here would display
+    // wording the export no longer contains.
+    const row = screen.getByTestId("diff-item");
+    expect(within(row).getByTestId("decision-label")).toHaveTextContent("Using your words");
+    expect(row.textContent).toContain("Kept, in my own words.");
+    expect(row.textContent).not.toContain("Led the payments platform team for six years.");
+  });
+
+  it("stays listed after the owner rejects the removal", async () => {
+    const theDrop = drop();
+    mocked.decideItem.mockResolvedValue(
+      item({
+        id: theDrop.id,
+        proposed_text: null,
+        included: true,
+        decision: "rejected",
+        final_text: "Led the payments platform team for six years.",
+      }),
+    );
+    await renderTab(version({ items: [theDrop] }));
+
+    await userEvent.click(screen.getByRole("button", { name: /^reject$/i }));
+
+    // The stored shape of a rejected drop equals unchanged content, but the
+    // row must not vanish from under the click — the owner just made a
+    // decision and needs to see it landed.
+    const row = screen.getByTestId("diff-item");
+    expect(within(row).getByTestId("decision-label")).toHaveTextContent("Keeping your wording");
+    // Nothing left to decide: accepting again could not re-exclude the line.
+    expect(within(row).queryByRole("button", { name: /^accept$/i })).toBeNull();
+    expect(document.body.textContent).not.toMatch(/left unchanged/i);
+  });
+});
+
+// -- Position-only proposals are said, never counted as unchanged -----------
+
+describe("a position-only proposal", () => {
+  const moved = () =>
+    item({
+      proposed_text: null,
+      included: true,
+      displaced_position: 3,
+      final_text: "Led the payments platform team for six years.",
+    });
+
+  it("is counted as reordered, not as left unchanged", async () => {
+    await renderTab(version({ items: [moved(), item({ id: "item-2", source_item_id: "b2" })] }));
+
+    expect(document.body.textContent).toMatch(/1\s*reordered/i);
+    expect(document.body.textContent).not.toMatch(/left unchanged/i);
+  });
+});
+
+// -- A rewrite that also excludes must say so --------------------------------
+
+describe("a rewrite proposed together with exclusion", () => {
+  it("labels the proposal as removed from this version", async () => {
+    await renderTab(
+      version({
+        items: [item({ included: false })],
+      }),
+    );
+
+    const row = screen.getByTestId("diff-item");
+    expect(within(row).getByText(/proposed — removed from this version/i)).toBeInTheDocument();
+    expect(within(row).getByTestId("proposed-text")).toBeInTheDocument();
   });
 });
 

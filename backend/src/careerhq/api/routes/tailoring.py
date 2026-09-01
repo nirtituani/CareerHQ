@@ -151,6 +151,11 @@ def _item_out(item: ResumeVersionItem, final_attempt: int | None = None) -> dict
         "source_kind": item.source_kind,
         "source_item_id": str(item.source_item_id) if item.source_item_id else None,
         "position": item.position,
+        # NULL means no proposal arrived for this item; set, it is the master
+        # position a proposal displaced (T095). It is what lets the interface
+        # tell a moved item from an untouched one — without it a position-only
+        # proposal read as "left unchanged", which is false about the document.
+        "displaced_position": item.displaced_position,
         "included": item.included,
         # All three travel. The diff is unrenderable without the first two, and
         # `final_text` is materialised rather than derived so no reader —

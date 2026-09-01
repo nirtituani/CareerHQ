@@ -219,8 +219,12 @@ export function TailorDiffItem({
       </div>
 
       {unchanged ? (
+        // `final_text`, not `original_text`: for a genuinely unchanged row the
+        // two are identical, but a sticky row after an edited drop carries the
+        // owner's replacement in `final_text` — and this line must show what
+        // the document will actually contain.
         <p className="mt-1 text-sm" style={{ color: "var(--muted)" }}>
-          {item.original_text}
+          {item.final_text}
         </p>
       ) : (
         <div className="mt-1.5 grid gap-3 sm:grid-cols-2">
@@ -233,7 +237,14 @@ export function TailorDiffItem({
             testId="original-text"
           />
           {item.proposed_text !== null ? (
-            <Text label="Proposed" value={item.proposed_text} testId="proposed-text" />
+            <Text
+              // A rewrite proposed *together with* exclusion must say both —
+              // rendering the new wording under a plain "Proposed" would hide
+              // that accepting it removes the line from the document.
+              label={item.included ? "Proposed" : "Proposed — removed from this version"}
+              value={item.proposed_text}
+              testId="proposed-text"
+            />
           ) : (
             // A drop. What is proposed is an absence, so it is said as one —
             // rendering nothing here would make the row read as a rewrite

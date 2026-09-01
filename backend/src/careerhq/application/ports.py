@@ -195,6 +195,13 @@ class UsageRecorder:
 
     inner: StructuredCompletion
     calls: list[Usage] = field(default_factory=list)
+    #: The task whose call raised, or None while everything has succeeded. The
+    #: per-call rows record only *billed* calls, so "which task failed" was
+    #: previously answerable only by an off-by-one heuristic — and not at all
+    #: for failures the provider never billed (a 400, a network error). The
+    #: recorder is the one party holding the task name at the moment of the
+    #: raise. Read by `run_tailoring`'s failure log (the E2 monitoring rider).
+    failed_task: str | None = None
 
     async def complete[T: BaseModel](
         self, *, task: str, schema: type[T], prompt: str
@@ -207,6 +214,7 @@ class UsageRecorder:
         try:
             result = await self.inner.complete(task=task, schema=schema, prompt=prompt)
         except Exception as exc:
+            self.failed_task = task
             billed = getattr(exc, "usage", None)
             if isinstance(billed, Usage):
                 self.calls.append(billed.model_copy(update={"task": task}))
