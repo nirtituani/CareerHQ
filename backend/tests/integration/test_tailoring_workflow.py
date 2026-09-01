@@ -461,6 +461,107 @@ async def test_an_ungrounded_claim_never_reaches_a_row(
         )
 
 
+async def test_a_fabrication_fixed_by_revision_survives_as_a_normal_proposal(
+    db_session: AsyncSession, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    """The other half of FR-018, and the one the discard rule got wrong.
+
+    An `ungrounded` finding describes **the draft the Reviewer read**, not the
+    item for all time. When the Reviser fixes the claim and the final review
+    clears the result, the corrected wording is a legitimate proposal and must
+    reach the owner with the ordinary controls — the same reasoning T096
+    applied to the revision gate (`active_findings`): the final pass is a
+    complete statement about the document as it now stands.
+
+    Before the fix, `run_tailoring` handed `finalise` the findings of **every**
+    pass, so the stale pass-0 finding discarded the fixed revision: the item
+    persisted with `proposed_text` NULL and rendered as "Withdrawn before
+    saving" with nothing to decide. Every real ungrounded finding in the dev
+    database at the time (4/4) had exactly this shape — raised on pass 0, run
+    revised and cleared, fix thrown away.
+
+    The pass-0 finding must still persist, stamped with its pass: it is the
+    evidence the guardrail ran, and hiding it would make a caught fabrication
+    indistinguishable from none.
+    """
+    seeded = await seed_tailorable(db_session)
+    bullet = seeded.bullet_ids[0]
+    version = await create_pending_version(db_session, seeded.application)
+    await db_session.commit()
+
+    fabrication = "Shipped 0-to-1 products under real ambiguity."
+    fixed = "Built backend services with Python and FastAPI."
+    seam = ScriptedSeam(
+        script={
+            "tailor_plan": [_plan()],
+            "tailor_draft": [_draft(bullet, fabrication)],
+            "tailor_revise": [_draft(bullet, fixed)],
+            "tailor_review": [
+                _review(
+                    95,
+                    [
+                        {
+                            "kind": "ungrounded",
+                            "source_item_id": str(bullet),
+                            "detail": "Nothing in the profile describes ambiguity.",
+                            "quoted_text": fabrication,
+                        }
+                    ],
+                ),
+                # The revision cleared: no findings at all.
+                _review(90),
+            ],
+        }
+    )
+
+    async with session_factory() as session:
+        await run_tailoring(
+            session, version_id=version.id, completion=seam, guidelines=StaticGuidelines()
+        )
+        await session.commit()
+
+    async with session_factory() as session:
+        row = (
+            (
+                await session.execute(
+                    select(ResumeVersion)
+                    .where(ResumeVersion.id == version.id)
+                    .options(selectinload(ResumeVersion.items))
+                )
+            )
+            .unique()
+            .scalar_one()
+        )
+        target = next(i for i in row.items if i.source_item_id == bullet)
+        assert target.proposed_text == fixed, (
+            "the final review cleared the revision, so the fixed wording is a "
+            "legitimate proposal — a stale pass-0 finding must not discard it"
+        )
+        assert target.final_text == fixed
+        assert target.decision == ProposalDecision.PENDING
+
+        # The fabrication itself is still nowhere.
+        for item in row.items:
+            assert fabrication not in (item.proposed_text or "")
+            assert fabrication not in (item.final_text or "")
+
+        findings = (
+            (
+                await session.execute(
+                    select(ReviewerFinding)
+                    .join(TailoringRun)
+                    .where(TailoringRun.resume_version_id == version.id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        caught = [f for f in findings if f.kind == "ungrounded"]
+        assert len(caught) == 1 and caught[0].attempt == 0, (
+            "the pass-0 finding remains as the audit record of the catch"
+        )
+
+
 async def test_guidelines_used_are_persisted_with_their_sources(
     db_session: AsyncSession, session_factory: async_sessionmaker[AsyncSession]
 ) -> None:

@@ -32,7 +32,15 @@ from dataclasses import dataclass
 from careerhq.domain.schemas.tailoring import DraftedItem, ReviewFinding
 
 #: Bump on any change below. Never edit a released version's constants.
-FINALISATION_RULES_VERSION = "v1-severity"
+#:
+#: `v1-severity` fed `finalise` the findings of **every** review pass, so a
+#: pass-0 fabrication the Reviser fixed and the final review cleared was still
+#: discarded — the owner saw "withdrawn" where a legitimate corrected proposal
+#: existed. `v2-final-pass-severity` judges the discard on the final pass's
+#: findings only (the caller filters; see `run_tailoring`), the same rule
+#: `active_findings` applies to the revision gate. The split itself — what is
+#: discarded versus shown — is unchanged.
+FINALISATION_RULES_VERSION = "v2-final-pass-severity"
 
 #: Findings that mean *the profile does not support this claim at all*. The
 #: proposal they concern is dropped and the owner's own wording stands.
