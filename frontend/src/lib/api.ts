@@ -551,6 +551,9 @@ export type VersionItem = {
   source_kind: SourceKind;
   source_item_id: string | null;
   position: number;
+  /** NULL means no proposal arrived; set, the master position a proposal
+   *  displaced — the one record that the agent moved this item. */
+  displaced_position: number | null;
   included: boolean;
   /** The master's wording, copied rather than referenced, so an approved diff
    *  cannot change underneath the person who approved it. */

@@ -233,7 +233,14 @@ export function TailorDiffItem({
             testId="original-text"
           />
           {item.proposed_text !== null ? (
-            <Text label="Proposed" value={item.proposed_text} testId="proposed-text" />
+            <Text
+              // A rewrite proposed *together with* exclusion must say both —
+              // rendering the new wording under a plain "Proposed" would hide
+              // that accepting it removes the line from the document.
+              label={item.included ? "Proposed" : "Proposed — removed from this version"}
+              value={item.proposed_text}
+              testId="proposed-text"
+            />
           ) : (
             // A drop. What is proposed is an absence, so it is said as one —
             // rendering nothing here would make the row read as a rewrite

@@ -38,6 +38,7 @@ function item(overrides: Partial<VersionItem> = {}): VersionItem {
     source_kind: "experience_bullet",
     source_item_id: "bullet-1",
     position: 0,
+    displaced_position: null,
     included: true,
     original_text: "Led the payments platform team for six years.",
     proposed_text: "Owned the payments platform for six years.",
