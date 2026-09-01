@@ -390,3 +390,75 @@ async def test_the_use_case_is_a_separate_module_from_the_guard() -> None:
 
     assert not hasattr(guard, "export_version")
     assert hasattr(export_resume, "export_version")
+
+
+async def test_an_edited_drop_exports_the_owners_words(
+    db_session: AsyncSession, spy: _Spy, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    """The other decision on a drop, end to end: the agent proposes removing a
+    bullet, the owner edits it instead — "keep it, worded my way" — approves,
+    and the exported document carries exactly the owner's words.
+
+    Each half is gated separately (edit restores inclusion; export renders
+    `final_text` of included rows); this drives the chain, and asserts no
+    internal state leaks: the agent's proposal shape is gone, the original
+    wording is gone, the owner's replacement appears exactly once.
+    """
+    seeded = await seed_tailorable(db_session, sub="export-edrop", email="export-edrop@example.com")
+    rewritten, dropped = seeded.bullet_ids
+    version = await create_pending_version(db_session, seeded.application)
+    await db_session.commit()
+
+    draft = _draft(rewritten, "Led payments for six years, matching the posting.")
+    draft["items"].append(
+        {
+            "source_item_id": str(dropped),
+            "source_kind": "experience_bullet",
+            "position": 1,
+            "included": False,
+        }
+    )
+    seam = ScriptedSeam(
+        script={
+            "tailor_plan": [_plan()],
+            "tailor_draft": [draft],
+            "tailor_review": [_review(90)],
+        }
+    )
+    async with session_factory() as session:
+        await run_tailoring(
+            session, version_id=version.id, completion=seam, guidelines=StaticGuidelines()
+        )
+        await session.commit()
+
+    async with session_factory() as session:
+        reloaded = (
+            (
+                await session.execute(
+                    sa.select(ResumeVersion)
+                    .where(ResumeVersion.id == version.id)
+                    .options(sa.orm.selectinload(ResumeVersion.items))
+                )
+            )
+            .unique()
+            .scalar_one()
+        )
+        drop_row = next(i for i in reloaded.items if i.source_item_id == dropped)
+        original_wording = drop_row.original_text
+        await decide_item(
+            session, item=drop_row, decision=ProposalDecision.EDITED, text="Kept, in my own words."
+        )
+        await approve_version(session, version=reloaded)
+        await session.commit()
+
+    async with session_factory() as session:
+        await export_version(session, version_id=version.id)
+        await session.commit()
+
+    assert len(spy.rendered) == 1
+    document = spy.rendered[0]
+    lines = [
+        line for section in document.sections for group in section.groups for line in group.lines
+    ]  # type: ignore[attr-defined]
+    assert lines.count("Kept, in my own words.") == 1, "the owner's words, exactly once"
+    assert original_wording not in lines, "the replaced wording must not also appear"

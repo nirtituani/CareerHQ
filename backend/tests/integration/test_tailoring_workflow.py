@@ -7,6 +7,7 @@ the same: the branch was never exercised, so nothing was ever wrong.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from decimal import Decimal
 from typing import Any
@@ -1628,3 +1629,47 @@ async def test_the_reviewer_judged_the_same_resume_that_was_persisted(
         changed = next(row for row in rows if row.source_item_id == bullet)
         assert changed.final_text == rewritten
         assert changed.original_text not in shown
+
+
+async def test_a_failed_run_logs_which_task_failed(
+    db_session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The E2 monitoring rider's query needs the failing task as a fact.
+
+    The per-call rows record only billed calls, so "was this a draft
+    validation failure" was previously derived from the *successor* of the
+    last recorded call — a heuristic, and one that answers nothing for a
+    failure the provider never billed. The failure log now names it in
+    `extra`, which Railway preserves.
+
+    Asserted on the record this module emitted, filtered by logger name —
+    passing against any record that happens to carry the field is the gate
+    T-philosophy #11 exists to prevent.
+    """
+    seeded = await seed_tailorable(db_session, sub="ftask", email="ftask@example.com")
+    version = await create_pending_version(db_session, seeded.application)
+    await db_session.commit()
+
+    seam = ScriptedSeam(
+        script={
+            "tailor_plan": [_plan()],
+            "tailor_draft": [{"items": []}],  # min_length=1: fails validation
+        }
+    )
+
+    with caplog.at_level(logging.WARNING, logger="careerhq.application.tailor_resume"):
+        async with session_factory() as session:
+            await run_tailoring(
+                session, version_id=version.id, completion=seam, guidelines=StaticGuidelines()
+            )
+            await session.commit()
+
+    records = [
+        r
+        for r in caplog.records
+        if r.name == "careerhq.application.tailor_resume" and r.message == "tailoring run failed"
+    ]
+    assert len(records) == 1, "the failure must be logged exactly once by this module"
+    assert getattr(records[0], "failed_task", None) == "tailor_draft"

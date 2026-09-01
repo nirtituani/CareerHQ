@@ -223,3 +223,23 @@ async def test_a_failure_carrying_no_usage_records_nothing_and_still_raises() ->
         await recorder.complete(task="t", schema=object, prompt="p")  # type: ignore[arg-type]
 
     assert recorder.calls == []
+
+
+async def test_the_recorder_remembers_which_task_failed() -> None:
+    """The E2 monitoring rider's missing half.
+
+    A failed run records the exception *type*, and its per-call rows record
+    only the calls that were billed — so "which task's output failed
+    validation" was answerable only by an off-by-one heuristic (the successor
+    of the last recorded call), and not at all for failures the provider never
+    billed. The recorder is the one party that knows the task at the moment of
+    the raise, billed or not.
+    """
+    recorder = UsageRecorder(_Seam(succeed=1, failure=_Boom(None)))
+    await recorder.complete(task="tailor_plan", schema=object, prompt="p")  # type: ignore[arg-type]
+    assert recorder.failed_task is None, "no failure yet, nothing to name"
+
+    with pytest.raises(_Boom):
+        await recorder.complete(task="tailor_draft", schema=object, prompt="p")  # type: ignore[arg-type]
+
+    assert recorder.failed_task == "tailor_draft"
