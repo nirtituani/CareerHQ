@@ -123,6 +123,36 @@ def test_confidence_alone_decides_when_nothing_is_ungrounded() -> None:
     assert clears_review(CONFIDENCE_THRESHOLD - 1, []) is False
 
 
+def test_the_threshold_is_65_calibrated_by_e1() -> None:
+    """The absolute boundary, pinned on purpose — the relative test above would
+    pass at any value, and the value is the calibrated decision.
+
+    E1 (2026-09-01) measured the 65-69 band: in both direct observations, the
+    revision only de-overstated one or two lines the owner sees flagged either
+    way, with no judged quality difference — while low-60s revisions fixed 2-3
+    overstatements per run. 65 harvests the former and keeps the latter.
+    """
+    assert CONFIDENCE_THRESHOLD == 65
+    # 64 -> revise; 65 and 69 -> clear, when nothing is ungrounded.
+    assert should_revise(confidence=64, findings=[], attempt=0) is True
+    assert should_revise(confidence=65, findings=[], attempt=0) is False
+    assert should_revise(confidence=69, findings=[], attempt=0) is False
+
+
+def test_an_ungrounded_finding_blocks_inside_the_cleared_band_too() -> None:
+    """The calibration must not touch grounding: a fabrication at 65-69 — the
+    band the new threshold clears on confidence — still fails the draft."""
+    fabrication = ReviewFinding(
+        kind="ungrounded",
+        source_item_id=uuid.uuid4(),
+        detail="Unsupported.",
+        quoted_text="ten years of Rust",
+    )
+    for confidence in (65, 69):
+        assert clears_review(confidence, [fabrication]) is False
+        assert should_revise(confidence=confidence, findings=[fabrication], attempt=0) is True
+
+
 def test_the_revision_budget_is_not_extendable() -> None:
     """FR-013. Exhausting the budget is a normal exit, not an error."""
     assert should_revise(confidence=0, findings=[], attempt=MAX_REVISIONS) is False
@@ -146,10 +176,10 @@ def test_the_rules_are_versioned() -> None:
     comparison is meaningless if a threshold changed without the version moving.
     """
     assert FINALISATION_RULES_VERSION
-    # v2: the discard set is judged on the final pass's findings only, so a
-    # fabrication fixed by revision survives as a proposal. Changing what feeds
-    # the split is a rule change, and FR-020 says a rule change is a new name.
-    assert FINALISATION_RULES_VERSION == "v2-final-pass-severity"
+    # v3: CONFIDENCE_THRESHOLD calibrated 70 -> 65 by experiment E1. The v2
+    # change (discard judged on the final pass only) is carried forward
+    # unchanged. FR-020: changing a constant is a new name, never an edit.
+    assert FINALISATION_RULES_VERSION == "v3-final-pass-t65"
 
 
 def test_an_item_with_no_source_id_is_never_discarded() -> None:
