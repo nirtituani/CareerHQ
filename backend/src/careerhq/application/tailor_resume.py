@@ -903,11 +903,21 @@ async def decide_item(
     if decision == ProposalDecision.ACCEPTED:
         item.final_text = item.proposed_text or item.original_text
     elif decision == ProposalDecision.REJECTED:
+        # The owner's original state, whole. For a master item that state is
+        # *present with the original wording*, so a rejected drop
+        # (`included=False`, the agent's proposal to remove the line) comes
+        # back into the document — restoring the text while leaving the line
+        # excluded would record a rejection the export silently ignores.
         item.final_text = item.original_text
+        item.included = True
     elif decision == ProposalDecision.EDITED:
         if not (text or "").strip():
             raise ValueError("an edited item needs text")
         item.final_text = text or ""
+        # "Keep it, worded my way." A line cannot be both excluded and carry
+        # the owner's replacement text — that would store words no document
+        # ever shows. Accepting is the only decision that keeps a drop out.
+        item.included = True
 
     item.decision = decision
     await session.flush()

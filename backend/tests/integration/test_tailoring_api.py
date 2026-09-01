@@ -542,6 +542,51 @@ async def test_an_item_from_another_version_is_404(
 # -- POST /api/versions/{id}/approve ----------------------------------------
 
 
+async def test_a_drop_is_served_decidable_and_rejecting_it_restores_inclusion(
+    client: httpx.AsyncClient, db_session: AsyncSession, app: Any
+) -> None:
+    """A drop (`included: false`) is a proposed change to existing content, so
+    it must reach the client in a shape it can render as a decision (FR-024) —
+    and the PATCH response must carry the restored inclusion, because the
+    client swaps that object into its item list and an answer still saying
+    `included: false` would render a rejection the document ignores.
+    """
+    seeded = await _seeded(db_session, sub="api-drop", email="api-drop@example.com")
+    rewritten, dropped = seeded.bullet_ids
+    draft = _draft(rewritten)
+    draft["items"].append(
+        {
+            "source_item_id": str(dropped),
+            "source_kind": "experience_bullet",
+            "position": 1,
+            "included": False,
+        }
+    )
+    script = {
+        "tailor_plan": [_plan()],
+        "tailor_draft": [draft],
+        "tailor_review": [_review(90)],
+    }
+    started, _ = await _tailored(client, app, seeded, script)
+
+    me = _as(client, seeded.user)
+    body = (await me.get(f"/api/versions/{started['version_id']}")).json()
+    row = next(i for i in body["items"] if str(i["source_item_id"]) == str(dropped))
+    assert row["proposed_text"] is None
+    assert row["included"] is False
+    assert row["decision"] == "pending"
+
+    answer = await me.patch(
+        f"/api/versions/{started['version_id']}/items/{row['id']}",
+        json={"decision": "rejected"},
+    )
+    assert answer.status_code == 200
+    patched = answer.json()
+    assert patched["decision"] == "rejected"
+    assert patched["included"] is True, "the response is what the client renders"
+    assert patched["final_text"] == row["original_text"]
+
+
 async def test_approving_accepts_everything_untouched_and_starts_nothing(
     client: httpx.AsyncClient, db_session: AsyncSession, app: Any
 ) -> None:

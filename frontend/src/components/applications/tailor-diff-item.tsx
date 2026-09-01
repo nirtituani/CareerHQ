@@ -11,14 +11,20 @@
  * Remove. A summary and an experience bullet differ only in what they are
  * called, so they differ here only in what they are called.
  *
- * Two item shapes arrive here and both are rendered by this one component:
+ * Three item shapes arrive here and all are rendered by this one component:
  *
- * 1. **A proposal.** `proposed_text` is set. The diff, and the controls.
- * 2. **Unchanged.** `proposed_text` is null. The agent left it alone — or its
- *    proposal was discarded at finalisation (FR-018), which persists the same
- *    way: the owner's wording stands and there is nothing to decide. The tab
- *    does not pass discarded items here at all; if one arrives anyway it
- *    renders as unchanged, with its finding, and never with controls.
+ * 1. **A rewrite.** `proposed_text` is set. The diff, and the controls.
+ * 2. **A drop.** `proposed_text` is null and `included` is false — the agent
+ *    proposes the line not appear in this version. A removal of existing
+ *    content is exactly the change that most needs the owner's decision
+ *    (FR-024), so it carries the same controls: Accept keeps it out, Reject
+ *    puts the line back, Edit keeps it in the owner's own words.
+ * 3. **Unchanged.** `proposed_text` null, `included` true. The agent left it
+ *    alone — or its proposal was discarded at finalisation (FR-018), which
+ *    persists the same way: the owner's wording stands and there is nothing
+ *    to decide. The tab does not pass these here at all; if one arrives
+ *    anyway it renders as unchanged, with its finding, and never with
+ *    controls.
  *
  * **Nothing here is red.** docs/09 §3 reserves that for things that broke, and
  * a Reviewer note on a draft is the system working exactly as designed.
@@ -176,7 +182,7 @@ export function TailorDiffItem({
   const [draft, setDraft] = useState(item.final_text);
   const [busy, setBusy] = useState(false);
 
-  const unchanged = item.proposed_text === null;
+  const unchanged = item.proposed_text === null && item.included;
 
   // Whether this item was objected to across more than one review pass. Only
   // then does naming the pass tell the reader anything.
@@ -212,7 +218,7 @@ export function TailorDiffItem({
         )}
       </div>
 
-      {item.proposed_text === null ? (
+      {unchanged ? (
         <p className="mt-1 text-sm" style={{ color: "var(--muted)" }}>
           {item.original_text}
         </p>
@@ -226,7 +232,21 @@ export function TailorDiffItem({
             muted
             testId="original-text"
           />
-          <Text label="Proposed" value={item.proposed_text} testId="proposed-text" />
+          {item.proposed_text !== null ? (
+            <Text label="Proposed" value={item.proposed_text} testId="proposed-text" />
+          ) : (
+            // A drop. What is proposed is an absence, so it is said as one —
+            // rendering nothing here would make the row read as a rewrite
+            // with the proposal missing.
+            <div className="min-w-0">
+              <p className="text-xs tracking-wide uppercase" style={{ color: "var(--faint)" }}>
+                Proposed
+              </p>
+              <p data-testid="proposed-removal" className="mt-0.5 text-sm">
+                Remove from this version.
+              </p>
+            </div>
+          )}
         </div>
       )}
 
