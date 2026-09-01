@@ -64,7 +64,7 @@ system; design documents do not count.
 | Company Research — company-scoped (008) | ✅ **Implemented** | 008 — retained as the configured fallback under 010 |
 | Company Research — role-aware (010) | 🔨 **Built, not deployed** | 010 — the active architecture: application-scoped research behind a `ResearchProvider` port, driven by the job description |
 | Company Research — 008's Layer 2 (role) | 🚫 **Superseded by 010** | Its use case and schema survive as dead code; its `role_research_snapshots` table was reshaped by migration `0020` into the application-scoped store 010 uses |
-| Career Advisor | 📋 **Planned** | 009 — droppable |
+| Career Advisor | 🔨 **Built** — on branch `009-career-advisor`, unmerged | 009 |
 | Interview Coach | 💤 **Deferred** — stretch goal | — |
 | Application Workflow Agent | 💤 **Deferred** — stretch goal | — |
 | Resume Builder / Designer | 🚫 **Non-goal** — scoped out (ADR-013) | — |
@@ -197,6 +197,17 @@ single prompt.
 The output is **quantitative on purpose**. "You should learn Kubernetes" is an opinion; "Kubernetes
 appeared in 9 of your last 20 applications and in 6 you were rejected after the technical round" is
 evidence.
+
+**As built (slice 009)**: the advisor maintains **career memories** — falsifiable claims with
+frozen evidence, denominators and lineage — which later runs retrieve, reason over and
+explicitly confirm, supersede or retire; every number is computed deterministically and a claim
+the gate cannot verify is discarded before persistence. Two corrections to the table above,
+recorded rather than silently applied: **interview feedback is not an input** (the entity was
+never implemented), and the **prioritized learning roadmap is delivered as lightweight
+prioritization** — actionable memories carry an agent-assigned priority with its stated reason
+and the surface orders by it; a distinct roadmap artifact is **explicitly deferred** until
+enough analysed postings exist to rank by frequency and impact honestly (spec 009,
+clarification Q1).
 
 ---
 

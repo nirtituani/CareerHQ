@@ -248,6 +248,22 @@ class Settings(BaseSettings):
     #: truncation is recorded in the snapshot's `model_config_used` — an
     #: unexpectedly thin result on a huge posting must be diagnosable (C4).
     research_posting_max_chars: int = 20000
+    # -- Slice 009: the Career Advisor, one entry per completion --------------
+    #
+    # Two calls per run at most, both defaulted here for the standing reason:
+    # the fallback is `llm_provider_model`, which is Opus, so an unset entry
+    # silently runs at roughly 2.5x the price for no gain — the trap that
+    # caught CV extraction once already.
+    #: **Haiku.** Grouping is id-bucketing — assign enumerated titles and
+    #: requirement rows to named groups — which is classification-shaped work,
+    #: the same reason `llm_model_research_plan_role_queries` runs on Haiku.
+    #: The step is skipped entirely when there is nothing to group.
+    llm_model_advisor_grouping: str = "anthropic/claude-haiku-4-5-20251001"
+    #: **Sonnet**, like every judgment task that is not a release-blocking
+    #: grounding decision. The reasoning step proposes memory operations
+    #: against a deterministic evidence pack; the grounding gate — not a
+    #: bigger model — is what keeps its claims honest (research.md D12).
+    llm_model_advisor_reason: str = "anthropic/claude-sonnet-5"
     # -- Slice 007: evaluation ------------------------------------------------
     #
     #: **Opus, and set explicitly rather than left to fall back.** `docs/08` §5.2
