@@ -65,6 +65,10 @@ def _model_for_task(task: str) -> str:
     return get_settings().model_for_task(task)
 
 
+def _effort_for_task(task: str) -> str | None:
+    return get_settings().effort_for_task(task)
+
+
 def _completion_cost(response: Any) -> Decimal:
     """Best-effort cost from the provider's own accounting.
 
@@ -115,6 +119,19 @@ class LiteLLMGateway:
     ) -> Completion[T]:
         model = _model_for_task(task)
 
+        # Thinking effort, when the task has one configured (E2: tailor_draft
+        # at "medium"). Sonnet 5 thinks adaptively by default at effort high,
+        # billed invisibly as output tokens; a configured task states its depth
+        # explicitly. An unconfigured task adds NOTHING to the request — the
+        # keys are absent, not None — so every other stage's call is
+        # byte-identical to what it sent before this existed.
+        effort = _effort_for_task(task)
+        thinking_kwargs: dict[str, Any] = (
+            {"thinking": {"type": "adaptive"}, "output_config": {"effort": effort}}
+            if effort
+            else {}
+        )
+
         # The schema is sent, not described. An early version said "matching the
         # schema" without including one, and the model answered plausibly and
         # wrongly — `confidence: "high"` where a float was required, and
@@ -149,6 +166,7 @@ class LiteLLMGateway:
                 },
                 {"role": "user", "content": prompt},
             ],
+            **thinking_kwargs,
         )
 
         # Read once, before validation, so the success and failure paths report
