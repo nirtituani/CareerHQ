@@ -461,6 +461,107 @@ async def test_an_ungrounded_claim_never_reaches_a_row(
         )
 
 
+async def test_a_fabrication_fixed_by_revision_survives_as_a_normal_proposal(
+    db_session: AsyncSession, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    """The other half of FR-018, and the one the discard rule got wrong.
+
+    An `ungrounded` finding describes **the draft the Reviewer read**, not the
+    item for all time. When the Reviser fixes the claim and the final review
+    clears the result, the corrected wording is a legitimate proposal and must
+    reach the owner with the ordinary controls — the same reasoning T096
+    applied to the revision gate (`active_findings`): the final pass is a
+    complete statement about the document as it now stands.
+
+    Before the fix, `run_tailoring` handed `finalise` the findings of **every**
+    pass, so the stale pass-0 finding discarded the fixed revision: the item
+    persisted with `proposed_text` NULL and rendered as "Withdrawn before
+    saving" with nothing to decide. Every real ungrounded finding in the dev
+    database at the time (4/4) had exactly this shape — raised on pass 0, run
+    revised and cleared, fix thrown away.
+
+    The pass-0 finding must still persist, stamped with its pass: it is the
+    evidence the guardrail ran, and hiding it would make a caught fabrication
+    indistinguishable from none.
+    """
+    seeded = await seed_tailorable(db_session)
+    bullet = seeded.bullet_ids[0]
+    version = await create_pending_version(db_session, seeded.application)
+    await db_session.commit()
+
+    fabrication = "Shipped 0-to-1 products under real ambiguity."
+    fixed = "Built backend services with Python and FastAPI."
+    seam = ScriptedSeam(
+        script={
+            "tailor_plan": [_plan()],
+            "tailor_draft": [_draft(bullet, fabrication)],
+            "tailor_revise": [_draft(bullet, fixed)],
+            "tailor_review": [
+                _review(
+                    95,
+                    [
+                        {
+                            "kind": "ungrounded",
+                            "source_item_id": str(bullet),
+                            "detail": "Nothing in the profile describes ambiguity.",
+                            "quoted_text": fabrication,
+                        }
+                    ],
+                ),
+                # The revision cleared: no findings at all.
+                _review(90),
+            ],
+        }
+    )
+
+    async with session_factory() as session:
+        await run_tailoring(
+            session, version_id=version.id, completion=seam, guidelines=StaticGuidelines()
+        )
+        await session.commit()
+
+    async with session_factory() as session:
+        row = (
+            (
+                await session.execute(
+                    select(ResumeVersion)
+                    .where(ResumeVersion.id == version.id)
+                    .options(selectinload(ResumeVersion.items))
+                )
+            )
+            .unique()
+            .scalar_one()
+        )
+        target = next(i for i in row.items if i.source_item_id == bullet)
+        assert target.proposed_text == fixed, (
+            "the final review cleared the revision, so the fixed wording is a "
+            "legitimate proposal — a stale pass-0 finding must not discard it"
+        )
+        assert target.final_text == fixed
+        assert target.decision == ProposalDecision.PENDING
+
+        # The fabrication itself is still nowhere.
+        for item in row.items:
+            assert fabrication not in (item.proposed_text or "")
+            assert fabrication not in (item.final_text or "")
+
+        findings = (
+            (
+                await session.execute(
+                    select(ReviewerFinding)
+                    .join(TailoringRun)
+                    .where(TailoringRun.resume_version_id == version.id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        caught = [f for f in findings if f.kind == "ungrounded"]
+        assert len(caught) == 1 and caught[0].attempt == 0, (
+            "the pass-0 finding remains as the audit record of the catch"
+        )
+
+
 async def test_guidelines_used_are_persisted_with_their_sources(
     db_session: AsyncSession, session_factory: async_sessionmaker[AsyncSession]
 ) -> None:
@@ -901,6 +1002,151 @@ async def test_edited_item_is_distinguishable(
         assert reopened.original_text == original
         assert reopened.proposed_text == proposal
         assert reopened.final_text not in (original, proposal)
+
+
+def _drop(bullet_id: uuid.UUID, position: int = 1) -> dict:
+    """A pure drop: no text, so no finding can ever attach to it."""
+    return {
+        "source_item_id": str(bullet_id),
+        "source_kind": "experience_bullet",
+        "position": position,
+        "included": False,
+    }
+
+
+async def _tailored_with_drop(
+    db_session: AsyncSession, session_factory: async_sessionmaker[AsyncSession]
+) -> tuple[uuid.UUID, uuid.UUID]:
+    """One clean run whose draft rewrites bullet 1 and drops bullet 2."""
+    seeded = await seed_tailorable(db_session)
+    rewritten, dropped = seeded.bullet_ids
+    version = await create_pending_version(db_session, seeded.application)
+    await db_session.commit()
+
+    draft = _draft(rewritten, "Led payments for six years, matching the posting.")
+    draft["items"].append(_drop(dropped))
+    seam = ScriptedSeam(
+        script={
+            "tailor_plan": [_plan()],
+            "tailor_draft": [draft],
+            "tailor_review": [_review(90)],
+        }
+    )
+    async with session_factory() as session:
+        await run_tailoring(
+            session, version_id=version.id, completion=seam, guidelines=StaticGuidelines()
+        )
+        await session.commit()
+    return version.id, dropped
+
+
+async def _drop_row(session: AsyncSession, version_id: uuid.UUID, dropped: uuid.UUID) -> Any:
+    version = (
+        (
+            await session.execute(
+                select(ResumeVersion)
+                .where(ResumeVersion.id == version_id)
+                .options(selectinload(ResumeVersion.items))
+            )
+        )
+        .unique()
+        .scalar_one()
+    )
+    return next(i for i in version.items if i.source_item_id == dropped)
+
+
+async def test_rejecting_a_drop_restores_the_item_to_the_document(
+    db_session: AsyncSession, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    """A drop is a proposed change to existing content, and rejecting a
+    proposal restores the owner's original state (FR-026) — which, for a master
+    item, is *present with the original wording*. Restoring the text while
+    leaving `included=False` would record a rejection whose line is still
+    missing from the exported document.
+    """
+    version_id, dropped = await _tailored_with_drop(db_session, session_factory)
+
+    async with session_factory() as session:
+        row = await _drop_row(session, version_id, dropped)
+        assert row.included is False and row.proposed_text is None
+        await decide_item(session, item=row, decision=ProposalDecision.REJECTED, text=None)
+        await session.commit()
+
+    async with session_factory() as session:
+        row = await _drop_row(session, version_id, dropped)
+        assert row.decision == ProposalDecision.REJECTED
+        assert row.included is True, "rejecting a removal must put the line back"
+        assert row.final_text == row.original_text
+
+
+async def test_accepting_a_drop_keeps_it_out_of_the_document(
+    db_session: AsyncSession, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    version_id, dropped = await _tailored_with_drop(db_session, session_factory)
+
+    async with session_factory() as session:
+        row = await _drop_row(session, version_id, dropped)
+        await decide_item(session, item=row, decision=ProposalDecision.ACCEPTED, text=None)
+        await session.commit()
+
+    async with session_factory() as session:
+        row = await _drop_row(session, version_id, dropped)
+        assert row.decision == ProposalDecision.ACCEPTED
+        assert row.included is False, "accepting the removal keeps the line out"
+
+
+async def test_editing_a_drop_keeps_the_line_with_the_owners_words(
+    db_session: AsyncSession, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    """Editing is the owner saying "keep it, worded my way". A line cannot be
+    both excluded and carry the owner's replacement text — an edit that left
+    `included=False` would store words no document will ever show.
+    """
+    version_id, dropped = await _tailored_with_drop(db_session, session_factory)
+
+    async with session_factory() as session:
+        row = await _drop_row(session, version_id, dropped)
+        await decide_item(
+            session, item=row, decision=ProposalDecision.EDITED, text="Kept, in my own words."
+        )
+        await session.commit()
+
+    async with session_factory() as session:
+        row = await _drop_row(session, version_id, dropped)
+        assert row.decision == ProposalDecision.EDITED
+        assert row.included is True
+        assert row.final_text == "Kept, in my own words."
+
+
+async def test_blanket_approval_accepts_a_pending_drop(
+    db_session: AsyncSession, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    """FR-025: an untouched confirm includes every proposal not explicitly
+    rejected — a pending drop among them. Legitimate only because the drop now
+    renders as a decidable entry; the guarantee that it stays excluded is what
+    this pins.
+    """
+    version_id, dropped = await _tailored_with_drop(db_session, session_factory)
+
+    async with session_factory() as session:
+        version = (
+            (
+                await session.execute(
+                    select(ResumeVersion)
+                    .where(ResumeVersion.id == version_id)
+                    .options(selectinload(ResumeVersion.items))
+                )
+            )
+            .unique()
+            .scalar_one()
+        )
+        await approve_version(session, version=version)
+        await session.commit()
+
+    async with session_factory() as session:
+        row = await _drop_row(session, version_id, dropped)
+        assert row.decision == ProposalDecision.ACCEPTED
+        assert row.included is False
 
 
 async def test_an_edit_with_no_text_is_refused(

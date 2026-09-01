@@ -26,12 +26,18 @@ import uuid
 
 import pytest
 import sqlalchemy as sa
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from careerhq.application import export_resume
 from careerhq.application.export import ExportRefused
 from careerhq.application.export_resume import export_version
-from careerhq.application.tailor_resume import create_pending_version
+from careerhq.application.guidelines import StaticGuidelines
+from careerhq.application.tailor_resume import (
+    approve_version,
+    create_pending_version,
+    decide_item,
+    run_tailoring,
+)
 from careerhq.domain.models import (
     ExportedDocument,
     ProposalDecision,
@@ -41,6 +47,8 @@ from careerhq.domain.models import (
     VersionStatus,
 )
 from careerhq.infrastructure import storage
+from tests.integration.test_tailoring_workflow import _draft, _plan, _review
+from tests.support.scripted_seam import ScriptedSeam
 from tests.support.tailoring_fixtures import seed_tailorable
 
 pytestmark = pytest.mark.asyncio
@@ -124,6 +132,75 @@ async def _seed_version(session: AsyncSession, *, sub: str, status: VersionStatu
     # synchronously, which async SQLAlchemy answers with `MissingGreenlet`.
     await session.refresh(version, ["items"])
     return version
+
+
+async def test_a_rejected_drop_reaches_the_exported_document(
+    db_session: AsyncSession, spy: _Spy, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    """The whole chain, end to end: the agent proposes removing a bullet, the
+    owner rejects the removal, and the exported document carries the line.
+
+    The export side alone is already gated (`included=False` leaves the
+    document); this is the other direction — a rejection that restored
+    `included` must actually be honoured by what gets rendered. Each half can
+    pass while the chain is broken only at the column they meet on, which is
+    why this test runs the real run, the real decision, and the real export.
+    """
+    seeded = await seed_tailorable(db_session, sub="export-drop", email="export-drop@example.com")
+    rewritten, dropped = seeded.bullet_ids
+    version = await create_pending_version(db_session, seeded.application)
+    await db_session.commit()
+
+    draft = _draft(rewritten, "Led payments for six years, matching the posting.")
+    draft["items"].append(
+        {
+            "source_item_id": str(dropped),
+            "source_kind": "experience_bullet",
+            "position": 1,
+            "included": False,
+        }
+    )
+    seam = ScriptedSeam(
+        script={
+            "tailor_plan": [_plan()],
+            "tailor_draft": [draft],
+            "tailor_review": [_review(90)],
+        }
+    )
+    async with session_factory() as session:
+        await run_tailoring(
+            session, version_id=version.id, completion=seam, guidelines=StaticGuidelines()
+        )
+        await session.commit()
+
+    async with session_factory() as session:
+        reloaded = (
+            (
+                await session.execute(
+                    sa.select(ResumeVersion)
+                    .where(ResumeVersion.id == version.id)
+                    .options(sa.orm.selectinload(ResumeVersion.items))
+                )
+            )
+            .unique()
+            .scalar_one()
+        )
+        drop_row = next(i for i in reloaded.items if i.source_item_id == dropped)
+        kept_wording = drop_row.original_text
+        await decide_item(session, item=drop_row, decision=ProposalDecision.REJECTED, text=None)
+        await approve_version(session, version=reloaded)
+        await session.commit()
+
+    async with session_factory() as session:
+        await export_version(session, version_id=version.id)
+        await session.commit()
+
+    assert len(spy.rendered) == 1
+    document = spy.rendered[0]
+    lines = [
+        line for section in document.sections for group in section.groups for line in group.lines
+    ]  # type: ignore[attr-defined]
+    assert kept_wording in lines, "the rejected removal must be back in the document"
 
 
 async def _records(session: AsyncSession, version_id: uuid.UUID) -> list[ExportedDocument]:
