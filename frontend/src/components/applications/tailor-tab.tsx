@@ -40,6 +40,7 @@ import {
   type RefusalReason,
   type ResumeVersion,
   type TailoringRun,
+  type VersionItem,
   approveVersion,
   exportVersion,
   submitVersion,
@@ -221,6 +222,12 @@ export function TailorTab({ applicationId }: { applicationId: string }) {
   // Guards every `setState` after an await. Without it, switching applications
   // mid-request lands the previous job's version on the new job's tab.
   const live = useRef(true);
+  // Which item ids entered this version's change list — sticky per version id;
+  // see the comment where it is (re)built below.
+  const membership = useRef<{ versionId: string | null; ids: Set<string> }>({
+    versionId: null,
+    ids: new Set(),
+  });
   useEffect(() => {
     live.current = true;
     return () => {
@@ -455,10 +462,37 @@ export function TailorTab({ applicationId }: { applicationId: string }) {
   // true), at which point the row is again indistinguishable from unchanged —
   // one representation of "no change", the same rule finalisation follows —
   // and it leaves this list.
+  const decidable = (item: VersionItem) => item.proposed_text !== null || !item.included;
+  // **Membership is sticky for the life of this version on screen.** A
+  // rejected drop's stored shape becomes identical to unchanged content, so a
+  // filter over current shape alone would remove the row the instant the
+  // owner clicks Reject — a decision that vanishes from under the click looks
+  // like a glitch, not an answer. The set is rebuilt only when the version id
+  // changes; a retried run reusing the id still surfaces new proposals via
+  // the shape check below.
+  if (membership.current.versionId !== version.id) {
+    membership.current = {
+      versionId: version.id,
+      ids: new Set(version.items.filter(decidable).map((item) => item.id)),
+    };
+  }
   const proposals = version.items.filter(
-    (item) => item.proposed_text !== null || !item.included,
+    (item) => decidable(item) || membership.current.ids.has(item.id),
   );
-  const untouched = version.items.length - proposals.length;
+  // A position-only proposal moved a line in the document. Ordering is
+  // approved at version level (FR-025), so it gets no per-item controls — but
+  // counting it "left unchanged" was a false statement about the resume, so
+  // it is counted as what it is. `displaced_position` is the record that a
+  // proposal arrived; findings exclude the discarded-proposal shape, which
+  // also carries it.
+  const reordered = version.items.filter(
+    (item) =>
+      !decidable(item) &&
+      !membership.current.ids.has(item.id) &&
+      item.displaced_position !== null &&
+      item.findings.length === 0,
+  ).length;
+  const untouched = version.items.length - proposals.length - reordered;
   // Every entry above is decidable — a rewrite and a drop alike — so pending
   // alone is the count the approve note needs (FR-025).
   const undecided = proposals.filter((item) => item.decision === "pending").length;
@@ -626,9 +660,11 @@ export function TailorTab({ applicationId }: { applicationId: string }) {
         ))}
       </ul>
 
-      {untouched > 0 && (
+      {(untouched > 0 || reordered > 0) && (
         <p className="mt-3 text-xs" style={{ color: "var(--faint)" }}>
-          {untouched} item{untouched === 1 ? "" : "s"} left unchanged.
+          {untouched > 0 && `${untouched} item${untouched === 1 ? "" : "s"} left unchanged.`}
+          {untouched > 0 && reordered > 0 && " "}
+          {reordered > 0 && `${reordered} reordered by the agent.`}
         </p>
       )}
 

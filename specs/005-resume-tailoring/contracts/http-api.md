@@ -75,6 +75,15 @@ with no item — `uncovered` (research R9).
 **No `ungrounded` finding ever appears with a surviving `proposed_text`.** The claim was discarded
 before persistence (FR-018); the finding remains as evidence the guardrail ran.
 
+**`findings` and `draft_findings` carry the final review pass only** (PR #28). The version is the
+decision surface, and the last pass re-judged the whole composed resume — a pass-0 finding about
+wording the Reviser has since replaced would sit under the fixed proposal calling it unsupported.
+Earlier passes' findings persist in the database as the audit record; they are not served here.
+
+Each item also carries `displaced_position` — `null` when no proposal arrived, else the master
+position the proposal displaced. It is what lets the interface count a position-only proposal as
+*reordered* rather than "left unchanged".
+
 While `status` is `tailoring` or `reviewing`, `items` is empty and `confidence_score` is null. The
 interface renders progress, not an empty diff (FR-039).
 

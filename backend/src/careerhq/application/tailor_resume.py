@@ -849,6 +849,11 @@ async def run_tailoring(
                 "version_id": str(version_id),
                 "error": type(exc).__name__,
                 "detail": structured if structured else str(exc),
+                # Which task's call raised — billed or not. The per-call rows
+                # cannot say (they record only billed calls), and the E2
+                # monitoring rider needs "draft validation failures" to be a
+                # query, not a heuristic. Railway keeps `extra` fields.
+                "failed_task": recorder.failed_task,
             },
         )
         # The calls that ran were paid for whether or not the run finished.

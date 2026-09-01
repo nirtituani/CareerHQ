@@ -60,6 +60,13 @@ node that "just writes the result" satisfies every other rule here while breakin
 **The severity split runs before any row is written** (FR-018), so a discarded claim has no
 persisted representation to leak from.
 
+**The split is judged on the final review pass's findings only** (`v2-final-pass-severity`, PR #28).
+The Reviewer re-judges the whole composed resume on every pass, so the last pass is a complete
+statement about the draft as it stands: a claim caught on an earlier pass and fixed by revision
+survives as an ordinary proposal, while one still ungrounded at the final pass is re-reported there
+and discarded. Every pass's findings persist regardless — the accumulated history is the audit
+record, and only the discard decision is pass-scoped.
+
 ## O4 — Model choice is a task name, never a model
 
 Nodes pass `task="tailor_draft"`. They never name a model, and escalation is a **different task
