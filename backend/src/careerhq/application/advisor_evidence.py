@@ -137,29 +137,67 @@ def _volume_by_month(applications: Sequence[Application], total: int) -> list[Ev
 
 
 def _time_to_apply(applications: Sequence[Application]) -> list[EvidenceFact]:
+    """Median days from adding a job to applying — and the honest caveat.
+
+    A negative gap is not a fast application: `date_applied` earlier than
+    `date_added` means the two dates are inconsistent, which is common in
+    imported history (JobTracker set them independently). `abs()`-ing or
+    clamping the gap would launder that inconsistency into a plausible-looking
+    number, so instead the median is computed **only over rows whose ordering
+    is coherent**, and the inconsistent rows are surfaced as their own fact —
+    real evidence the advisor can name rather than a hidden data problem.
+    """
     dated = [a for a in applications if a.date_applied is not None]
     if not dated:
         return []
-    gaps = sorted((a.date_applied - a.date_added).days for a in dated)  # type: ignore[operator]
-    days = int(median(gaps))
-    return [
-        EvidenceFact(
-            fact_id="timing.median_days_to_apply.global",
-            kind="timing",
-            scope_kind="global",
-            numerator=days,
-            denominator=len(dated),
-            value=(
-                f"median {days} days from adding a job to applying, "
-                f"over the {len(dated)} applications carrying both dates"
-            ),
-            record_ids=_sorted_ids(dated),
-            basis=(
-                "median of (date_applied - date_added) in days; numerator is the median, "
-                "denominator the sample size"
-            ),
+    coherent = [a for a in dated if a.date_applied >= a.date_added]  # type: ignore[operator]
+    inconsistent = [a for a in dated if a.date_applied < a.date_added]  # type: ignore[operator]
+    facts: list[EvidenceFact] = []
+
+    if coherent:
+        days = int(median(sorted((a.date_applied - a.date_added).days for a in coherent)))  # type: ignore[operator]
+        facts.append(
+            EvidenceFact(
+                fact_id="timing.median_days_to_apply.global",
+                kind="timing",
+                scope_kind="global",
+                numerator=days,
+                denominator=len(coherent),
+                value=(
+                    f"median {days} days from adding a job to applying, over the "
+                    f"{len(coherent)} applications whose dates are in a coherent order"
+                ),
+                record_ids=_sorted_ids(coherent),
+                basis=(
+                    "median of (date_applied - date_added) in days over applications where "
+                    "date_applied is on or after date_added; numerator is the median, "
+                    "denominator the sample size"
+                ),
+            )
         )
-    ]
+
+    if inconsistent:
+        facts.append(
+            EvidenceFact(
+                fact_id="timing.inconsistent_dates.global",
+                kind="timing",
+                scope_kind="global",
+                numerator=len(inconsistent),
+                denominator=len(dated),
+                value=(
+                    f"{len(inconsistent)} of {len(dated)} applications carrying both dates "
+                    "have an application date recorded before the date they were added — an "
+                    "imported inconsistency, so their time-to-apply is not counted"
+                ),
+                record_ids=_sorted_ids(inconsistent),
+                basis=(
+                    "applications where date_applied < date_added; excluded from the "
+                    "time-to-apply median because no coherent duration can be measured"
+                ),
+            )
+        )
+
+    return facts
 
 
 def _self_rating(applications: Sequence[Application], total: int) -> list[EvidenceFact]:

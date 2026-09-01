@@ -252,3 +252,45 @@ def test_tier2_facts_count_through_the_grouping_and_respect_verdicts() -> None:
     score = by_id["tier2.match_score.g_backend"]
     assert score.numerator == 70, "mean of 60/70/80, precomputed"
     assert score.denominator == 3
+
+
+# -- T045 regression: imported dates can be inconsistent (date_applied < date_added) --
+
+
+def test_inconsistent_dates_do_not_crash_and_surface_as_their_own_fact() -> None:
+    """Real imported history has applications whose date_applied precedes
+    date_added (JobTracker set the two independently). A negative 'days to
+    apply' is not a duration — it means the dates are inconsistent. The pack
+    must build, compute the median only over coherent rows, and surface the
+    inconsistent ones as evidence rather than hiding them."""
+    coherent = _application(added_days_ago=40, applied_days_ago=35)  # applied after added
+    backwards_1 = _application(added_days_ago=10, applied_days_ago=30)  # applied BEFORE added
+    backwards_2 = _application(added_days_ago=5, applied_days_ago=20)
+    applications = [coherent, backwards_1, backwards_2]
+
+    pack = build_evidence_pack(applications=applications, analyses=[], now=NOW)
+
+    median = _fact(pack, "timing.median_days_to_apply.global")
+    assert median.numerator >= 0, "the median is computed over coherent rows only"
+    assert median.numerator == 5 and median.denominator == 1
+    assert set(median.record_ids) == {coherent.id}
+
+    flagged = _fact(pack, "timing.inconsistent_dates.global")
+    assert flagged.numerator == 2, "both backwards rows are surfaced"
+    assert flagged.denominator == 3, "denominator is all rows carrying both dates"
+    assert set(flagged.record_ids) == {backwards_1.id, backwards_2.id}
+    assert "before" in flagged.value.lower()
+
+
+def test_all_dates_inconsistent_yields_only_the_data_quality_fact() -> None:
+    """The real account's shape: nearly every row is backwards. No median is
+    emitted (nothing coherent to measure), only the honest inconsistency fact."""
+    applications = [
+        _application(added_days_ago=5, applied_days_ago=30),
+        _application(added_days_ago=3, applied_days_ago=25),
+    ]
+    pack = build_evidence_pack(applications=applications, analyses=[], now=NOW)
+    ids = {fact.fact_id for fact in pack.facts}
+    assert "timing.median_days_to_apply.global" not in ids
+    assert "timing.inconsistent_dates.global" in ids
+    assert _fact(pack, "timing.inconsistent_dates.global").numerator == 2
