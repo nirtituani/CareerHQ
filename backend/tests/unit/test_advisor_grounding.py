@@ -500,3 +500,31 @@ def test_b5_scope_shapes_are_repaired_or_discarded_never_crashed() -> None:
     assert any(d.gate == "scope" for d in outcome.discards), (
         "the unrepairable shape is discarded with the gate named"
     )
+
+
+def test_b5b_repair_does_not_orphan_a_supersede() -> None:
+    """PR-26 final-review blocker: the scope repair copies the proposal, and
+    supersede targets are matched by object identity — the combined shape
+    (supersede + repairable global scope) must keep the link, not downgrade a
+    valid supersede while still creating its replacement."""
+    subject = _memory(kind="k1")
+    replacement = _proposal(kind="k1", scope_kind="global", scope_value=None).model_copy(
+        update={"scope_value": "stray — repairable"}
+    )
+    outcome = _gate(
+        AdvisorReasoning(
+            created=[replacement],
+            dispositions=[
+                MemoryDispositionOp(memory_id=subject.id, action="supersede", superseding_index=0)
+            ],
+        ),
+        _pack(_fact()),
+        active=[subject],
+    )
+    disposition = outcome.dispositions[0]
+    assert str(disposition.action) == "superseded", (
+        "a repairable shape must not orphan the supersede"
+    )
+    assert disposition.superseding_create == 0
+    assert len(outcome.creates) == 1
+    assert outcome.creates[0].proposal.scope_value is None, "and the repair still applies"

@@ -77,6 +77,11 @@ class DiscardRecord:
 @dataclass(frozen=True, slots=True)
 class PlannedCreate:
     proposal: ProposedMemory
+    #: The proposal as the model stated it, before any gate repair. Supersede
+    #: targets and cap protection match by **this** object's identity — the
+    #: scope repair copies `proposal`, and matching on the copy silently
+    #: orphaned a valid supersede (PR #26 final-review blocker, reproduced).
+    original: ProposedMemory
     #: The gate's verdict, which may override the model's (the floor forces
     #: tentative; it never refuses for smallness alone).
     tentative: bool
@@ -164,7 +169,7 @@ def apply_gate(
     #    downgraded to left_open FIRST, so its memory is back in the staying
     #    count BEFORE the cap is evaluated — repairing after the cap let the
     #    active set reach 26;
-    surviving_proposals = {id(planned.proposal) for planned in surviving}
+    surviving_proposals = {id(planned.original) for planned in surviving}
     dispositions = _repair_orphaned_supersedes(dispositions, surviving_proposals, run_id)
     # 2. the cap then admits creates against the post-repair staying count,
     #    and never drops a supersede's replacement — each replacement is paired
@@ -200,6 +205,7 @@ def _gate_one_create(
     outcome: GateOutcome,
     run_id: uuid.UUID,
 ) -> PlannedCreate | None:
+    original = proposal
     # 0 (B5b). `(scope_kind = 'global') = (scope_value IS NULL)` is a DB
     # CHECK. A global claim with a stray value is repairable — drop the value;
     # a scoped claim with no value names no subject and is discarded. Neither
@@ -274,7 +280,12 @@ def _gate_one_create(
             return None
         recreates = memory.id
 
-    return PlannedCreate(proposal=proposal, tentative=tentative, recreates_dismissed_id=recreates)
+    return PlannedCreate(
+        proposal=proposal,
+        original=original,
+        tentative=tentative,
+        recreates_dismissed_id=recreates,
+    )
 
 
 def _allowed_numerals(cited: list[EvidenceFact]) -> set[str]:
@@ -434,8 +445,8 @@ def _admit_creates(
     if len(surviving) <= room:
         return surviving
 
-    replacements = [planned for planned in surviving if id(planned.proposal) in protected]
-    optional = [planned for planned in surviving if id(planned.proposal) not in protected]
+    replacements = [planned for planned in surviving if id(planned.original) in protected]
+    optional = [planned for planned in surviving if id(planned.original) not in protected]
     optional_room = max(room - len(replacements), 0)
     ranked = sorted(optional, key=lambda planned: planned.proposal.priority or -1, reverse=True)
     for planned in ranked[optional_room:]:
@@ -496,7 +507,7 @@ def _resolve_superseding_indices(
     """Object -> index, against the **final** creates list and nothing
     earlier. Every remaining supersede's target is guaranteed present: orphans
     were downgraded and replacements are cap-protected."""
-    position = {id(planned.proposal): index for index, planned in enumerate(creates)}
+    position = {id(planned.original): index for index, planned in enumerate(creates)}
     resolved: list[PlannedDisposition] = []
     for planned in dispositions:
         if planned.action == DispositionAction.SUPERSEDED:
