@@ -43,8 +43,8 @@ planned work is never mistaken for shipped work.
 |---|---|
 | **Live at** | **https://frontend-production-02ac.up.railway.app** |
 | **Built and verified** | Slices 001–008 — platform, deployment, data foundation, match analysis, resume tailoring, retrieval/export/submission, evaluation, company research. **527 / 527 tasks** across the eight slices |
-| **Not built** | Slice 009 — Career Advisor (planned, droppable). Slice 008's **Layer 2** role research is built and tested but has **no route and no UI** |
-| **Next** | Slice 009, or wiring Layer 2 — neither is scheduled |
+| **Not built** | Nothing planned remains unbuilt: Slice 009 is implemented on branch `009-career-advisor` (unmerged). Slice 008's **Layer 2** role research remains without a route or UI |
+| **Next** | Merge and deploy of Slice 009, pending review |
 | **Evidence** | **1,232 backend tests at 87.52% coverage** (gate 80%), **207 frontend component tests** across 14 files, 6 Playwright smoke tests, CI green on `main` |
 | **Verified how** | Locally: full quickstart from a fresh clone on wiped volumes. **On the deployed system**: a real Google sign-in taking the database from `0\|0` to `1\|1`; a real CV imported and confirmed non-fixture; migration `0005` applied with constraints C2 and C3 present and no `rejected` column anywhere; a real job posting read end to end through the deployed extraction path — see [`specs/002-deployment/observations.md`](../specs/002-deployment/observations.md) |
 
@@ -197,7 +197,7 @@ map plus honest status.
 | **Resume Optimizer** — the flagship | Yes | 005 (workflow), 006 (RAG, PDF) | ✅ **Built and deployed** |
 | **Reviewer / evaluation layer** | Yes | 005 (the loop), 007 (the metrics) | ✅ **Built** — self-critique in 005, metrics and LLM-as-judge in 007 |
 | Company Research | Yes — web search over plain HTTPS (008); a research provider behind a seam (010) | 008, 010 | ✅ **Built** — 008's Layer 1 deployed; 010 makes research role-aware and keeps 008's pipeline as its fallback (merged as PR #22 and deployed) |
-| Career Advisor | Yes | 009 | 📋 Planned |
+| Career Advisor | Yes | 009 | 🔨 **Built on branch `009-career-advisor`, unmerged.** An agent-managed career memory: deterministic evidence pack, LLM reasoning over prior memories, create/confirm/supersede/retire with lineage, grounding gate discarding unverifiable claims pre-persistence |
 | Interview Coach | Yes | — | 💤 Deferred (stretch) |
 | Application Workflow Agent | Yes | — | 💤 Deferred (stretch) |
 | Resume Builder | No | — | 🚫 Future (§2.5) |
@@ -718,7 +718,7 @@ identified gaps demonstrably narrow over time.
 | 006 | Document & Retrieval | RAG over resume guidelines, PDF export, submit-and-lock | 005 | ✅ **Complete** — 57/57, deployed. **SC-008 (006) missed at 3.22%** against a ≤2% threshold; the target was not adjusted |
 | 007 | Evaluation & Benchmark | Benchmark set, metrics, LLM-as-judge, regression runs | 006 | ✅ **Complete** — 50/50. Paid benchmark pass run at **$4.925403** of a $10 ceiling |
 | 008 | Company Research | Search → fetch → synthesise, citation-preserving snapshots | 003 | ✅ **Complete** and merged. Web search over **plain HTTPS, not MCP** — argued in `tavily_search.py`. Its **primary path is superseded by 010**, which keeps this pipeline as the configured fallback; Layer 2 (role research) never had a route, and 010's migration `0020` reshaped its table |
-| 009 | Career Advisor | Quantified skill gaps over history | 003, 004 | 📋 Planned — droppable |
+| 009 | Career Advisor | Agent-managed career memory over history | 003, 004 | 🔨 **Built on branch `009-career-advisor`**; 45/46 tasks (deploy pending review). Verified live: 3 real runs, lifecycle supersession, dismissal held against a real model |
 | 010 | Role-Aware Research | ResearchProvider seam, application-scoped and role-aware, sections-first UI | 008 | ✅ **Complete** — 40/40 tasks, merged as PR #22 and deployed. SC-001 measured on 5 real applications (4 correct, 1 honest-uncertain, 0 wrong) |
 
 **Slices 001–007 are the core** and together satisfy every project requirement. 008 and 009

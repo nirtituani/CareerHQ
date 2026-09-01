@@ -12,6 +12,67 @@
 > **Status markers below were true when written.** Where a section describes a state that has
 > since moved on, it is kept rather than rewritten — the reasoning is why it is worth reading.
 
+> ## Slice 009 — Career Advisor: built on branch `009-career-advisor`, unmerged
+>
+> **2026-09-01, awaiting review before any merge, push, PR or deploy — stopped there by
+> instruction.** The full speckit cycle (`specs/009-career-advisor/`) ran first — specify,
+> five clarifications, plan (research D1–D15), 46 tasks, two analyze passes (pass 1 found a
+> HIGH: FR-017 had no boundary gate; all eight findings remediated; pass 2 clean at 29/29
+> coverage) — and **45/46 tasks are done; T045 (deploy) is open by instruction, not
+> omission.**
+>
+> **What it is**: agent-managed career memory, not an analytics page. A run computes a
+> deterministic evidence pack (the model is never the source of a number), reasons over the
+> facts **plus its own prior memories**, and must disposition every active memory —
+> confirm / supersede / retire / leave-open-with-reason; an omission fails the run.
+> Insert-only rows with supersession lineage; a `memory_dispositions` journal makes the
+> lifecycle queryable; a before_update listener freezes memory content (it caught the
+> pipeline itself setting `supersedes_id` post-flush — creates are born with lineage now).
+> The grounding gate discards claims whose digits are not in their cited facts, forces
+> `tentative` under the floor of 5, enforces the cap of 25 post-disposition (G4), and holds
+> dismissals in two layers. T046 whitelists every module allowed to touch the three advisor
+> classes.
+>
+> **Verified live (2026-09-01, local Docker, real Sonnet)**: three runs at 41/40/40 s and
+> $0.0475/$0.0445/$0.0237; the gate discarded a real model claim twice (a digit not in the
+> cited fact — recorded, `ops_discarded=1`); run 2 superseded all four memories with
+> lineage ("4 of 10 (40%) rejected" → "6 of 12 (50%)"); a dismissed claim stayed
+> dismissed through a real re-run; a broken-key run failed honestly with the memory-set
+> hash byte-identical. Scratch user deleted; baseline counts (24/33/0/0) matched exactly.
+> Gates: backend **1,349 passed, 87.83%** coverage, ruff/mypy clean; frontend **238
+> passed**, typecheck/lint/build clean. The `/advisor` nav entry lost its *Soon* marker in
+> the same slice that built the page.
+>
+> **A full `/code-review high` ran against the branch (2026-09-01) and its five
+> blockers are fixed** — each reproduced by execution first, then converted to a
+> watched-failing regression test: B1 supersede→create links resolved by object identity
+> after the final creates list (a cap drop had re-pointed lineage); B2 orphan repair now
+> runs before the cap (the active set had reached 26); B3 the pending→ready transition is
+> a compare-and-set, so a reaped run stays failed and the zombie's work rolls back; B4 the
+> applying transaction re-reads prior statuses locked and skips memories that went
+> terminal, so a mid-run dismissal's `user_dismissed` marker survives; B5 the gate
+> normalises a stray reason on confirm/supersede and repairs-or-discards malformed scope
+> shapes instead of letting either fail the billed run on a DB CHECK.
+>
+> **The review's non-blocking findings are deliberately NOT fixed — they are the open
+> follow-up list**: lost-race 409 surfacing as 500; a stranded pending run disabling the
+> only button that reaps it; priority-0 falsy-coerced to unranked in ranking; dismissal's
+> deterministic layer keyed on exact model-chosen (kind, scope) strings; tentative→active
+> promotion living outside the gate and invisible in ops accounting; reaped/rolled-back
+> runs recording no spend; a skipped supersede's replacement still born with lineage to
+> the dismissed memory; frontend unhandled rejections on dismiss/lineage; five
+> query-shape efficiency items (DISTINCT ON for last dispositions, narrow `_load_inputs`,
+> lazy dispositions on the poll, grouped history counts, recursive-CTE lineage); and the
+> duplication set (`is_abandoned` 4th copy, `_iso` 3rd, `formatDate` 5th, twin except
+> blocks, seam guard, `_ACTIVE_STATUSES` literals, dead `history` parameter,
+> `is_fixture` migration default drift).
+>
+> **Worth keeping**: the content-coverage gate caught `input_tokens`/`output_tokens`
+> stored-but-never-shown on its first run — the display-bug class the suite had never
+> caught before. And an unbilled failure records **no** usage on purpose: cost 0.000000
+> with a rejected key is correct (auth refused before billing), where inventing a
+> zero-token entry would miscount calls in the other direction.
+
 > ## Slice 010 — Role-Aware Research: merged and deployed
 >
 > **2026-08-31 — merged as PR #22 and deployed.** *(This section was written while the slice was

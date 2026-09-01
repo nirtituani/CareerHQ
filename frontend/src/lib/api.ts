@@ -849,3 +849,129 @@ export function startResearch(applicationId: string): Promise<ResearchStarted> {
 export function getResearch(applicationId: string): Promise<ResearchState> {
   return request<ResearchState>(`/api/applications/${applicationId}/research`);
 }
+
+// ---------------------------------------------------------------------------
+// Career Advisor (slice 009)
+// ---------------------------------------------------------------------------
+
+export type MemoryScope = { kind: string; value: string | null };
+
+export type MemoryStatus = "active" | "tentative" | "superseded" | "retired";
+
+export type DispositionAction =
+  | "created"
+  | "confirmed"
+  | "superseded"
+  | "retired"
+  | "left_open";
+
+export type EvidenceFact = {
+  fact_id: string;
+  kind: string;
+  scope_kind: string;
+  scope_value: string | null;
+  numerator: number;
+  denominator: number;
+  value: string;
+  date_range: [string, string] | null;
+  record_ids: string[];
+  basis: string;
+};
+
+/** Frozen at the moment the claim was made — a record of past justification,
+ *  never a live view. The current numbers come from a new run, not from here. */
+export type MemoryEvidence = {
+  as_of: string;
+  rules_version: string;
+  facts: EvidenceFact[];
+  groupings: { group_id: string; label: string; group_kind: string; member_ids: string[] }[];
+};
+
+export type MemoryDisposition = {
+  action: DispositionAction;
+  run_id: string;
+  reason: string | null;
+  evidence_delta: { facts: EvidenceFact[] } | null;
+};
+
+export type CareerMemory = {
+  id: string;
+  claim: string;
+  kind: string;
+  scope: MemoryScope;
+  status: MemoryStatus;
+  priority: number | null;
+  priority_reason: string | null;
+  evidence: MemoryEvidence;
+  created_at: string;
+  last_confirmed_at: string;
+  supersedes_id: string | null;
+  recreates_dismissed_id: string | null;
+  retired_reason: string | null;
+  last_disposition: MemoryDisposition | null;
+};
+
+export type AdvisorRun = {
+  id: string;
+  status: "pending" | "ready" | "failed";
+  error: string | null;
+  rules_version: string;
+  /** proposed/applied/discarded — how found-nothing and discarded-everything
+   *  stay different outcomes (FR-009). Null while pending. */
+  ops: { proposed: number; applied: number; discarded: number } | null;
+  models: { grouping: string | null; reason: string | null };
+  cost: string | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  is_fixture: boolean;
+  created_at: string;
+  completed_at: string | null;
+  dispositions?: { memory_id: string; action: DispositionAction; reason: string | null; evidence_delta: { facts: EvidenceFact[] } | null }[];
+};
+
+/** FR-011's honest denominators — the page renders the insufficient-data
+ *  answer from this, spending nothing. */
+export type AdvisorCoverage = {
+  applications: number;
+  analysed: number;
+  message: string;
+};
+
+export type AdvisorState = {
+  memories: CareerMemory[];
+  coverage: AdvisorCoverage;
+  latest_run: AdvisorRun | null;
+  history_counts: { superseded: number; retired: number };
+};
+
+export function getAdvisor(): Promise<AdvisorState> {
+  return request<AdvisorState>("/api/advisor");
+}
+
+/** 409s while a run is in flight, and when there is no history at all. */
+export function startAdvisorRun(): Promise<{ state: string; run: AdvisorRun }> {
+  return request<{ state: string; run: AdvisorRun }>("/api/advisor/runs", { method: "POST" });
+}
+
+export function getAdvisorRun(runId: string): Promise<AdvisorRun> {
+  return request<AdvisorRun>(`/api/advisor/runs/${runId}`);
+}
+
+export type MemoryDetail = {
+  memory: CareerMemory;
+  /** The supersession chain, nearest predecessor first. */
+  lineage: CareerMemory[];
+  dispositions: (MemoryDisposition & { created_at: string })[];
+};
+
+export function getMemory(memoryId: string): Promise<MemoryDetail> {
+  return request<MemoryDetail>(`/api/advisor/memories/${memoryId}`);
+}
+
+/** Retires the memory with "dismissed by you" recorded; later runs see the
+ *  dismissal and will not recreate the claim on unchanged evidence. */
+export function dismissMemory(memoryId: string): Promise<{ memory: CareerMemory }> {
+  return request<{ memory: CareerMemory }>(`/api/advisor/memories/${memoryId}/dismiss`, {
+    method: "POST",
+  });
+}
