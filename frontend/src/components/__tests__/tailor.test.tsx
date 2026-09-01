@@ -379,6 +379,31 @@ describe("a proposed drop", () => {
     expect(screen.getByTestId("approve-note")).toHaveTextContent("1 undecided will be accepted");
   });
 
+  it("shows the owner's words after a drop is edited", async () => {
+    const theDrop = drop();
+    mocked.decideItem.mockResolvedValue(
+      item({
+        id: theDrop.id,
+        proposed_text: null,
+        included: true,
+        decision: "edited",
+        final_text: "Kept, in my own words.",
+      }),
+    );
+    await renderTab(version({ items: [theDrop] }));
+
+    await userEvent.click(screen.getByRole("button", { name: /^edit$/i }));
+    await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+    // The sticky row renders through the unchanged branch, and the document
+    // will carry `final_text` — showing `original_text` here would display
+    // wording the export no longer contains.
+    const row = screen.getByTestId("diff-item");
+    expect(within(row).getByTestId("decision-label")).toHaveTextContent("Using your words");
+    expect(row.textContent).toContain("Kept, in my own words.");
+    expect(row.textContent).not.toContain("Led the payments platform team for six years.");
+  });
+
   it("stays listed after the owner rejects the removal", async () => {
     const theDrop = drop();
     mocked.decideItem.mockResolvedValue(
