@@ -449,11 +449,19 @@ export function TailorTab({ applicationId }: { applicationId: string }) {
   // wording already stands, there is nothing to decide, and the old
   // "Withdrawn before saving" entry read as a verdict on the owner's own
   // bullet. The finding stays in the run record; it just is not an entry here.
-  const proposals = version.items.filter((item) => item.proposed_text !== null);
+  // A drop (`included: false`) is a proposed change to existing content —
+  // FR-024 makes it per-item decidable, so it renders with the same controls
+  // as a rewrite. Rejecting one restores the line (`included` comes back
+  // true), at which point the row is again indistinguishable from unchanged —
+  // one representation of "no change", the same rule finalisation follows —
+  // and it leaves this list.
+  const proposals = version.items.filter(
+    (item) => item.proposed_text !== null || !item.included,
+  );
   const untouched = version.items.length - proposals.length;
-  const undecided = proposals.filter(
-    (item) => item.decision === "pending" && item.proposed_text !== null,
-  ).length;
+  // Every entry above is decidable — a rewrite and a drop alike — so pending
+  // alone is the count the approve note needs (FR-025).
+  const undecided = proposals.filter((item) => item.decision === "pending").length;
 
   return (
     <div className="py-6" data-testid="tailor-diff" data-status={version.status}>
