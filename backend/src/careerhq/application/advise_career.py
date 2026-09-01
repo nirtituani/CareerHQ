@@ -27,7 +27,7 @@ import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from careerhq.application.advisor_evidence import build_evidence_pack, tier2_facts
@@ -330,8 +330,35 @@ async def _apply_outcome(
     if created_rows:
         await session.flush()
 
+    # B4 (reproduced): the prior set is a pre-run snapshot, and a user
+    # dismissal can land while the provider call is in flight. Re-read the
+    # rows' statuses in THIS transaction, locked, and skip any memory that
+    # went terminal — a background task must never overwrite `user_dismissed`
+    # (FR-021's marker) or resurrect a terminal row. The user always wins.
+    fresh_status: dict[uuid.UUID, str] = {}
+    if prior_by_id:
+        rows = await session.execute(
+            select(CareerMemory.id, CareerMemory.status)
+            .where(CareerMemory.id.in_(list(prior_by_id)))
+            .with_for_update()
+        )
+        fresh_status = {row.id: str(row.status) for row in rows}
+
     for disposition in outcome.dispositions:
         memory = prior_by_id[disposition.memory_id]
+        if fresh_status.get(disposition.memory_id) not in ("active", "tentative"):
+            logger.info(
+                "advisor disposition skipped",
+                extra={
+                    "run_id": str(run.id),
+                    "gate": "stale_memory",
+                    "detail": (
+                        f"{disposition.memory_id} went terminal while the run was in "
+                        "flight; its disposition is discarded"
+                    ),
+                },
+            )
+            continue
         if disposition.action == DispositionAction.CONFIRMED:
             memory.last_confirmed_at = now
             # A tentative memory whose fresh confirmation clears the floor is
@@ -431,6 +458,25 @@ async def run_advisor(
         outcome = apply_gate(
             result.value, pack=pack, active=prior, dismissed=dismissed, run_id=run.id
         )
+
+        # B3 (reproduced): claim the transition atomically BEFORE writing
+        # anything. A run reaped `failed` while this task was still alive must
+        # stay failed — the entry-time pending check is stale by now, and an
+        # unconditional write resurrected a terminal row and interleaved two
+        # runs' memory writes. rowcount 0 means someone else ended this run:
+        # roll back and discard the zombie's work entirely.
+        claimed = await session.execute(
+            update(AdvisorRun)
+            .where(AdvisorRun.id == run.id, AdvisorRun.status == AdvisorRunStatus.PENDING)
+            .values(status=AdvisorRunStatus.READY)
+        )
+        if getattr(claimed, "rowcount", 0) != 1:
+            logger.warning(
+                "advisor run went terminal while executing; discarding its work",
+                extra={"run_id": str(run.id)},
+            )
+            await session.rollback()
+            return
 
         await _apply_outcome(session, run, outcome, pack, {m.id: m for m in prior}, now)
 
