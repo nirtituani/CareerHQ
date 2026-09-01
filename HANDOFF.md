@@ -43,6 +43,30 @@
 > passed**, typecheck/lint/build clean. The `/advisor` nav entry lost its *Soon* marker in
 > the same slice that built the page.
 >
+> **A full `/code-review high` ran against the branch (2026-09-01) and its five
+> blockers are fixed** — each reproduced by execution first, then converted to a
+> watched-failing regression test: B1 supersede→create links resolved by object identity
+> after the final creates list (a cap drop had re-pointed lineage); B2 orphan repair now
+> runs before the cap (the active set had reached 26); B3 the pending→ready transition is
+> a compare-and-set, so a reaped run stays failed and the zombie's work rolls back; B4 the
+> applying transaction re-reads prior statuses locked and skips memories that went
+> terminal, so a mid-run dismissal's `user_dismissed` marker survives; B5 the gate
+> normalises a stray reason on confirm/supersede and repairs-or-discards malformed scope
+> shapes instead of letting either fail the billed run on a DB CHECK.
+>
+> **The review's non-blocking findings are deliberately NOT fixed — they are the open
+> follow-up list**: lost-race 409 surfacing as 500; a stranded pending run disabling the
+> only button that reaps it; priority-0 falsy-coerced to unranked in ranking; dismissal's
+> deterministic layer keyed on exact model-chosen (kind, scope) strings; tentative→active
+> promotion living outside the gate and invisible in ops accounting; reaped/rolled-back
+> runs recording no spend; a skipped supersede's replacement still born with lineage to
+> the dismissed memory; frontend unhandled rejections on dismiss/lineage; five
+> query-shape efficiency items (DISTINCT ON for last dispositions, narrow `_load_inputs`,
+> lazy dispositions on the poll, grouped history counts, recursive-CTE lineage); and the
+> duplication set (`is_abandoned` 4th copy, `_iso` 3rd, `formatDate` 5th, twin except
+> blocks, seam guard, `_ACTIVE_STATUSES` literals, dead `history` parameter,
+> `is_fixture` migration default drift).
+>
 > **Worth keeping**: the content-coverage gate caught `input_tokens`/`output_tokens`
 > stored-but-never-shown on its first run — the display-bug class the suite had never
 > caught before. And an unbilled failure records **no** usage on purpose: cost 0.000000

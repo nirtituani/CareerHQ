@@ -392,3 +392,111 @@ def test_an_id_in_two_groups_of_one_kind_keeps_only_the_first(
     surviving, dropped = validate_grouping(proposal, known_ids={shared, other}, run_id=uuid.uuid4())
     assert [group.group_id for group in surviving] == ["g1"]
     assert dropped == 1
+
+
+# -- B1/B2/B5 regressions (code review 2026-09-01, executed reproductions) ---
+
+
+def test_b1_a_cap_drop_cannot_repoint_or_lose_a_supersede() -> None:
+    """B1: the supersede->create link must survive the cap filter. 24 confirms
+    + 1 supersede at the cap; creates [low-priority unrelated, replacement].
+    The cap admits one create — it must be the replacement, still linked."""
+    actives = [_memory(kind=f"k{i}") for i in range(24)]
+    subject = _memory(kind="subject")
+    unrelated = _proposal(kind="unrelated_a", priority=10)
+    replacement = _proposal(kind="replacement_b", priority=90)
+    dispositions = [
+        MemoryDispositionOp(
+            memory_id=m.id, action="confirm", fresh_fact_ids=["outcome.rejection_rate.global"]
+        )
+        for m in actives
+    ]
+    dispositions.append(
+        MemoryDispositionOp(memory_id=subject.id, action="supersede", superseding_index=1)
+    )
+    outcome = _gate(
+        AdvisorReasoning(created=[unrelated, replacement], dispositions=dispositions),
+        _pack(_fact()),
+        active=[*actives, subject],
+    )
+    sup = next(d for d in outcome.dispositions if d.memory_id == subject.id)
+    assert str(sup.action) == "superseded", "a valid supersede must not be downgraded by the cap"
+    assert sup.superseding_create is not None
+    assert outcome.creates[sup.superseding_create].proposal.kind == "replacement_b", (
+        "the link must resolve to the replacement, never a shifted neighbour"
+    )
+
+
+def test_b2_an_orphaned_supersede_cannot_breach_the_cap() -> None:
+    """B2: at 25 active, a supersede whose replacement was discarded returns
+    its memory to the active set — the cap must be evaluated against that,
+    ending at <= 25, not 26."""
+    actives = [_memory(kind=f"c{i}") for i in range(24)]
+    subject = _memory(kind="subject8")
+    replacement = _proposal(
+        kind="replacement_r", priority=50, claim="17 of 99 fabricated"
+    )  # fails numerals
+    newcomer = _proposal(kind="new_n", priority=40)
+    dispositions = [
+        MemoryDispositionOp(
+            memory_id=m.id, action="confirm", fresh_fact_ids=["outcome.rejection_rate.global"]
+        )
+        for m in actives
+    ]
+    dispositions.append(
+        MemoryDispositionOp(memory_id=subject.id, action="supersede", superseding_index=0)
+    )
+    outcome = _gate(
+        AdvisorReasoning(created=[replacement, newcomer], dispositions=dispositions),
+        _pack(_fact()),
+        active=[*actives, subject],
+    )
+    subject_action = next(d for d in outcome.dispositions if d.memory_id == subject.id).action
+    staying = sum(1 for d in outcome.dispositions if str(d.action) in ("confirmed", "left_open"))
+    final_active = staying + len(outcome.creates)
+    assert final_active <= ACTIVE_MEMORY_CAP, (
+        f"{final_active} active after the run (subject was {subject_action}) — FR-016a breached"
+    )
+
+
+def test_b5_a_stray_reason_on_confirm_is_normalised_not_fatal() -> None:
+    """B5a: models routinely justify optional fields; a reason on confirm or
+    supersede must be absorbed by the gate, never reach
+    ck_memory_disposition_reason and fail the billed run."""
+    active = [_memory()]
+    reasoning = AdvisorReasoning(
+        dispositions=[
+            MemoryDispositionOp(
+                memory_id=active[0].id,
+                action="confirm",
+                reason="looks fine to me",
+                fresh_fact_ids=["outcome.rejection_rate.global"],
+            )
+        ],
+        nothing_found_reason="n",
+    )
+    outcome = _gate(reasoning, _pack(_fact()), active=active)
+    assert outcome.dispositions[0].reason is None, (
+        "confirmed/superseded rows must carry NULL reason — the DB CHECK is a biconditional"
+    )
+
+
+def test_b5_scope_shapes_are_repaired_or_discarded_never_crashed() -> None:
+    """B5b: (scope_kind='global') = (scope_value IS NULL) is a DB CHECK. A
+    global claim with a stray value is repairable (drop the value); a scoped
+    claim with no value is not (discard, recorded) — neither may reach the
+    constraint and destroy the run."""
+    global_with_value = _proposal(kind="g1", scope_kind="global", scope_value=None).model_copy(
+        update={"scope_value": "AWS"}
+    )
+    scoped_without_value = _proposal(kind="g2", scope_kind="skill", scope_value=None)
+    outcome = _gate(
+        AdvisorReasoning(created=[global_with_value, scoped_without_value]),
+        _pack(_fact()),
+    )
+    assert len(outcome.creates) == 1
+    kept = outcome.creates[0].proposal
+    assert kept.kind == "g1" and kept.scope_value is None, "the stray value is dropped"
+    assert any(d.gate == "scope" for d in outcome.discards), (
+        "the unrepairable shape is discarded with the gate named"
+    )

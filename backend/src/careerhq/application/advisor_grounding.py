@@ -60,11 +60,6 @@ _ACTION_TO_RECORD: dict[str, DispositionAction] = {
     "leave_open": DispositionAction.LEFT_OPEN,
 }
 
-#: Actions after which the memory still counts toward the active set — the
-#: G4 evaluation order reads the cap against this, not against the
-#: pre-disposition set.
-_STAYING_ACTIONS = frozenset({"confirm", "leave_open"})
-
 
 class DispositionDefect(Exception):
     """FR-013 violated: the run's dispositions do not cover the active set
@@ -95,8 +90,14 @@ class PlannedDisposition:
     reason: str | None
     evidence_delta: dict[str, Any] | None
     #: Which surviving create replaces this memory, for `superseded` only —
-    #: an index into `GateOutcome.creates`.
+    #: an index into `GateOutcome.creates`. **Resolved last**, after the final
+    #: creates list is fixed: an index computed against a list the cap later
+    #: mutates silently re-points lineage at a shifted neighbour (B1, found in
+    #: review and reproduced).
     superseding_create: int | None = None
+    #: The replacement *proposal object*, tracked until resolution — object
+    #: identity survives list mutation where a position does not.
+    superseding_target: ProposedMemory | None = None
 
 
 @dataclass(slots=True)
@@ -156,11 +157,33 @@ def apply_gate(
             surviving.append(planned)
 
     surviving = _reconcile_subjects(surviving, outcome, run_id)
-    dispositions, staying = _validate_dispositions(
-        reasoning, active, facts_by_id, surviving, outcome, run_id
+    dispositions = _validate_dispositions(reasoning, active, facts_by_id, outcome, run_id)
+
+    # Order matters, and each step feeds the next (B1/B2, both reproduced):
+    # 1. a supersede whose replacement was discarded by the creation gates is
+    #    downgraded to left_open FIRST, so its memory is back in the staying
+    #    count BEFORE the cap is evaluated — repairing after the cap let the
+    #    active set reach 26;
+    surviving_proposals = {id(planned.proposal) for planned in surviving}
+    dispositions = _repair_orphaned_supersedes(dispositions, surviving_proposals, run_id)
+    # 2. the cap then admits creates against the post-repair staying count,
+    #    and never drops a supersede's replacement — each replacement is paired
+    #    with a departure already excluded from staying, so protecting them
+    #    cannot breach the cap;
+    staying = sum(
+        1
+        for planned in dispositions
+        if planned.action in (DispositionAction.CONFIRMED, DispositionAction.LEFT_OPEN)
     )
-    surviving = _enforce_cap(surviving, staying, outcome, run_id)
-    dispositions = _repair_orphaned_supersedes(dispositions, surviving, outcome, run_id)
+    protected = {
+        id(planned.superseding_target)
+        for planned in dispositions
+        if planned.action == DispositionAction.SUPERSEDED and planned.superseding_target is not None
+    }
+    surviving = _admit_creates(surviving, staying, protected, outcome, run_id)
+    # 3. only now, with the creates list final, are target objects resolved to
+    #    the indices _apply_outcome persists.
+    dispositions = _resolve_superseding_indices(dispositions, surviving)
 
     outcome.creates = surviving
     outcome.dispositions = dispositions
@@ -177,6 +200,16 @@ def _gate_one_create(
     outcome: GateOutcome,
     run_id: uuid.UUID,
 ) -> PlannedCreate | None:
+    # 0 (B5b). `(scope_kind = 'global') = (scope_value IS NULL)` is a DB
+    # CHECK. A global claim with a stray value is repairable — drop the value;
+    # a scoped claim with no value names no subject and is discarded. Neither
+    # shape may reach the constraint and fail the whole billed run.
+    if proposal.scope_kind == "global" and proposal.scope_value is not None:
+        proposal = proposal.model_copy(update={"scope_value": None})
+    elif proposal.scope_kind != "global" and not proposal.scope_value:
+        _discard(outcome, run_id, "scope", f"{proposal.scope_kind} scope names no value", proposal)
+        return None
+
     # 1. Citation existence — including the empty citation, refused outright.
     unknown = [cited for cited in proposal.cited_fact_ids if cited not in facts_by_id]
     if unknown or not proposal.cited_fact_ids:
@@ -310,10 +343,9 @@ def _validate_dispositions(
     reasoning: AdvisorReasoning,
     active: list[CareerMemory],
     facts_by_id: dict[str, EvidenceFact],
-    surviving: list[PlannedCreate],
     outcome: GateOutcome,
     run_id: uuid.UUID,
-) -> tuple[list[PlannedDisposition], int]:
+) -> list[PlannedDisposition]:
     """5. Completeness: every active memory dispositioned exactly once, every
     disposition naming a real memory, every reason present where required.
     A shortfall raises — the run is defective, and nothing synthesises a
@@ -339,13 +371,18 @@ def _validate_dispositions(
                 f"{op.action} on {op.memory_id} states no reason — leaving a memory open "
                 "is an explicit decision, and decisions say why"
             )
-        superseding: int | None = None
+        # B5a: `ck_memory_disposition_reason` is a biconditional — reason must
+        # be NULL on confirmed/superseded rows. Models routinely justify
+        # optional fields; a stray reason is absorbed here, never allowed to
+        # reach the constraint and destroy an otherwise-valid billed run.
+        reason = op.reason if op.action in ("retire", "leave_open") else None
+        target: ProposedMemory | None = None
         if op.action == "supersede":
-            superseding = op.superseding_index
-            if superseding is None or superseding >= len(reasoning.created):
+            if op.superseding_index is None or op.superseding_index >= len(reasoning.created):
                 raise DispositionDefect(
                     f"supersede on {op.memory_id} points at no proposed creation"
                 )
+            target = reasoning.created[op.superseding_index]
 
         delta: dict[str, Any] | None = None
         if op.action == "confirm":
@@ -360,9 +397,9 @@ def _validate_dispositions(
             PlannedDisposition(
                 memory_id=op.memory_id,
                 action=action,
-                reason=op.reason,
+                reason=reason,
                 evidence_delta=delta,
-                superseding_create=_surviving_index(reasoning, surviving, superseding),
+                superseding_target=target,
             )
         )
 
@@ -373,34 +410,35 @@ def _validate_dispositions(
             f"a run defect, never a silent omission: {sorted(str(m) for m in missing)}"
         )
 
-    staying = sum(1 for op in reasoning.dispositions if op.action in _STAYING_ACTIONS)
-    return planned, staying
+    return planned
 
 
-def _surviving_index(
-    reasoning: AdvisorReasoning, surviving: list[PlannedCreate], proposed_index: int | None
-) -> int | None:
-    if proposed_index is None:
-        return None
-    target = reasoning.created[proposed_index]
-    for index, planned in enumerate(surviving):
-        if planned.proposal is target:
-            return index
-    return -1  # discarded — repaired in _repair_orphaned_supersedes
-
-
-def _enforce_cap(
-    surviving: list[PlannedCreate], staying: int, outcome: GateOutcome, run_id: uuid.UUID
+def _admit_creates(
+    surviving: list[PlannedCreate],
+    staying: int,
+    protected: set[int],
+    outcome: GateOutcome,
+    run_id: uuid.UUID,
 ) -> list[PlannedCreate]:
     """8. The cap, in the G4 order: creates count against the
     **post-disposition** active set, so an at-cap create-plus-retire is valid
-    and ends at the cap."""
+    and ends at the cap.
+
+    A create that replaces a superseded memory (`protected`, by proposal
+    object identity) is never dropped here: its admission is paired with a
+    departure already excluded from `staying`, so protecting it cannot breach
+    the cap — while dropping it would orphan a valid supersede after the
+    repair pass has run (B1's second face).
+    """
     room = ACTIVE_MEMORY_CAP - staying
     if len(surviving) <= room:
         return surviving
-    ranked = sorted(surviving, key=lambda planned: planned.proposal.priority or -1, reverse=True)
-    kept = ranked[: max(room, 0)]
-    for planned in ranked[max(room, 0) :]:
+
+    replacements = [planned for planned in surviving if id(planned.proposal) in protected]
+    optional = [planned for planned in surviving if id(planned.proposal) not in protected]
+    optional_room = max(room - len(replacements), 0)
+    ranked = sorted(optional, key=lambda planned: planned.proposal.priority or -1, reverse=True)
+    for planned in ranked[optional_room:]:
         _discard(
             outcome,
             run_id,
@@ -408,24 +446,28 @@ def _enforce_cap(
             f"active set would exceed {ACTIVE_MEMORY_CAP}",
             planned.proposal,
         )
-    kept_set = {id(planned) for planned in kept}
-    return [planned for planned in surviving if id(planned) in kept_set]
+    kept = {id(planned) for planned in replacements} | {
+        id(planned) for planned in ranked[:optional_room]
+    }
+    return [planned for planned in surviving if id(planned) in kept]
 
 
 def _repair_orphaned_supersedes(
     dispositions: list[PlannedDisposition],
-    surviving: list[PlannedCreate],
-    outcome: GateOutcome,
+    surviving_proposals: set[int],
     run_id: uuid.UUID,
 ) -> list[PlannedDisposition]:
     """The documented downgrade: a supersede whose replacement was discarded
-    becomes `left_open` with a machine-stated reason. The old memory stays
-    active rather than being taken down by a claim that failed the gate."""
+    by the creation gates becomes `left_open` with a machine-stated reason —
+    the old memory stays active rather than being taken down by a claim that
+    failed the gate. Runs **before** the cap (B2, reproduced): the downgraded
+    memory re-enters the staying count, and a cap evaluated first admitted a
+    26th active row."""
     repaired: list[PlannedDisposition] = []
     for planned in dispositions:
-        index = planned.superseding_create
         if planned.action == DispositionAction.SUPERSEDED and (
-            index is None or index < 0 or index >= len(surviving)
+            planned.superseding_target is None
+            or id(planned.superseding_target) not in surviving_proposals
         ):
             logger.info(
                 "advisor supersede downgraded",
@@ -446,6 +488,31 @@ def _repair_orphaned_supersedes(
             continue
         repaired.append(planned)
     return repaired
+
+
+def _resolve_superseding_indices(
+    dispositions: list[PlannedDisposition], creates: list[PlannedCreate]
+) -> list[PlannedDisposition]:
+    """Object -> index, against the **final** creates list and nothing
+    earlier. Every remaining supersede's target is guaranteed present: orphans
+    were downgraded and replacements are cap-protected."""
+    position = {id(planned.proposal): index for index, planned in enumerate(creates)}
+    resolved: list[PlannedDisposition] = []
+    for planned in dispositions:
+        if planned.action == DispositionAction.SUPERSEDED:
+            assert planned.superseding_target is not None  # downgraded otherwise
+            resolved.append(
+                PlannedDisposition(
+                    memory_id=planned.memory_id,
+                    action=planned.action,
+                    reason=planned.reason,
+                    evidence_delta=planned.evidence_delta,
+                    superseding_create=position[id(planned.superseding_target)],
+                )
+            )
+            continue
+        resolved.append(planned)
+    return resolved
 
 
 def _discard(
