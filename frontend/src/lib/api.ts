@@ -910,6 +910,17 @@ export type CareerMemory = {
   status: MemoryStatus;
   priority: number | null;
   priority_reason: string | null;
+  /** Read-time deterministic tier (advisor_tiers, v1). Orthogonal to `status`
+   *  — the lifecycle. Decides which section the memory shows in; `priority`
+   *  only orders within a tier. */
+  tier: "observation" | "emerging" | "pattern" | "recommendation" | "strength" | "portfolio" | "data_note";
+  section: "recommended" | "emerging" | "strengths" | "portfolio" | "data_notes";
+  topic: string;
+  /** Skill memories only; null for portfolio/data-note memories. */
+  counts: { occurrences: number | null; coverage: number | null; gaps: number | null } | null;
+  /** A deterministic next-step scaffold for recommendation/strength tiers;
+   *  null where an action is not yet warranted (a valid state, not an error). */
+  action: string | null;
   evidence: MemoryEvidence;
   created_at: string;
   last_confirmed_at: string;
@@ -945,8 +956,19 @@ export type AdvisorCoverage = {
   message: string;
 };
 
+export type AdvisorSection =
+  | "recommended"
+  | "emerging"
+  | "strengths"
+  | "portfolio"
+  | "data_notes";
+
 export type AdvisorState = {
+  /** Preserved for backward compatibility; `sections` is the same rows
+   *  partitioned by derived tier. */
   memories: CareerMemory[];
+  sections: Record<AdvisorSection, CareerMemory[]>;
+  tier_rules_version: string;
   coverage: AdvisorCoverage;
   latest_run: AdvisorRun | null;
   history_counts: { superseded: number; retired: number };
