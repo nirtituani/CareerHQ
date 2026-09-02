@@ -63,14 +63,19 @@ class _Spy:
 
     def __init__(self) -> None:
         self.rendered: list[object] = []
+        #: The theme each render was asked for. `None` is the ordinary answer — these
+        #: fixtures seed no imported design — and recording it is what lets a test say
+        #: the export *asked* rather than merely that it rendered.
+        self.themes: list[object] = []
         self.stored: list[tuple[str, bytes, str]] = []
         self.order: list[str] = []
         self.pdf = b"%PDF-1.7\nfake-but-stable\n%%EOF\n"
         self.storage_fails = False
 
-    def render(self, document: object) -> bytes:
+    def render(self, document: object, theme: object = None) -> bytes:
         self.order.append("render")
         self.rendered.append(document)
+        self.themes.append(theme)
         return self.pdf
 
     async def put(self, key: str, data: bytes, *, content_type: str) -> None:
@@ -235,7 +240,7 @@ async def test_a_non_exportable_version_is_refused_before_rendering_or_storage(
         await export_version(db_session, version_id=version.id)
 
     assert spy.order == [], f"work was done before the refusal: {spy.order}"
-    assert spy.rendered == [] and spy.stored == []
+    assert spy.rendered == [] and spy.stored == [] and spy.themes == []
     assert await _records(db_session, version.id) == []
 
     await db_session.refresh(version)
@@ -251,6 +256,9 @@ async def test_an_approved_version_renders_stores_records_and_transitions(
     record = await export_version(db_session, version_id=version.id)
 
     assert spy.order == ["render", "store"], f"wrong order: {spy.order}"
+    # The export *asks* for a design rather than assuming one. These fixtures seed no
+    # imported CV, so the honest answer is `None` and the plain template is used.
+    assert spy.themes == [None], f"the export rendered with an unexpected theme: {spy.themes}"
     assert len(spy.rendered) == 1, "the renderer was not invoked exactly once"
 
     key, data, content_type = spy.stored[0]

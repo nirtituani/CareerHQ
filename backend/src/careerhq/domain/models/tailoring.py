@@ -520,6 +520,15 @@ class ResumeVersionItem(Base):
     role_end_date: Mapped[str | None] = mapped_column(String(64), nullable=True)
     role_ordinal: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
+    #: The source row's own grouping label, snapshotted at version creation — a skill's
+    #: category today, and nothing else carries one. `None` means the source had no
+    #: category, or the item predates this column; both compose as plain rows.
+    #:
+    #: **Snapshotted for the same reason as the role context above.** Grouping read live
+    #: from the profile would let a later edit reshape a document that has already been
+    #: approved, underneath the checksum it was exported with.
+    source_category: Mapped[str | None] = mapped_column(String(128), nullable=True)
+
     #: The master position a proposal displaced — **NULL when no proposal
     #: arrived for this item**, which is the only record that the draft named
     #: it at all.

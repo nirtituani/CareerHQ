@@ -16,7 +16,7 @@ from careerhq.application.ports import StructuredCompletion
 from careerhq.domain.models import ExtractionItem, ImportedResume, ImportStatus
 from careerhq.domain.schemas.extraction import ResumeExtraction
 from careerhq.infrastructure import storage
-from careerhq.infrastructure.documents import extract_text
+from careerhq.infrastructure.documents import extract_document
 
 logger = logging.getLogger("careerhq.import")
 
@@ -70,7 +70,13 @@ async def extract_resume(
     user can see what happened rather than wondering where their upload went.
     """
     # Refused before anything is stored: a rejected upload should leave no trace.
-    text = extract_text(data, content_type=content_type)
+    #
+    # **Text and theme come out of one parse of the bytes in hand.** After this
+    # function returns, the only copy is the retained original, which no
+    # extraction path may read back (`test_architecture.py`) — so a design not
+    # taken here cannot be taken at all.
+    extracted = extract_document(data, content_type=content_type)
+    text = extracted.text
 
     storage_key = f"imports/{user_id}/{uuid.uuid4()}/{filename}"
     await storage.put_object(storage_key, data, content_type=content_type)
@@ -82,6 +88,8 @@ async def extract_resume(
         content_type=content_type,
         byte_size=len(data),
         status=ImportStatus.PENDING,
+        # `None` for every DOCX and for any PDF whose design is not reproducible.
+        theme=extracted.theme.model_dump(mode="json") if extracted.theme else None,
     )
     session.add(record)
     await session.flush()

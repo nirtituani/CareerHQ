@@ -33,7 +33,22 @@ résumé line must not be counted as one.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Literal
+
+#: What a section *is*, not how it looks.
+#:
+#: **Semantic, and the distinction is load-bearing.** `list` does not mean "8pt between
+#: entries" — it means every line is its own complete entry, which is a fact about the
+#: content that only the caller assembling the section knows. A themed renderer reads it
+#: and sets list entries further apart than wrapped prose; the plain renderer ignores it
+#: entirely. Putting the spacing here instead would move presentation into the document
+#: and make `ResumeDocument` unrenderable without deciding a design.
+#:
+#: Measured, not assumed: on a real CV, prose paragraphs ran 2pt apart and Skills
+#: entries 8pt. Rendering both at one spacing put the following heading 30pt out of
+#: place and cost the one-page fit.
+SectionStyle = Literal["prose", "list", "roles"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,15 +90,20 @@ class ResumeSection:
 
     heading: str
     groups: tuple[ResumeGroup, ...]
+    #: Defaults to `prose`, so every construction site that predates this — and every
+    #: test written against the plain template — keeps its meaning unchanged.
+    style: SectionStyle = field(default="prose")
 
     @classmethod
-    def of_lines(cls, heading: str, lines: tuple[str, ...]) -> ResumeSection:
+    def of_lines(
+        cls, heading: str, lines: tuple[str, ...], style: SectionStyle = "prose"
+    ) -> ResumeSection:
         """A section of plain lines under no role — every section except Experience.
 
         Exists so the common case stays one call and the nesting is not repeated at every
         construction site.
         """
-        return cls(heading=heading, groups=(ResumeGroup(role=None, lines=lines),))
+        return cls(heading=heading, groups=(ResumeGroup(role=None, lines=lines),), style=style)
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,6 +119,18 @@ class ResumeDocument:
     full_name: str
     contact: tuple[str, ...]
     sections: tuple[ResumeSection, ...]
+    #: The professional headline that sits under the contact line — "Senior Backend
+    #: Engineer", and on many CVs two of them joined. `None` when the profile records
+    #: none, which must stay absent rather than being filled.
+    #:
+    #: **A slot of its own, and it had to be.** `_SECTIONS` folded `TITLE` into Summary
+    #: because this model had no header field, so a headline could only render as the
+    #: first sentence of a paragraph — which is not what a headline is, and is what the
+    #: first real export showed. It is one optional field rather than a redesign: it
+    #: defaults to `None`, so every document built before this renders unchanged, and
+    #: `lines_in_order()` excludes it for the same reason it excludes the name and the
+    #: section headings — it is document structure, not an approved item.
+    headline: str | None = None
 
     def lines_in_order(self) -> tuple[str, ...]:
         """Every approved line, flattened in render order.
@@ -111,4 +143,4 @@ class ResumeDocument:
         )
 
 
-__all__ = ["ResumeDocument", "ResumeGroup", "ResumeRole", "ResumeSection"]
+__all__ = ["ResumeDocument", "ResumeGroup", "ResumeRole", "ResumeSection", "SectionStyle"]

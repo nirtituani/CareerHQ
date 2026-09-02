@@ -22,6 +22,7 @@ from careerhq.domain.models import (
     ContactInformation,
     Education,
     ExperienceBullet,
+    ExportedDocument,
     ExtractionItem,
     ImportedResume,
     ImportStatus,
@@ -31,6 +32,7 @@ from careerhq.domain.models import (
     ProfessionalTitle,
     Project,
     ResumeProfile,
+    ResumeVersion,
     Skill,
     Source,
     SummaryBlock,
@@ -292,7 +294,7 @@ async def approve_import(
             )
         )
 
-    master = await _ensure_master_resume(session, profile_id)
+    master = await _ensure_master_resume(session, profile_id, theme=imported_resume.theme)
 
     imported_resume.status = ImportStatus.APPROVED
     imported_resume.approved_at = func.now()
@@ -332,19 +334,70 @@ def _source_of(item: ExtractionItem) -> Source:
     return item.source
 
 
-async def _ensure_master_resume(session: AsyncSession, profile_id: uuid.UUID) -> ResumeProfile:
+async def _has_exported_document(session: AsyncSession, resume_profile_id: uuid.UUID) -> bool:
+    """Has any version built from this Master Resume already produced a document?
+
+    **The question is about documents, not statuses.** `ExportedDocument` is the row that
+    records a checksum over stored bytes, so its existence is exactly "someone has a copy
+    of this résumé" — which is the thing a later design change must not invalidate.
+    """
+    return (
+        await session.scalar(
+            select(ExportedDocument.id)
+            .join(ResumeVersion, ExportedDocument.resume_version_id == ResumeVersion.id)
+            .where(ResumeVersion.source_resume_profile_id == resume_profile_id)
+            .limit(1)
+        )
+    ) is not None
+
+
+async def _ensure_master_resume(
+    session: AsyncSession,
+    profile_id: uuid.UUID,
+    *,
+    theme: dict[str, object] | None = None,
+) -> ResumeProfile:
     """Return the profile's Master Resume, creating it on first approval.
 
     Constraint C4 makes a second one impossible at the database level; this
     keeps a re-import from trying and failing.
+
+    **A theme is written once, and only while no document depends on it.** Export reads
+    this row *live* — `ResumeVersion` carries no theme snapshot — so anything that changes
+    it changes what an already-exported version re-renders to. Re-export is legitimate
+    (`EXPORTABLE_STATUSES` includes `EXPORTED`), so a user who re-downloads "the same
+    version" would get a visibly different document than the one they sent. That is the
+    hazard role context was snapshotted onto `ResumeVersionItem` to avoid (FR-023).
+
+    **Filling a NULL is the case that had to be narrowed, not the case that had to go.**
+    A DOCX-first user who later imports a PDF should gain their design — that is ordinary
+    initialisation and nothing depends on the old rendering yet. But once *any* version
+    built from this master has produced an `ExportedDocument`, the design is load-bearing
+    and stays as it is. The proper fix is to snapshot the theme onto the version, as role
+    context is; that touches `create_pending_version` and is deliberately not done here.
+
+    **`with_for_update()` because this is a read-then-write.** Two approvals landing
+    together would both see a NULL and both write, and the loser's design would be
+    silently discarded. Locking the master row makes the check and the write one step; it
+    also serialises the double-clicked approve that constraint C4 exists for.
     """
     existing = await session.scalar(
-        select(ResumeProfile).where(ResumeProfile.profile_id == profile_id, ResumeProfile.is_master)
+        select(ResumeProfile)
+        .where(ResumeProfile.profile_id == profile_id, ResumeProfile.is_master)
+        .with_for_update()
     )
     if existing is not None:
+        if (
+            existing.theme is None
+            and theme is not None
+            and not await _has_exported_document(session, existing.id)
+        ):
+            existing.theme = theme
         return existing
 
-    master = ResumeProfile(profile_id=profile_id, name=MASTER_RESUME_NAME, is_master=True)
+    master = ResumeProfile(
+        profile_id=profile_id, name=MASTER_RESUME_NAME, is_master=True, theme=theme
+    )
     session.add(master)
     return master
 
