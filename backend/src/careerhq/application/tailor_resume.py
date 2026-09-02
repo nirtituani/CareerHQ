@@ -43,6 +43,7 @@ from careerhq.domain.models import (
     MatchAnalysis,
     MatchStatus,
     ProfessionalProfile,
+    ProfessionalTitle,
     Project,
     ProposalDecision,
     ResumeProfile,
@@ -232,6 +233,7 @@ async def create_pending_version(session: AsyncSession, application: Application
             source_resume_profile_id=master.id,
             source_profile_updated_at=profile.updated_at,
             name=f"{application.job_title} — tailored",
+            professional_title=await _headline(session, profile.id),
             status=VersionStatus.TAILORING,
             # Assigned at construction. A lazy load on a freshly added object
             # raises MissingGreenlet when it is serialised, which slice 004 met
@@ -252,6 +254,7 @@ async def create_pending_version(session: AsyncSession, application: Application
         # now, against the profile the preconditions above just re-checked.
         version.source_resume_profile_id = master.id
         version.source_profile_updated_at = profile.updated_at
+        version.professional_title = await _headline(session, profile.id)
         version.status = VersionStatus.TAILORING
         # The previous attempt's explanation describes a run that is no longer
         # the current one. Leaving it would caption a live attempt with a dead
@@ -286,6 +289,35 @@ async def create_pending_version(session: AsyncSession, application: Application
     await session.flush()
 
     return version
+
+
+async def _headline(session: AsyncSession, profile_id: uuid.UUID) -> str | None:
+    """The profile's professional titles, restated in their stored order.
+
+    **Snapshotted onto the version, not read at export.** `ResumeVersion` already
+    carries a `professional_title` column — exposed by the API and, until now, written
+    by nothing — so this fills an existing slot rather than adding storage.
+
+    **Restates, adds nothing.** Extraction splits a headline like "A | B" into two title
+    rows; `_compose` joins what is stored, in `ordinal` order, and a profile with no
+    title yields `None` so an absent headline stays absent.
+
+    It is deliberately **not** added to `_render_master`: the headline is not a
+    proposable item and the model is not shown it, so no prompt changes and the agent
+    cannot rewrite it.
+    """
+    titles = (
+        (
+            await session.execute(
+                select(ProfessionalTitle)
+                .where(ProfessionalTitle.profile_id == profile_id)
+                .order_by(ProfessionalTitle.ordinal)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return _compose(*(row.title for row in titles)) or None
 
 
 def _compose(*parts: str | None) -> str:
@@ -406,6 +438,17 @@ async def _render_master(
             )
             position += 1
 
+    # **Read once, used twice.** The prompt line still shows the skill's name and nothing
+    # else — no prompt text changes here — while `categories` carries the grouping label
+    # the export needs. Two queries would let the two drift.
+    skills = (
+        (await session.execute(select(Skill).where(Skill.profile_id == profile_id))).scalars().all()
+    )
+    #: A skill's own category, snapshotted onto its item below. The Skills section is
+    #: grouped by it, and grouping read live at export would let a later profile edit
+    #: reshape an approved document (FR-023) — the same rule as the role context above.
+    categories: dict[uuid.UUID, str | None] = {row.id: row.category for row in skills}
+
     # Written out rather than looped over a table of (model, kind, accessor).
     # The loop was three lines shorter and mypy could not type it at all, which
     # meant the one place a column name could be wrong was the one place with no
@@ -422,14 +465,7 @@ async def _render_master(
     simple: list[tuple[SourceKind, list[tuple[uuid.UUID, str | None]]]] = [
         (
             SourceKind.SKILL,
-            [
-                (row.id, row.name)
-                for row in (
-                    await session.execute(select(Skill).where(Skill.profile_id == profile_id))
-                )
-                .scalars()
-                .all()
-            ],
+            [(row.id, row.name) for row in skills],
         ),
         (
             SourceKind.PROJECT,
@@ -501,6 +537,9 @@ async def _render_master(
                     "source_item_id": row_id,
                     "position": index,
                     "text": text,
+                    # `None` for every kind but SKILL, and for a skill the owner left
+                    # uncategorised. Both compose as a plain row.
+                    "source_category": categories.get(row_id),
                 }
             )
 
@@ -767,6 +806,12 @@ async def run_tailoring(
                 role_start_date=master_item.get("role_start_date"),
                 role_end_date=master_item.get("role_end_date"),
                 role_ordinal=master_item.get("role_ordinal"),
+                # Null for every kind but a skill, and for any skill the owner left
+                # uncategorised — `_compose` renders those as plain rows. **Read here or
+                # lost here**: the master item carried this correctly and this site did
+                # not consume it, so every skill persisted NULL and the exported Skills
+                # block stayed flat.
+                source_category=master_item.get("source_category"),
                 original_text=original,
                 proposed_text=proposal.text if proposal else None,
                 # Materialised rather than derived, so no later reader — the PDF

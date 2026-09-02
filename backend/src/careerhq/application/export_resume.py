@@ -146,6 +146,39 @@ def _role_groups(members: list[ResumeVersionItem]) -> tuple[ResumeGroup, ...]:
     return tuple(groups)
 
 
+def _skill_rows(members: list[ResumeVersionItem]) -> tuple[str, ...]:
+    """Skills as one row per category — the shape a résumé's Skills block has.
+
+    **Grouped by the snapshot, never by the profile.** `source_category` was frozen onto
+    the item at version creation, so a later edit to how the owner files their skills
+    cannot reshape a document that has already been approved (FR-023).
+
+    Order is the owner's approved order: categories appear in the order their first
+    skill does, and skills within a category keep their own `position`. Nothing is
+    sorted alphabetically, because that would be this function choosing an order the
+    owner did not.
+
+    **Uncategorised skills stay as they were** — their own plain row, in place. That is
+    every item written before the snapshot column existed, and every skill the owner
+    left unfiled.
+    """
+    ordered = sorted(members, key=lambda item: item.position)
+    grouped: dict[str, list[str]] = {}
+    rows: list[tuple[int, str]] = []
+    for item in ordered:
+        category = (item.source_category or "").strip()
+        if not category:
+            rows.append((len(rows), item.final_text))
+            continue
+        if category not in grouped:
+            grouped[category] = []
+            rows.append((len(rows), category))
+        grouped[category].append(item.final_text)
+    return tuple(
+        f"{text}: {', '.join(grouped[text])}" if text in grouped else text for _, text in rows
+    )
+
+
 def _compose(version: ResumeVersion, contact: ContactInformation | None) -> ResumeDocument:
     """The approved items, in approved order, as a document.
 
@@ -164,10 +197,13 @@ def _compose(version: ResumeVersion, contact: ContactInformation | None) -> Resu
         members = [item for item in included if item.source_kind in kinds]
         if not members:
             continue
-        groups = (
-            _role_groups(members)
-            if heading == "Experience"
-            else (
+        groups: tuple[ResumeGroup, ...]
+        if heading == "Experience":
+            groups = _role_groups(members)
+        elif heading == "Skills":
+            groups = (ResumeGroup(role=None, lines=_skill_rows(members)),)
+        else:
+            groups = (
                 ResumeGroup(
                     role=None,
                     lines=tuple(
@@ -178,15 +214,24 @@ def _compose(version: ResumeVersion, contact: ContactInformation | None) -> Resu
                     ),
                 ),
             )
-        )
         sections.append(ResumeSection(heading=heading, groups=groups, style=style))
 
+    # **Links are fragments too, and dropping them lost real contact detail.** The column
+    # stores them newline-separated; each becomes its own fragment so the rendered line
+    # separates them like the rest rather than carrying a newline through the middle of
+    # it. A profile that stores none composes exactly the line it composed before.
+    links = (
+        tuple(line.strip() for line in (contact.links or "").splitlines() if line.strip())
+        if contact
+        else ()
+    )
     fragments = tuple(
         value
         for value in (
             contact.email if contact else None,
             contact.phone if contact else None,
             contact.location if contact else None,
+            *links,
         )
         if value
     )
@@ -195,6 +240,8 @@ def _compose(version: ResumeVersion, contact: ContactInformation | None) -> Resu
         full_name=(contact.full_name if contact and contact.full_name else version.name),
         contact=fragments,
         sections=tuple(sections),
+        # Snapshotted onto the version at creation; `None` when the profile records none.
+        headline=version.professional_title,
     )
 
 
