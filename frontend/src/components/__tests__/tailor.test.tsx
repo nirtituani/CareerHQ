@@ -589,6 +589,45 @@ describe("the structured review", () => {
     expect(experience.getAttribute("style")).toContain("--color-attention");
   });
 
+  it("keeps both decisions when two of them overlap in flight", async () => {
+    // The stale-closure trap: `decide()` replacing state built from the render
+    // closure lets the later-resolving response overwrite the earlier item's
+    // update — accept A, open B and accept it while A is still in flight, and
+    // A snaps back to "pending" on screen while the server has it accepted.
+    // Held-open promises make the overlap deterministic rather than a race.
+    const settle = new Map<string, (value: VersionItem) => void>();
+    mocked.decideItem.mockImplementation(
+      (_v, itemId) =>
+        new Promise<VersionItem>((resolve) => {
+          settle.set(itemId, resolve);
+        }),
+    );
+    await renderTab(two());
+
+    const rows = screen.getAllByTestId("diff-item");
+    // Accept the first card; its request stays in flight.
+    await userEvent.click(within(rows[0]).getByRole("button", { name: /^accept$/i }));
+    // Open the second card and accept it too, while the first has not resolved.
+    await userEvent.click(within(rows[1]).getAllByRole("button")[0]);
+    await userEvent.click(within(rows[1]).getByRole("button", { name: /^accept$/i }));
+
+    // Resolve in click order: the first decision lands, then the second.
+    settle.get("item-1")!(item({ decision: "accepted" }));
+    await waitFor(() =>
+      expect(screen.getAllByTestId("diff-item")[0]).toHaveAttribute("data-decision", "accepted"),
+    );
+    settle.get("item-2")!(
+      item({ id: "item-2", source_item_id: "b2", source_kind: "summary", decision: "accepted" }),
+    );
+
+    // Both decisions stay reflected — the second response must not carry a
+    // snapshot that forgets the first.
+    await waitFor(() =>
+      expect(screen.getAllByTestId("diff-item")[1]).toHaveAttribute("data-decision", "accepted"),
+    );
+    expect(screen.getAllByTestId("diff-item")[0]).toHaveAttribute("data-decision", "accepted");
+  });
+
   it("accept all records one accepted decision per pending proposal", async () => {
     mocked.decideItem.mockImplementation(async (_v, itemId) =>
       item({ id: itemId, decision: "accepted" }),
