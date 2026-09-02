@@ -50,7 +50,34 @@ function memory(overrides: Partial<CareerMemory> = {}): CareerMemory {
     section: "recommended",
     topic: "AWS",
     counts: { occurrences: 5, coverage: 7, gaps: 4 },
-    action: "This is a recurring gap. Prioritise closing it.",
+    specifics: [
+      {
+        requirement_id: "req-1",
+        text: "Deep understanding of cloud infrastructure (AWS/GCP)",
+        verdict: "gap",
+        shortfall: "capability",
+        importance: 80,
+        profile_quote: "Building and deploying cloud-based applications",
+        resolved: true,
+      },
+      {
+        requirement_id: "req-2",
+        text: "Experience with cloud platforms and products",
+        verdict: "confirmed",
+        shortfall: null,
+        importance: 70,
+        profile_quote: "Building and deploying cloud-based applications",
+        resolved: true,
+      },
+    ],
+    specific_labels: ["Deep understanding of cloud infrastructur…", "Experience with cloud platforms"],
+    profile_quotes: ["Building and deploying cloud-based applications"],
+    specifics_unresolved: 0,
+    assessment: "You partly meet these asks — the shortfalls are depth of hands-on capability.",
+    action: {
+      category: "learn_build",
+      text: "Build hands-on depth here — this is a capability gap, not a wording one.",
+    },
     evidence: {
       as_of: "2026-09-01T10:00:00Z",
       rules_version: "v1-advisor",
@@ -98,6 +125,7 @@ function state(overrides: Partial<AdvisorState> = {}): AdvisorState {
     memories,
     sections: overrides.sections ?? sectioned(memories),
     tier_rules_version: "v1-tiers",
+    action_rules_version: "v1-actions",
     coverage: {
       applications: 6,
       analysed: 0,
@@ -160,11 +188,20 @@ describe("AdvisorView — honesty & lifecycle", () => {
     api.getAdvisor.mockResolvedValue(state({ memories: [memory()] }));
     render(<AdvisorView />);
     const card = await expand();
-    expect(card.textContent).toContain("AWS was a gap in 4 of 7 analyzed postings");
+    // V2: the rows the roles actually asked for, the user's own quoted
+    // evidence, and the deterministic assessment — not the claim restated.
+    expect(within(card).getByTestId("what-roles-ask").textContent).toContain(
+      "Deep understanding of cloud infrastructure (AWS/GCP)",
+    );
+    expect(within(card).getByTestId("your-evidence").textContent).toContain(
+      "Building and deploying cloud-based applications",
+    );
+    expect(within(card).getByTestId("assessment").textContent).toContain(
+      "depth of hands-on capability",
+    );
     expect(within(card).getByTestId("priority").textContent).toContain(
       "the dominant unmet requirement in your target roles",
     );
-    expect(within(card).getByTestId("evidence").textContent).toContain("(4/7)");
     expect(within(card).getByRole("button", { name: "Dismiss" })).toBeTruthy();
   });
 
@@ -235,7 +272,7 @@ describe("topic-first sections (refinement v1)", () => {
     const chip = await screen.findByTestId(`chip-${MEMORY_ID}`);
     expect(chip.getAttribute("data-tier")).toBe("recommendation");
     expect(chip.textContent).toContain("AWS");
-    expect(chip.textContent).toContain("Gap in 4 of 7 analyzed postings");
+    expect(chip.textContent).toContain("Required in 5 of 7 · Gap in 4");
     expect(chip.textContent).toContain("High priority");
     expect(chip.textContent).not.toContain("the dominant unmet requirement");
   });
@@ -257,6 +294,11 @@ describe("topic-first sections (refinement v1)", () => {
       section: "emerging",
       topic: "Database",
       counts: { occurrences: 2, coverage: 5, gaps: 1 },
+      specifics: [],
+      specific_labels: [],
+      profile_quotes: [],
+      specifics_unresolved: 0,
+      assessment: null,
       action: null,
     });
     api.getAdvisor.mockResolvedValue(state({ memories: [weak] }));
@@ -272,7 +314,9 @@ describe("topic-first sections (refinement v1)", () => {
     render(<AdvisorView />);
     const chip = await screen.findByTestId(`chip-${MEMORY_ID}`);
     await userEvent.click(within(chip).getByRole("button", { expanded: false }));
-    expect(within(chip).getByTestId("action").textContent).toContain("Prioritise closing it");
+    const action = within(chip).getByTestId("action");
+    expect(action.getAttribute("data-category")).toBe("learn_build");
+    expect(action.textContent).toContain("Build hands-on depth here");
   });
 
   it("portfolio memories live in a collapsed drawer, opened on demand", async () => {
@@ -282,6 +326,11 @@ describe("topic-first sections (refinement v1)", () => {
       section: "portfolio",
       topic: "outcome pattern",
       counts: null,
+      specifics: [],
+      specific_labels: [],
+      profile_quotes: [],
+      specifics_unresolved: 0,
+      assessment: null,
       action: null,
     });
     api.getAdvisor.mockResolvedValue(state({ memories: [portfolio] }));
@@ -339,11 +388,15 @@ describe("the lifecycle surface (T029)", () => {
 });
 
 describe("Tier 2 & dismissal surfaces", () => {
-  it("shows the grouping a skill memory's counts ran through, once expanded (T034)", async () => {
+  it("falls back to the grouping only when the rows themselves cannot be read (T034)", async () => {
     api.getAdvisor.mockResolvedValue(
       state({
         memories: [
           memory({
+            specifics: [],
+            specific_labels: [],
+            profile_quotes: [],
+            specifics_unresolved: 4,
             evidence: {
               ...memory().evidence,
               groupings: [
@@ -357,6 +410,9 @@ describe("Tier 2 & dismissal surfaces", () => {
     render(<AdvisorView />);
     const card = await expand();
     expect(within(card).getByTestId("groupings").textContent).toContain("read as AWS: 4 requirements");
+    expect(within(card).getByTestId("unresolved").textContent).toContain(
+      "no longer available to read",
+    );
   });
 
   it("shows the dismissal history on a legitimately recreated memory (T038)", async () => {
@@ -378,5 +434,285 @@ describe("SidebarNav", () => {
     const link = within(nav).getByRole("link", { name: /Career Advisor/ });
     expect(link.getAttribute("href")).toBe("/advisor");
     expect(link.textContent).not.toContain("Soon");
+  });
+});
+
+describe("V2 — specifics, action and single-statement statistics", () => {
+  it("shows only topic, prevalence and tier — never requirement snippets", async () => {
+    api.getAdvisor.mockResolvedValue(state({ memories: [memory()] }));
+    render(<AdvisorView />);
+    const chip = await screen.findByTestId(`chip-${MEMORY_ID}`);
+    expect(within(chip).queryByTestId("specific-labels")).toBeNull();
+    // The requirement prose belongs to the expanded view alone.
+    expect(chip.textContent).not.toContain("Deep understanding of cloud infrastructure");
+    expect(chip.textContent).not.toContain("Experience with cloud platforms and products");
+    // ...while the three permitted signals are all present.
+    expect(chip.textContent).toContain("AWS");
+    expect(chip.textContent).toContain("Required in 5 of 7 · Gap in 4");
+    expect(chip.textContent).toContain("High priority"); // uppercased by CSS, not in the DOM
+  });
+
+  it("shows grounded technology tags on the compact card", async () => {
+    api.getAdvisor.mockResolvedValue(state({ memories: [memory()] }));
+    render(<AdvisorView />);
+    const chip = await screen.findByTestId(`chip-${MEMORY_ID}`);
+    expect(within(chip).getByTestId("tech-tags").textContent).toBe("AWS · GCP");
+  });
+
+  it("never shows a technology the evidence does not contain", async () => {
+    api.getAdvisor.mockResolvedValue(state({ memories: [memory()] }));
+    render(<AdvisorView />);
+    const chip = await screen.findByTestId(`chip-${MEMORY_ID}`);
+    // These fixture rows name AWS and GCP only — Azure must not appear.
+    expect(chip.textContent).not.toContain("Azure");
+  });
+
+  it("omits the tag line entirely when the asks name no technology", async () => {
+    const capability = memory({
+      topic: "AI & LLM Experience",
+      specifics: [
+        {
+          requirement_id: "r1",
+          text: "Hands-on production experience with AI agent systems",
+          verdict: "gap",
+          shortfall: "capability",
+          importance: 80,
+          profile_quote: null,
+          resolved: true,
+        },
+      ],
+    });
+    api.getAdvisor.mockResolvedValue(state({ memories: [capability] }));
+    render(<AdvisorView />);
+    const chip = await screen.findByTestId(`chip-${MEMORY_ID}`);
+    expect(within(chip).queryByTestId("tech-tags")).toBeNull();
+  });
+
+  it("states each statistic exactly once across the whole expanded card", async () => {
+    api.getAdvisor.mockResolvedValue(state({ memories: [memory()] }));
+    render(<AdvisorView />);
+    const chip = await screen.findByTestId(`chip-${MEMORY_ID}`);
+    await userEvent.click(within(chip).getByRole("button", { expanded: false }));
+    const text = chip.textContent ?? "";
+    for (const statistic of ["5 of 7", "Gap in 4", "Required in"]) {
+      const occurrences = text.split(statistic).length - 1;
+      expect(occurrences, `"${statistic}" rendered ${occurrences} times`).toBeLessThanOrEqual(1);
+    }
+    // ...and the LLM claim prose is no longer part of the default expansion.
+    expect(text).not.toContain("AWS was a gap in 4 of 7 analyzed postings");
+  });
+
+  it("keeps every requirement row in the expanded view", async () => {
+    api.getAdvisor.mockResolvedValue(state({ memories: [memory()] }));
+    render(<AdvisorView />);
+    const card = await expand();
+    const asks = within(card).getByTestId("what-roles-ask").textContent ?? "";
+    expect(asks).toContain("Deep understanding of cloud infrastructure (AWS/GCP)");
+    expect(asks).toContain("Experience with cloud platforms and products");
+  });
+
+  it("renders the four V2 sections in the expansion", async () => {
+    api.getAdvisor.mockResolvedValue(state({ memories: [memory()] }));
+    render(<AdvisorView />);
+    const chip = await screen.findByTestId(`chip-${MEMORY_ID}`);
+    await userEvent.click(within(chip).getByRole("button", { expanded: false }));
+    expect(within(chip).getByTestId("action")).toBeTruthy();
+    expect(within(chip).getByTestId("what-roles-ask")).toBeTruthy();
+    expect(within(chip).getByTestId("your-evidence")).toBeTruthy();
+    expect(within(chip).getByTestId("assessment")).toBeTruthy();
+  });
+
+  it("marks each ask as met or unmet with its cause", async () => {
+    api.getAdvisor.mockResolvedValue(state({ memories: [memory()] }));
+    render(<AdvisorView />);
+    const card = await expand();
+    const asks = within(card).getByTestId("what-roles-ask").textContent ?? "";
+    expect(asks).toContain("(gap · capability)");
+    expect(asks).toContain("(met)");
+  });
+
+  it("says nothing actionable when the evidence does not support it", async () => {
+    const weak = memory({
+      tier: "emerging",
+      section: "emerging",
+      action: { category: "no_action_yet", text: "Not enough to point at one next step yet — tracking it." },
+      assessment: "The shortfalls are mixed — no single cause dominates.",
+    });
+    api.getAdvisor.mockResolvedValue(state({ memories: [weak] }));
+    render(<AdvisorView />);
+    const chip = await screen.findByTestId(`chip-${MEMORY_ID}`);
+    await userEvent.click(within(chip).getByRole("button", { expanded: false }));
+    const action = within(chip).getByTestId("action");
+    expect(action.getAttribute("data-category")).toBe("no_action_yet");
+    expect(action.textContent).toContain("Not enough to point at one next step yet");
+  });
+
+  it("a portfolio memory carries no action or assessment sections", async () => {
+    const portfolio = memory({
+      id: "44444444-4444-4444-8444-444444444444",
+      tier: "portfolio",
+      section: "portfolio",
+      topic: "outcome pattern",
+      counts: null,
+      specifics: [],
+      specific_labels: [],
+      profile_quotes: [],
+      specifics_unresolved: 0,
+      assessment: null,
+      action: null,
+    });
+    api.getAdvisor.mockResolvedValue(state({ memories: [portfolio] }));
+    render(<AdvisorView />);
+    const drawer = await screen.findByTestId("drawer-portfolio-insights");
+    await userEvent.click(within(drawer).getByRole("button", { expanded: false }));
+    const chip = within(drawer).getByTestId(`chip-${portfolio.id}`);
+    await userEvent.click(within(chip).getByRole("button", { expanded: false }));
+    expect(within(chip).queryByTestId("action")).toBeNull();
+    expect(within(chip).queryByTestId("assessment")).toBeNull();
+    expect(within(chip).queryByTestId("what-roles-ask")).toBeNull();
+  });
+});
+
+describe("the compact evidence line (prevalence · gap)", () => {
+  it("states prevalence first, then the gap, each figure once", async () => {
+    api.getAdvisor.mockResolvedValue(state({ memories: [memory()] }));
+    render(<AdvisorView />);
+    const chip = await screen.findByTestId(`chip-${MEMORY_ID}`);
+    expect(chip.textContent).toContain("Required in 5 of 7 · Gap in 4");
+  });
+
+  it("omits the gap half when there is no gap", async () => {
+    const strength = memory({
+      tier: "strength",
+      section: "strengths",
+      topic: "Backend Engineering",
+      counts: { occurrences: 7, coverage: 7, gaps: 0 },
+    });
+    api.getAdvisor.mockResolvedValue(state({ memories: [strength] }));
+    render(<AdvisorView />);
+    const chip = await screen.findByTestId(`chip-${MEMORY_ID}`);
+    expect(chip.textContent).toContain("Required in 7 of 7");
+    expect(chip.textContent).not.toContain("Gap in");
+  });
+
+  it("falls back to the claim when a memory carries no counts", async () => {
+    const portfolio = memory({
+      tier: "portfolio",
+      section: "portfolio",
+      topic: "outcome pattern",
+      counts: null,
+      claim: "4 of 7 applications ended rejected",
+    });
+    api.getAdvisor.mockResolvedValue(state({ memories: [portfolio] }));
+    render(<AdvisorView />);
+    const drawer = await screen.findByTestId("drawer-portfolio-insights");
+    await userEvent.click(within(drawer).getByRole("button", { expanded: false }));
+    expect(within(drawer).getByTestId(`chip-${MEMORY_ID}`).textContent).toContain(
+      "4 of 7 applications ended rejected",
+    );
+  });
+});
+
+describe("action contract compatibility (B1)", () => {
+  // The two services deploy independently. A bundle must render whichever shape
+  // the backend it happens to be talking to sends — the object it was built for,
+  // or the plain string an older backend still returns.
+  it("renders the typed action when the backend sends recommended_action", async () => {
+    api.getAdvisor.mockResolvedValue(
+      state({
+        memories: [
+          memory({
+            action: "Build hands-on depth here — this is a capability gap, not a wording one.",
+            recommended_action: {
+              category: "learn_build",
+              text: "Build hands-on depth here — this is a capability gap, not a wording one.",
+            },
+          }),
+        ],
+      }),
+    );
+    render(<AdvisorView />);
+    await expand();
+    const action = screen.getByTestId("action");
+    expect(action.getAttribute("data-category")).toBe("learn_build");
+    expect(action.textContent).toContain("Build hands-on depth here");
+  });
+
+  it("renders a plain-string action from a backend that predates the typed form", async () => {
+    api.getAdvisor.mockResolvedValue(
+      state({
+        memories: [
+          memory({
+            action: "Build hands-on depth here — this is a capability gap, not a wording one.",
+            recommended_action: undefined,
+          }),
+        ],
+      }),
+    );
+    render(<AdvisorView />);
+    await expand();
+    expect(screen.getByTestId("action").textContent).toContain("Build hands-on depth here");
+  });
+
+  it("renders nothing rather than throwing when there is no action at all", async () => {
+    api.getAdvisor.mockResolvedValue(
+      state({ memories: [memory({ action: null, recommended_action: null })] }),
+    );
+    render(<AdvisorView />);
+    await expand();
+    expect(screen.queryByTestId("action")).toBeNull();
+  });
+});
+
+describe("the advisor's reasoning is shown for every memory (H3, FR-022)", () => {
+  // `assess()` returns null for portfolio and data-note memories, always. While
+  // `priority_reason` was nested inside the assessment block, the reasoning
+  // disappeared entirely for that whole class — an expanded portfolio card
+  // showed a kind/scope line and a Dismiss button and nothing else.
+  it.each([
+    ["portfolio", "portfolio", "4 of 10 applications ended in rejection"],
+    ["data_note", "data_notes", "some applications have inconsistent dates"],
+  ])("shows priority_reason on a %s memory that has no assessment", async (tier, section, claim) => {
+    api.getAdvisor.mockResolvedValue(
+      state({
+        memories: [
+          memory({
+            claim,
+            tier: tier as CareerMemory["tier"],
+            section: section as CareerMemory["section"],
+            counts: null,
+            specifics: [],
+            specific_labels: [],
+            profile_quotes: [],
+            assessment: null,
+            action: null,
+            recommended_action: null,
+            priority_reason: "it is the clearest signal in your recent history",
+          }),
+        ],
+      }),
+    );
+    render(<AdvisorView />);
+    // Portfolio and data-note memories live in a collapsed drawer; open it first.
+    const drawer = await screen.findByTestId(
+      section === "portfolio" ? "drawer-portfolio-insights" : "drawer-data-notes",
+    );
+    await userEvent.click(within(drawer).getByRole("button", { expanded: false }));
+    const card = await expand();
+
+    expect(within(card).queryByTestId("assessment")).toBeNull();
+    expect(within(card).getByTestId("priority").textContent).toContain(
+      "it is the clearest signal in your recent history",
+    );
+  });
+
+  it("still shows the reasoning beside an assessment when there is one", async () => {
+    api.getAdvisor.mockResolvedValue(state({ memories: [memory()] }));
+    render(<AdvisorView />);
+    const card = await expand();
+    expect(within(card).getByTestId("assessment")).toBeTruthy();
+    expect(within(card).getByTestId("priority").textContent).toContain(
+      "the dominant unmet requirement in your target roles",
+    );
   });
 });

@@ -18,6 +18,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 from careerhq.api.routes.advisor import _memory_out, _run_out
+from careerhq.application.advisor_specifics import SpecificRequirement, Specifics
 from careerhq.domain.models import (
     AdvisorRun,
     AdvisorRunStatus,
@@ -142,11 +143,36 @@ def test_the_derived_tier_fields_reach_the_page() -> None:
     memory.created_at = _dt.now(_UTC)
     memory.last_confirmed_at = _dt.now(_UTC)
 
-    out = _memory_out(memory)
-    for field in ("tier", "section", "topic", "counts", "action"):
+    # **Resolved specifics, because an unresolved view now deliberately says
+    # nothing.** `_memory_out(memory)` with no specifics is the lineage/dismiss
+    # shape: it emits `action: None` and `assessment: None` rather than claiming
+    # the rows are unreadable. The field still has to *reach* the payload, which
+    # is what this gate is for, so it is exercised with rows resolved.
+    resolved = Specifics(
+        items=[
+            SpecificRequirement(
+                requirement_id=_uuid.uuid4(),
+                text="Hands-on AWS in production",
+                verdict="gap",
+                shortfall="capability",
+                importance=80,
+                profile_quote=None,
+            )
+        ]
+    )
+    out = _memory_out(memory, None, resolved)
+    for field in ("tier", "section", "topic", "counts", "action", "recommended_action"):
         assert field in out, f"derived field {field} never reaches the API"
     assert out["tier"] == "recommendation"
     assert out["section"] == "recommended"
     assert out["topic"] == "AWS"
     assert out["counts"] == {"occurrences": 5, "coverage": 7, "gaps": 4}
-    assert out["action"] is not None
+    # A string for the bundle already in production, the typed form beside it.
+    assert isinstance(out["action"], str) and out["action"]
+    assert out["recommended_action"]["text"] == out["action"]
+
+    # ...and the unresolved shape says nothing rather than something false.
+    unresolved = _memory_out(memory)
+    assert unresolved["action"] is None
+    assert unresolved["recommended_action"] is None
+    assert unresolved["assessment"] is None

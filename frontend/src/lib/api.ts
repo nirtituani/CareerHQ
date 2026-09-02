@@ -902,6 +902,46 @@ export type MemoryDisposition = {
   evidence_delta: { facts: EvidenceFact[] } | null;
 };
 
+/** One requirement row behind a topic, as the posting worded it. */
+export type SpecificRequirement = {
+  requirement_id: string;
+  text: string;
+  verdict: "confirmed" | "partial" | "transferable" | "gap" | "unverified";
+  /** Why it is unmet — null for `confirmed` and `unverified`, which the
+   *  database enforces. */
+  shortfall: "wording" | "evidence" | "capability" | null;
+  importance: number;
+  profile_quote: string | null;
+  resolved: boolean;
+};
+
+export type ActionCategory =
+  | "learn_build"
+  | "prove_it"
+  | "surface_it"
+  | "add_if_you_have_it"
+  | "keep_leading"
+  | "no_action_yet";
+
+export type RecommendedAction = { category: ActionCategory; text: string };
+
+/**
+ * The next step to render, from whichever shape the server sent.
+ *
+ * Both directions of a staggered deploy are real: an older backend sends
+ * `action` as a string with no `recommended_action`, a newer one sends both.
+ * Neither should blank the page, so this normalises rather than assuming.
+ */
+export function actionOf(
+  memory: Pick<CareerMemory, "action" | "recommended_action">,
+): { category?: ActionCategory; text: string } | null {
+  if (memory.recommended_action) return memory.recommended_action;
+  const legacy = memory.action;
+  if (typeof legacy === "string") return legacy ? { text: legacy } : null;
+  if (legacy && typeof legacy === "object" && typeof legacy.text === "string") return legacy;
+  return null;
+}
+
 export type CareerMemory = {
   id: string;
   claim: string;
@@ -918,9 +958,32 @@ export type CareerMemory = {
   topic: string;
   /** Skill memories only; null for portfolio/data-note memories. */
   counts: { occurrences: number | null; coverage: number | null; gaps: number | null } | null;
-  /** A deterministic next-step scaffold for recommendation/strength tiers;
-   *  null where an action is not yet warranted (a valid state, not an error). */
-  action: string | null;
+  /** The requirement rows the frozen evidence points at, resolved at read
+   *  time and ownership-filtered. Verbatim posting wording — never a
+   *  paraphrase, and never generalised into a technology name. */
+  specifics: SpecificRequirement[];
+  /** Shortened verbatim labels for the compact card (at most three). */
+  specific_labels: string[];
+  /** Distinct profile lines the match analysis quoted, in row order. */
+  profile_quotes: string[];
+  /** Rows the evidence names that no longer resolve (deleted, or not yours).
+   *  Reported rather than hidden: the headline counts stay frozen. */
+  specifics_unresolved: number;
+  /** One number-free sentence naming what the rows show. The statistics live
+   *  in the headline, once. */
+  assessment: string | null;
+  /** The one next step, as plain text.
+   *
+   *  **Kept as a string for one deployment cycle.** The two services deploy
+   *  independently and the backend lands first; a bundle compiled against
+   *  `string` that receives an object renders it as a React child, throws, and
+   *  the app has no error boundary. Read `recommended_action` for the typed
+   *  form and treat this as the fallback. Typed as both shapes because a
+   *  frontend deployed ahead of its backend can still meet either. */
+  action: string | RecommendedAction | null;
+  /** The same next step, typed by category; null for portfolio/data-note
+   *  memories, and absent from a backend that predates it. */
+  recommended_action?: RecommendedAction | null;
   evidence: MemoryEvidence;
   created_at: string;
   last_confirmed_at: string;
@@ -969,6 +1032,7 @@ export type AdvisorState = {
   memories: CareerMemory[];
   sections: Record<AdvisorSection, CareerMemory[]>;
   tier_rules_version: string;
+  action_rules_version: string;
   coverage: AdvisorCoverage;
   latest_run: AdvisorRun | null;
   history_counts: { superseded: number; retired: number };

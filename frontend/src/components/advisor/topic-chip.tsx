@@ -13,7 +13,8 @@
 import { useState } from "react";
 
 import { MemoryCard } from "@/components/advisor/memory-card";
-import type { CareerMemory } from "@/lib/api";
+import { groundedTech } from "@/lib/advisor-tech";
+import { actionOf, type CareerMemory } from "@/lib/api";
 
 const TIER_DOT: Record<CareerMemory["tier"], string> = {
   recommendation: "var(--color-failure)",
@@ -35,16 +36,15 @@ const TIER_LABEL: Record<CareerMemory["tier"], string> = {
   data_note: "",
 };
 
+/** Prevalence first, then the gap — each figure stated once.
+ *  "Required in 4 of 7 · Gap in 2". The gap half is omitted where there is
+ *  none, so a strength reads as pure prevalence and its tier label carries
+ *  the rest. */
 function evidenceLine(memory: CareerMemory): string {
   const c = memory.counts;
   if (c && c.coverage != null && c.occurrences != null) {
-    if (memory.tier === "strength") {
-      return `Strong across ${c.occurrences} of ${c.coverage} analyzed postings`;
-    }
-    if (c.gaps != null && c.gaps > 0) {
-      return `Gap in ${c.gaps} of ${c.coverage} analyzed postings`;
-    }
-    return `Appears in ${c.occurrences} of ${c.coverage} analyzed postings`;
+    const required = `Required in ${c.occurrences} of ${c.coverage}`;
+    return c.gaps ? `${required} · Gap in ${c.gaps}` : required;
   }
   return memory.claim;
 }
@@ -60,6 +60,8 @@ export function TopicChip({
 }) {
   const [open, setOpen] = useState(false);
   const label = TIER_LABEL[memory.tier];
+  const tech = groundedTech(memory.specifics ?? []);
+  const action = actionOf(memory);
 
   return (
     <div
@@ -84,6 +86,20 @@ export function TopicChip({
           <span className="block truncate text-xs" style={{ color: "var(--muted)" }}>
             {evidenceLine(memory)}
           </span>
+          {/* Technologies the topic's own requirement rows literally name.
+              Never a snippet of requirement prose — that lives in the
+              expanded "What the roles ask" — and never a technology the
+              evidence does not contain. Absent where the asks are
+              capability-level. */}
+          {tech.length > 0 ? (
+            <span
+              className="mt-0.5 block truncate text-xs"
+              style={{ color: "var(--faint)" }}
+              data-testid="tech-tags"
+            >
+              {tech.join(" · ")}
+            </span>
+          ) : null}
         </span>
         {label ? (
           <span className="shrink-0 text-[10px] uppercase tracking-wide" style={{ color: "var(--faint)" }}>
@@ -97,12 +113,15 @@ export function TopicChip({
 
       {open ? (
         <div className="border-t px-4 py-3" style={{ borderColor: "var(--border)" }}>
-          {memory.action ? (
-            <div className="mb-3" data-testid="action">
-              <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "var(--muted)" }}>
-                Suggested next step
+          {action ? (
+            <div className="mb-3" data-testid="action" data-category={action.category}>
+              <p
+                className="text-xs font-medium uppercase tracking-wide"
+                style={{ color: "var(--muted)" }}
+              >
+                Recommended action
               </p>
-              <p className="mt-1 text-sm">{memory.action}</p>
+              <p className="mt-1 text-sm">{action.text}</p>
             </div>
           ) : null}
           <MemoryCard memory={memory} latestRunId={latestRunId} onDismiss={onDismiss} />
