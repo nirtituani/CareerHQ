@@ -12,6 +12,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text, func, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -198,6 +199,19 @@ class ResumeProfile(Base):
     profile_id: Mapped[uuid.UUID] = _profile_fk()
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     is_master: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+
+    #: FR-006's presentation preferences, as a serialised `ResumeTheme` — the
+    #: design an imported CV was set in, carried here at approval so an export
+    #: can reproduce it. NULL means "render the plain ATS template", which is
+    #: what every row held before themes existed and what a DOCX import still
+    #: holds.
+    #:
+    #: **Written once and never overwritten by a later import.** A locked
+    #: version re-renders from this, so a second import that replaced it would
+    #: change the bytes underneath an `EXPORTED` document's recorded checksum —
+    #: the same hazard that made role context a snapshot rather than a live
+    #: read (docs/03 §10.1, FR-023).
+    theme: Mapped[dict[str, object] | None] = mapped_column(JSONB)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
