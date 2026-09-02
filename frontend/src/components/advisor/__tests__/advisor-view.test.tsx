@@ -612,3 +612,107 @@ describe("the compact evidence line (prevalence · gap)", () => {
     );
   });
 });
+
+describe("action contract compatibility (B1)", () => {
+  // The two services deploy independently. A bundle must render whichever shape
+  // the backend it happens to be talking to sends — the object it was built for,
+  // or the plain string an older backend still returns.
+  it("renders the typed action when the backend sends recommended_action", async () => {
+    api.getAdvisor.mockResolvedValue(
+      state({
+        memories: [
+          memory({
+            action: "Build hands-on depth here — this is a capability gap, not a wording one.",
+            recommended_action: {
+              category: "learn_build",
+              text: "Build hands-on depth here — this is a capability gap, not a wording one.",
+            },
+          }),
+        ],
+      }),
+    );
+    render(<AdvisorView />);
+    await expand();
+    const action = screen.getByTestId("action");
+    expect(action.getAttribute("data-category")).toBe("learn_build");
+    expect(action.textContent).toContain("Build hands-on depth here");
+  });
+
+  it("renders a plain-string action from a backend that predates the typed form", async () => {
+    api.getAdvisor.mockResolvedValue(
+      state({
+        memories: [
+          memory({
+            action: "Build hands-on depth here — this is a capability gap, not a wording one.",
+            recommended_action: undefined,
+          }),
+        ],
+      }),
+    );
+    render(<AdvisorView />);
+    await expand();
+    expect(screen.getByTestId("action").textContent).toContain("Build hands-on depth here");
+  });
+
+  it("renders nothing rather than throwing when there is no action at all", async () => {
+    api.getAdvisor.mockResolvedValue(
+      state({ memories: [memory({ action: null, recommended_action: null })] }),
+    );
+    render(<AdvisorView />);
+    await expand();
+    expect(screen.queryByTestId("action")).toBeNull();
+  });
+});
+
+describe("the advisor's reasoning is shown for every memory (H3, FR-022)", () => {
+  // `assess()` returns null for portfolio and data-note memories, always. While
+  // `priority_reason` was nested inside the assessment block, the reasoning
+  // disappeared entirely for that whole class — an expanded portfolio card
+  // showed a kind/scope line and a Dismiss button and nothing else.
+  it.each([
+    ["portfolio", "portfolio", "4 of 10 applications ended in rejection"],
+    ["data_note", "data_notes", "some applications have inconsistent dates"],
+  ])("shows priority_reason on a %s memory that has no assessment", async (tier, section, claim) => {
+    api.getAdvisor.mockResolvedValue(
+      state({
+        memories: [
+          memory({
+            claim,
+            tier: tier as CareerMemory["tier"],
+            section: section as CareerMemory["section"],
+            counts: null,
+            specifics: [],
+            specific_labels: [],
+            profile_quotes: [],
+            assessment: null,
+            action: null,
+            recommended_action: null,
+            priority_reason: "it is the clearest signal in your recent history",
+          }),
+        ],
+      }),
+    );
+    render(<AdvisorView />);
+    // Portfolio and data-note memories live in a collapsed drawer; open it first.
+    const drawer = await screen.findByTestId(
+      section === "portfolio" ? "drawer-portfolio-insights" : "drawer-data-notes",
+    );
+    await userEvent.click(within(drawer).getByRole("button", { expanded: false }));
+    const card = await expand();
+
+    expect(within(card).queryByTestId("assessment")).toBeNull();
+    expect(within(card).getByTestId("priority").textContent).toContain(
+      "it is the clearest signal in your recent history",
+    );
+  });
+
+  it("still shows the reasoning beside an assessment when there is one", async () => {
+    api.getAdvisor.mockResolvedValue(state({ memories: [memory()] }));
+    render(<AdvisorView />);
+    const card = await expand();
+    expect(within(card).getByTestId("assessment")).toBeTruthy();
+    expect(within(card).getByTestId("priority").textContent).toContain(
+      "the dominant unmet requirement in your target roles",
+    );
+  });
+});

@@ -135,3 +135,45 @@ describe("ranking and limit", () => {
     expect(groundedTech(CLOUD)).toEqual(groundedTech(CLOUD));
   });
 });
+
+describe("ordinary English is not a technology (regression)", () => {
+  // Each of these produced a tag on the reviewed implementation, because the
+  // matcher was case-insensitive and several lexicon entries are common words.
+  // The module's stated invariant is that a technology absent from the evidence
+  // can never be shown at all.
+  it.each([
+    ["Ability to work at a swift pace and deliver", "Swift"],
+    ["Comfortable taking the helm of a squad", "Helm"],
+    ["Bring a spark of creativity to the team", "Spark"],
+    ["Ability to react quickly to production incidents", "React"],
+    ["A rusty grasp of systems programming is fine", "Rust"],
+    ["Spring 2026 internship cohort", "Spring"],
+    ["Experience with RAG status reporting to stakeholders", "RAG"],
+    ["Familiar with lambda expressions and closures", "Serverless"],
+    ["Familiar with lambda expressions and closures", "AWS Lambda"],
+  ])("does not tag %j as %s", (text, tag) => {
+    expect(groundedTech(rows(text))).not.toContain(tag);
+  });
+
+  it("shows nothing at all for a row of pure prose", () => {
+    expect(groundedTech(rows("Comfortable taking the helm at a swift pace, sparking ideas"))).toEqual(
+      [],
+    );
+  });
+});
+
+describe("the real product is still recognised (the other half of the trade)", () => {
+  it.each([
+    ["Swift and Kotlin for the mobile client", "Swift"],
+    ["Author Helm charts for each service", "Helm"],
+    ["Apache Spark batch pipelines", "Spark"],
+    ["React and TypeScript on the front end", "React"],
+    ["Rust for the ingestion hot path", "Rust"],
+    ["Spring Boot microservices", "Spring"],
+    ["Build retrieval-augmented generation pipelines", "RAG"],
+    ["AWS Lambda behind API Gateway", "AWS Lambda"],
+    ["Serverless architecture on AWS", "Serverless"],
+  ])("tags %j as %s", (text, tag) => {
+    expect(groundedTech(rows(text))).toContain(tag);
+  });
+});

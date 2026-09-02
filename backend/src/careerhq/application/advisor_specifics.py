@@ -324,11 +324,20 @@ def recommend(tier: Tier, mix: VerdictMix) -> Recommendation | None:
     """
     if tier in (Tier.PORTFOLIO, Tier.DATA_NOTE):
         return None
+    # **`not mix.total` is checked before the tier, in the same order `assess`
+    # checks it.** The two disagreed: `assess` returned "the requirements are no
+    # longer available to read" while this returned "a consistent strength — keep
+    # leading with it", for the same memory in the same payload. A recommendation
+    # is only as good as the rows under it, whatever the tier says.
+    if not mix.total:
+        return Recommendation(
+            ActionCategory.NO_ACTION_YET, _ACTION_TEXT[ActionCategory.NO_ACTION_YET]
+        )
     if tier == Tier.STRENGTH:
         return Recommendation(
             ActionCategory.KEEP_LEADING, _ACTION_TEXT[ActionCategory.KEEP_LEADING]
         )
-    if tier not in _ACTIONABLE_TIERS or not mix.total:
+    if tier not in _ACTIONABLE_TIERS:
         return Recommendation(
             ActionCategory.NO_ACTION_YET, _ACTION_TEXT[ActionCategory.NO_ACTION_YET]
         )

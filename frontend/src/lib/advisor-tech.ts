@@ -29,8 +29,24 @@ import type { SpecificRequirement } from "@/lib/api";
 type TechTerm = {
   /** What the chip displays. */
   display: string;
-  /** Spellings that count as this term, matched verbatim, case-insensitively. */
+  /** Spellings that count as this term, matched verbatim. */
   patterns: string[];
+  /**
+   * Require the lexicon's own capitalisation.
+   *
+   * Set for every name that is also an ordinary English word. Matched
+   * case-insensitively, "work at a swift pace" showed `Swift`, "taking the helm
+   * of a squad" showed `Helm`, and "bring a spark of creativity" showed `Spark`
+   * — technologies the employer never named, which is exactly what this module
+   * says it can never do. A posting naming the product capitalises it; prose
+   * does not.
+   *
+   * Residual, and accepted rather than hidden: a sentence *beginning* with the
+   * word ("React to incidents within 15 minutes") is capitalised and still
+   * matches. Narrowing that further would need sentence segmentation, which is
+   * inference — the thing this module refuses.
+   */
+  caseSensitive?: boolean;
 };
 
 /** Order is the tie-break, so it is stable and reviewed rather than incidental. */
@@ -42,8 +58,12 @@ const LEXICON: TechTerm[] = [
   { display: "Kubernetes", patterns: ["Kubernetes", "K8s"] },
   { display: "Docker", patterns: ["Docker"] },
   { display: "Terraform", patterns: ["Terraform"] },
-  { display: "Helm", patterns: ["Helm"] },
-  { display: "Serverless", patterns: ["Serverless", "Lambda"] },
+  { display: "Helm", patterns: ["Helm"], caseSensitive: true },
+  { display: "Serverless", patterns: ["Serverless"] },
+  // **Not a bare "Lambda".** "familiar with lambda expressions" is a sentence
+  // about closures, and it displayed `Serverless` — a technology the row never
+  // named, under a word it did not even match. The unambiguous phrase only.
+  { display: "AWS Lambda", patterns: ["AWS Lambda"] },
   // Data
   { display: "PostgreSQL", patterns: ["PostgreSQL", "Postgres"] },
   { display: "MySQL", patterns: ["MySQL"] },
@@ -53,9 +73,9 @@ const LEXICON: TechTerm[] = [
   { display: "Elasticsearch", patterns: ["Elasticsearch"] },
   { display: "Kafka", patterns: ["Kafka"] },
   { display: "BigQuery", patterns: ["BigQuery"] },
-  { display: "Snowflake", patterns: ["Snowflake"] },
-  { display: "Airflow", patterns: ["Airflow"] },
-  { display: "Spark", patterns: ["Spark"] },
+  { display: "Snowflake", patterns: ["Snowflake"], caseSensitive: true },
+  { display: "Airflow", patterns: ["Airflow"], caseSensitive: true },
+  { display: "Spark", patterns: ["Spark"], caseSensitive: true },
   { display: "SQL", patterns: ["SQL"] },
   { display: "NoSQL", patterns: ["NoSQL"] },
   // Languages and frameworks
@@ -64,25 +84,39 @@ const LEXICON: TechTerm[] = [
   { display: "JavaScript", patterns: ["JavaScript"] },
   { display: "Java", patterns: ["Java"] },
   { display: "Node.js", patterns: ["Node.js", "NodeJS"] },
-  { display: "React", patterns: ["React"] },
+  { display: "React", patterns: ["React"], caseSensitive: true },
   { display: "Django", patterns: ["Django"] },
   { display: "FastAPI", patterns: ["FastAPI"] },
-  { display: "Flask", patterns: ["Flask"] },
-  { display: "Spring", patterns: ["Spring Boot", "Spring"] },
+  { display: "Flask", patterns: ["Flask"], caseSensitive: true },
+  // **No bare "Spring".** Capitalisation cannot separate the framework from the
+  // season: "Spring 2026 internship cohort" is capitalised and is not Java. Only
+  // the spellings that can mean nothing else, on the same reasoning as RAG below.
+  {
+    display: "Spring",
+    patterns: ["Spring Boot", "Spring Framework", "Spring MVC"],
+    caseSensitive: true,
+  },
   { display: ".NET", patterns: [".NET"] },
   { display: "C#", patterns: ["C#"] },
   { display: "C++", patterns: ["C++"] },
-  { display: "Ruby", patterns: ["Ruby"] },
-  { display: "Rust", patterns: ["Rust"] },
+  { display: "Ruby", patterns: ["Ruby"], caseSensitive: true },
+  { display: "Rust", patterns: ["Rust"], caseSensitive: true },
   { display: "Kotlin", patterns: ["Kotlin"] },
-  { display: "Swift", patterns: ["Swift"] },
+  { display: "Swift", patterns: ["Swift"], caseSensitive: true },
   { display: "PHP", patterns: ["PHP"] },
   { display: "Scala", patterns: ["Scala"] },
   { display: "GraphQL", patterns: ["GraphQL"] },
   { display: "gRPC", patterns: ["gRPC"] },
   // AI
   { display: "LLMs", patterns: ["LLMs", "LLM"] },
-  { display: "RAG", patterns: ["RAG"] },
+  // **The bare acronym is gone.** "RAG status reporting" is standard delivery
+  // jargon (red/amber/green) and is capitalised in both meanings, so no case
+  // rule separates them. Matching the phrase costs a posting that only ever
+  // writes "RAG" — the smaller harm, by this module's own stated preference.
+  {
+    display: "RAG",
+    patterns: ["retrieval-augmented generation", "retrieval augmented generation"],
+  },
   { display: "LangChain", patterns: ["LangChain"] },
   { display: "PyTorch", patterns: ["PyTorch"] },
   { display: "TensorFlow", patterns: ["TensorFlow"] },
@@ -101,9 +135,12 @@ function escape(pattern: string): string {
  *  The boundary class excludes `.` deliberately: a sentence-final "Docker."
  *  must still match, and terms that genuinely contain a dot (".NET",
  *  "Node.js") are matched literally by their own pattern. */
-function mentions(text: string, pattern: string): boolean {
+function mentions(text: string, pattern: string, caseSensitive = false): boolean {
   const boundary = "[A-Za-z0-9+#]";
-  return new RegExp(`(?<!${boundary})${escape(pattern)}(?!${boundary})`, "i").test(text);
+  return new RegExp(
+    `(?<!${boundary})${escape(pattern)}(?!${boundary})`,
+    caseSensitive ? "" : "i",
+  ).test(text);
 }
 
 /**
@@ -116,7 +153,7 @@ export function groundedTech(specifics: SpecificRequirement[], limit = 3): strin
 
   LEXICON.forEach((term, order) => {
     const hits = specifics.filter((row) =>
-      term.patterns.some((pattern) => mentions(row.text, pattern)),
+      term.patterns.some((pattern) => mentions(row.text, pattern, term.caseSensitive)),
     ).length;
     if (hits > 0) scored.push({ display: term.display, hits, order });
   });

@@ -14,7 +14,7 @@ import { useState } from "react";
 
 import { MemoryCard } from "@/components/advisor/memory-card";
 import { groundedTech } from "@/lib/advisor-tech";
-import type { CareerMemory } from "@/lib/api";
+import { actionOf, type CareerMemory } from "@/lib/api";
 
 const TIER_DOT: Record<CareerMemory["tier"], string> = {
   recommendation: "var(--color-failure)",
@@ -61,6 +61,7 @@ export function TopicChip({
   const [open, setOpen] = useState(false);
   const label = TIER_LABEL[memory.tier];
   const tech = groundedTech(memory.specifics ?? []);
+  const action = actionOf(memory);
 
   return (
     <div
@@ -112,15 +113,15 @@ export function TopicChip({
 
       {open ? (
         <div className="border-t px-4 py-3" style={{ borderColor: "var(--border)" }}>
-          {memory.action ? (
-            <div className="mb-3" data-testid="action" data-category={memory.action.category}>
+          {action ? (
+            <div className="mb-3" data-testid="action" data-category={action.category}>
               <p
                 className="text-xs font-medium uppercase tracking-wide"
                 style={{ color: "var(--muted)" }}
               >
                 Recommended action
               </p>
-              <p className="mt-1 text-sm">{memory.action.text}</p>
+              <p className="mt-1 text-sm">{action.text}</p>
             </div>
           ) : null}
           <MemoryCard memory={memory} latestRunId={latestRunId} onDismiss={onDismiss} />

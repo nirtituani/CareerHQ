@@ -368,7 +368,12 @@ async def test_the_api_exposes_specifics_assessment_and_a_typed_action(
     assert len(item["specific_labels"]) == 3, "the compact card takes at most three"
 
     assert item["assessment"] and not any(c.isdigit() for c in item["assessment"])
-    assert item["action"] == {
+    # `action` is the plain text, `recommended_action` the typed form — see B1 in
+    # `_memory_out`. Both are asserted so neither can drift away from the other.
+    assert item["action"] == (
+        "Build hands-on depth here — this is a capability gap, not a wording one."
+    )
+    assert item["recommended_action"] == {
         "category": "learn_build",
         "text": ("Build hands-on depth here — this is a capability gap, not a wording one."),
     }
@@ -416,3 +421,180 @@ async def test_a_memory_with_no_tier2_evidence_stays_serialisable(
     assert item["specifics"] == [] and item["specifics_unresolved"] == 0
     assert item["assessment"] is None
     assert item["action"] is None
+
+
+async def _cloud_rows(session: AsyncSession) -> tuple[User, list[MatchRequirement]]:
+    """Four capability rows — the shape the assessment taxonomy calls a capability gap."""
+    return await _user_with_rows(
+        session,
+        [
+            (
+                "Hands-on Kubernetes in production",
+                RequirementVerdict.GAP,
+                Shortfall.CAPABILITY,
+                80,
+                None,
+            ),
+            (
+                "Experience with Docker",
+                RequirementVerdict.PARTIAL,
+                Shortfall.CAPABILITY,
+                70,
+                "Containers",
+            ),
+            (
+                "Container orchestration at scale",
+                RequirementVerdict.GAP,
+                Shortfall.CAPABILITY,
+                60,
+                None,
+            ),
+            ("Terraform familiarity", RequirementVerdict.GAP, Shortfall.CAPABILITY, 55, None),
+        ],
+    )
+
+
+_UNAVAILABLE = "The requirements behind this claim are no longer available to read."
+
+
+async def test_the_action_field_stays_a_string_for_one_deployment_cycle(
+    client: httpx.AsyncClient, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    """B1. The two services deploy independently and the backend lands first.
+
+    A frontend bundle compiled against `action: string` that receives an object
+    renders it as a React child, which throws — and the app has no error
+    boundary, so the whole Advisor page goes blank until the frontend build
+    catches up. `action` therefore stays a string while the typed form ships
+    beside it.
+
+    Asserted as a **type**, not a value: the point is the shape an already-built
+    bundle will meet, not the wording.
+    """
+    async with session_factory() as session:
+        user, rows = await _cloud_rows(session)
+        memory = await _memory(session, user, _evidence([r.id for r in rows], [rows[0].id]))
+        await session.commit()
+        memory_id = memory.id
+
+    body = (await _as(client, user).get("/api/advisor")).json()
+    item = next(m for m in body["memories"] if m["id"] == str(memory_id))
+
+    assert isinstance(item["action"], str), (
+        f"`action` is {type(item['action']).__name__}; a bundle built against a string "
+        "renders an object as a React child and blanks the page"
+    )
+    assert isinstance(item["recommended_action"], dict)
+    assert item["recommended_action"]["text"] == item["action"], (
+        "the two forms describe the same next step and must not drift"
+    )
+    assert item["recommended_action"]["category"] == "learn_build"
+
+
+async def test_lineage_entries_do_not_claim_their_requirements_are_unreadable(
+    client: httpx.AsyncClient, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    """H1. The lineage view does not resolve rows; that is not the same as their being gone.
+
+    It rendered every superseded memory with *"The requirements behind this claim
+    are no longer available to read."* beside `specifics_unresolved: 0` — a
+    statement about the user's own evidence that was simply false.
+    """
+    async with session_factory() as session:
+        user, rows = await _cloud_rows(session)
+        ids = [row.id for row in rows]
+        older = await _memory(session, user, _evidence(ids, ids[:2]))
+        await session.flush()
+        # Born with its lineage: a `before_update` listener freezes memory content,
+        # so `supersedes_id` cannot be assigned after the insert.
+        newer = CareerMemory(
+            user_id=user.id,
+            advisor_run_id=older.advisor_run_id,
+            claim=older.claim,
+            kind=older.kind,
+            scope_kind=older.scope_kind,
+            scope_value=older.scope_value,
+            evidence=_evidence(ids, ids[:2]),
+            priority=80,
+            priority_reason="the most frequent unmet requirement",
+            status=MemoryStatus.ACTIVE,
+            supersedes_id=older.id,
+        )
+        session.add(newer)
+        older.status = MemoryStatus.SUPERSEDED
+        await session.commit()
+        newer_id = newer.id
+
+    detail = (await _as(client, user).get(f"/api/advisor/memories/{newer_id}")).json()
+    assert detail["lineage"], "no lineage entry — this gate would examine nothing"
+
+    for entry in detail["lineage"]:
+        assert entry["assessment"] is None, (
+            f"a lineage entry asserts {entry['assessment']!r} about rows nobody tried to read"
+        )
+        assert entry["action"] is None
+        assert entry["recommended_action"] is None
+
+    # ...and the head, which *is* resolved, still says something.
+    assert detail["memory"]["assessment"] and detail["memory"]["assessment"] != _UNAVAILABLE
+
+
+async def test_the_dismiss_response_does_not_claim_requirements_are_unreadable(
+    client: httpx.AsyncClient, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    """H1, the other unresolved caller. Dismissing must not restate the memory falsely."""
+    async with session_factory() as session:
+        user, rows = await _cloud_rows(session)
+        memory = await _memory(session, user, _evidence([r.id for r in rows], [rows[0].id]))
+        await session.commit()
+        memory_id = memory.id
+
+    response = await _as(client, user).post(f"/api/advisor/memories/{memory_id}/dismiss")
+    assert response.status_code == 200
+    dismissed = response.json()["memory"]
+
+    assert dismissed["assessment"] is None, (
+        f"the dismiss response asserts {dismissed['assessment']!r} about rows it never read"
+    )
+    assert dismissed["action"] is None
+    assert dismissed["recommended_action"] is None
+    assert dismissed["specifics_unresolved"] == 0
+    assert dismissed["status"] == "retired"
+
+
+async def test_an_unreadable_row_is_reported_through_the_real_route(
+    client: httpx.AsyncClient, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    """H4. The count has to survive the serialisation hop, not just the resolver.
+
+    `Specifics.unresolved` was computed correctly and asserted at three layers —
+    each of which **supplied the value itself**: the unit test built
+    `Specifics(unresolved=4)`, the frontend fixture wrote `4`, and the only route
+    assertions expected `0`. Hard-coding `"specifics_unresolved": 0` in the route
+    passed every one of them while killing the invariant the field exists for.
+
+    So: four rows, delete one behind the memory's back, then ask the real
+    endpoint.
+    """
+    async with session_factory() as session:
+        user, rows = await _cloud_rows(session)
+        ids = [row.id for row in rows]
+        memory = await _memory(session, user, _evidence(ids, ids[:2]))
+        await session.commit()
+        await session.execute(text("DELETE FROM match_requirements WHERE id = :i"), {"i": ids[2]})
+        await session.commit()
+        memory_id = memory.id
+
+    body = (await _as(client, user).get("/api/advisor")).json()
+    item = next(m for m in body["memories"] if m["id"] == str(memory_id))
+
+    assert len(item["specifics"]) == 3, "the surviving rows"
+    assert item["specifics_unresolved"] == 1, (
+        "the deleted row must be reported; the frozen headline still counts it"
+    )
+    assert "Container orchestration at scale" not in [s["text"] for s in item["specifics"]]
+    # The rows that remain still support the same reading, so the assessment must
+    # not collapse to the unavailable sentence.
+    assert item["assessment"] == (
+        "You partly meet these asks — the shortfalls are depth of hands-on capability."
+    )
