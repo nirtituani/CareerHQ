@@ -438,21 +438,54 @@ describe("SidebarNav", () => {
 });
 
 describe("V2 — specifics, action and single-statement statistics", () => {
-  it("shows grounded verbatim specifics on the compact card", async () => {
+  it("shows only topic, prevalence and tier — never requirement snippets", async () => {
     api.getAdvisor.mockResolvedValue(state({ memories: [memory()] }));
     render(<AdvisorView />);
     const chip = await screen.findByTestId(`chip-${MEMORY_ID}`);
-    const labels = within(chip).getByTestId("specific-labels");
-    expect(labels.textContent).toContain("Deep understanding of cloud infrastructur");
-    expect(labels.textContent).toContain("·");
+    expect(within(chip).queryByTestId("specific-labels")).toBeNull();
+    // The requirement prose belongs to the expanded view alone.
+    expect(chip.textContent).not.toContain("Deep understanding of cloud infrastructure");
+    expect(chip.textContent).not.toContain("Experience with cloud platforms and products");
+    // ...while the three permitted signals are all present.
+    expect(chip.textContent).toContain("AWS");
+    expect(chip.textContent).toContain("Required in 5 of 7 · Gap in 4");
+    expect(chip.textContent).toContain("High priority"); // uppercased by CSS, not in the DOM
   });
 
-  it("never invents a technology the evidence does not contain", async () => {
+  it("shows grounded technology tags on the compact card", async () => {
     api.getAdvisor.mockResolvedValue(state({ memories: [memory()] }));
     render(<AdvisorView />);
     const chip = await screen.findByTestId(`chip-${MEMORY_ID}`);
-    // The rows mention AWS and GCP; Azure appears nowhere in the evidence.
+    expect(within(chip).getByTestId("tech-tags").textContent).toBe("AWS · GCP");
+  });
+
+  it("never shows a technology the evidence does not contain", async () => {
+    api.getAdvisor.mockResolvedValue(state({ memories: [memory()] }));
+    render(<AdvisorView />);
+    const chip = await screen.findByTestId(`chip-${MEMORY_ID}`);
+    // These fixture rows name AWS and GCP only — Azure must not appear.
     expect(chip.textContent).not.toContain("Azure");
+  });
+
+  it("omits the tag line entirely when the asks name no technology", async () => {
+    const capability = memory({
+      topic: "AI & LLM Experience",
+      specifics: [
+        {
+          requirement_id: "r1",
+          text: "Hands-on production experience with AI agent systems",
+          verdict: "gap",
+          shortfall: "capability",
+          importance: 80,
+          profile_quote: null,
+          resolved: true,
+        },
+      ],
+    });
+    api.getAdvisor.mockResolvedValue(state({ memories: [capability] }));
+    render(<AdvisorView />);
+    const chip = await screen.findByTestId(`chip-${MEMORY_ID}`);
+    expect(within(chip).queryByTestId("tech-tags")).toBeNull();
   });
 
   it("states each statistic exactly once across the whole expanded card", async () => {
@@ -467,6 +500,15 @@ describe("V2 — specifics, action and single-statement statistics", () => {
     }
     // ...and the LLM claim prose is no longer part of the default expansion.
     expect(text).not.toContain("AWS was a gap in 4 of 7 analyzed postings");
+  });
+
+  it("keeps every requirement row in the expanded view", async () => {
+    api.getAdvisor.mockResolvedValue(state({ memories: [memory()] }));
+    render(<AdvisorView />);
+    const card = await expand();
+    const asks = within(card).getByTestId("what-roles-ask").textContent ?? "";
+    expect(asks).toContain("Deep understanding of cloud infrastructure (AWS/GCP)");
+    expect(asks).toContain("Experience with cloud platforms and products");
   });
 
   it("renders the four V2 sections in the expansion", async () => {
