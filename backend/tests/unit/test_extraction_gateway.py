@@ -300,17 +300,26 @@ async def test_a_validation_failure_carries_the_usage_it_was_billed_for(
     assert usage.is_fixture is False
 
 
-async def test_the_draft_task_carries_its_configured_thinking_effort(
+async def test_the_calibrated_tasks_carry_their_configured_thinking_effort(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """E2's adoption: `tailor_draft` runs explicit adaptive thinking at the
-    configured effort, and **only** tasks with an effort configured send the
-    parameters at all — every other task's request is byte-identical to before,
-    which is what keeps this a draft-only change.
+    """E2's and PE1's adoptions: `tailor_draft` and `tailor_plan` run explicit
+    adaptive thinking at the configured effort, and **only** tasks with an
+    effort configured send the parameters at all — every other task's request
+    is byte-identical to before, which is what confines each calibration to
+    exactly the tasks it was measured on.
 
-    Measured basis (E2, 24 treatment runs): ~59% of the draft's billed output
+    Measured basis: E2 (24 treatment runs) — ~59% of the draft's billed output
     was invisible default-effort thinking; medium cut draft cost ~50% and
-    latency ~53% with judge-equivalent final quality.
+    latency ~53% with judge-equivalent final quality. PE1 (2026-09-02, paired
+    against the pc1 post-contract pass) — the Action Contract's explicit
+    three-way decision tripled the plan call's billed thinking; medium cut
+    plan output tokens 73% and plan cost 61% with action validity 100%, zero
+    keep violations, zero ungrounded, and no revision-rate increase.
+
+    **Review is deliberately not configured.** Opus review is the grounding
+    guardrail and no effort experiment has measured it; it must keep the
+    provider default until one does.
     """
     seen: list[dict[str, Any]] = []
 
@@ -322,17 +331,17 @@ async def test_the_draft_task_carries_its_configured_thinking_effort(
 
     gateway = litellm_gateway.LiteLLMGateway()
     await gateway.complete(task="tailor_draft", schema=_Person, prompt="…")
-    await gateway.complete(task="tailor_review", schema=_Person, prompt="…")
     await gateway.complete(task="tailor_plan", schema=_Person, prompt="…")
+    await gateway.complete(task="tailor_review", schema=_Person, prompt="…")
 
-    draft, review, plan = seen
-    assert draft["thinking"] == {"type": "adaptive"}
-    assert draft["output_config"] == {"effort": "medium"}
+    draft, plan, review = seen
+    for calibrated in (draft, plan):
+        assert calibrated["thinking"] == {"type": "adaptive"}
+        assert calibrated["output_config"] == {"effort": "medium"}
     # No other stage changes: the keys must be absent, not merely None — an
     # explicit None would still be a different request than today's.
-    for other in (review, plan):
-        assert "thinking" not in other
-        assert "output_config" not in other
+    assert "thinking" not in review
+    assert "output_config" not in review
 
 
 def test_effort_is_resolved_from_the_task_name() -> None:
@@ -343,5 +352,6 @@ def test_effort_is_resolved_from_the_task_name() -> None:
 
     settings = get_settings()
     assert settings.effort_for_task("tailor_draft") == "medium"
-    for task in ("tailor_plan", "tailor_review", "tailor_revise", "tailor_revise_escalated"):
+    assert settings.effort_for_task("tailor_plan") == "medium"
+    for task in ("tailor_review", "tailor_revise", "tailor_revise_escalated"):
         assert settings.effort_for_task(task) is None
