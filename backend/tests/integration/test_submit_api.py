@@ -43,6 +43,7 @@ from careerhq.domain.models import (
     VersionStatus,
 )
 from careerhq.domain.schemas.document import ResumeDocument
+from careerhq.domain.schemas.theme import ResumeTheme
 from careerhq.infrastructure import storage
 from careerhq.infrastructure.security import SESSION_COOKIE, create_session_token
 from tests.support.tailoring_fixtures import seed_tailorable
@@ -61,7 +62,7 @@ def _as(client: httpx.AsyncClient, user: User) -> httpx.AsyncClient:
 def fake_storage(monkeypatch: pytest.MonkeyPatch) -> dict[str, bytes]:
     stored: dict[str, bytes] = {}
 
-    def _render(document: ResumeDocument) -> bytes:
+    def _render(document: ResumeDocument, theme: ResumeTheme | None = None) -> bytes:
         return b"DOC\n" + "\n".join(document.lines_in_order()).encode()
 
     async def _put(key: str, data: bytes, *, content_type: str) -> None:

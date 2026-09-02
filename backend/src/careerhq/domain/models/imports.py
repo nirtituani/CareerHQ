@@ -69,6 +69,18 @@ class ImportedResume(Base):
     #: mistaken for a real extraction (research R3).
     is_fixture: Mapped[bool] = mapped_column(nullable=False, server_default=text("false"))
 
+    #: The design this CV was set in, as a serialised `ResumeTheme`, or NULL when
+    #: none could be recovered — every DOCX, and any PDF in a family the image
+    #: does not carry.
+    #:
+    #: **Staged here because this is the only moment the bytes exist.** The theme
+    #: is read out of the upload in the same parse as the text; by approval time
+    #: the only remaining copy is the retained original, and reading *that* back
+    #: to derive a capability is what `test_architecture.py` refuses. So it waits
+    #: here, beside the extracted items, and is copied into the profile by the
+    #: same transaction that accepts them.
+    theme: Mapped[dict[str, object] | None] = mapped_column(JSONB)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

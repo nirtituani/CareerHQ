@@ -52,6 +52,7 @@ from careerhq.domain.models import (
     VersionStatus,
 )
 from careerhq.domain.schemas.document import ResumeDocument
+from careerhq.domain.schemas.theme import ResumeTheme
 from careerhq.infrastructure import storage
 from tests.support.tailoring_fixtures import seed_tailorable
 
@@ -66,7 +67,7 @@ def readable_documents(monkeypatch: pytest.MonkeyPatch) -> dict[str, bytes]:
     """Stored bytes that can be read back and searched — see T040 for why."""
     stored: dict[str, bytes] = {}
 
-    def _render(document: ResumeDocument) -> bytes:
+    def _render(document: ResumeDocument, theme: ResumeTheme | None = None) -> bytes:
         return b"DOC\n" + "\n".join(document.lines_in_order()).encode()
 
     async def _put(key: str, data: bytes, *, content_type: str) -> None:
