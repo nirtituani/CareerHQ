@@ -33,7 +33,22 @@ résumé line must not be counted as one.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Literal
+
+#: What a section *is*, not how it looks.
+#:
+#: **Semantic, and the distinction is load-bearing.** `list` does not mean "8pt between
+#: entries" — it means every line is its own complete entry, which is a fact about the
+#: content that only the caller assembling the section knows. A themed renderer reads it
+#: and sets list entries further apart than wrapped prose; the plain renderer ignores it
+#: entirely. Putting the spacing here instead would move presentation into the document
+#: and make `ResumeDocument` unrenderable without deciding a design.
+#:
+#: Measured, not assumed: on a real CV, prose paragraphs ran 2pt apart and Skills
+#: entries 8pt. Rendering both at one spacing put the following heading 30pt out of
+#: place and cost the one-page fit.
+SectionStyle = Literal["prose", "list", "roles"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,15 +90,20 @@ class ResumeSection:
 
     heading: str
     groups: tuple[ResumeGroup, ...]
+    #: Defaults to `prose`, so every construction site that predates this — and every
+    #: test written against the plain template — keeps its meaning unchanged.
+    style: SectionStyle = field(default="prose")
 
     @classmethod
-    def of_lines(cls, heading: str, lines: tuple[str, ...]) -> ResumeSection:
+    def of_lines(
+        cls, heading: str, lines: tuple[str, ...], style: SectionStyle = "prose"
+    ) -> ResumeSection:
         """A section of plain lines under no role — every section except Experience.
 
         Exists so the common case stays one call and the nesting is not repeated at every
         construction site.
         """
-        return cls(heading=heading, groups=(ResumeGroup(role=None, lines=lines),))
+        return cls(heading=heading, groups=(ResumeGroup(role=None, lines=lines),), style=style)
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,4 +131,4 @@ class ResumeDocument:
         )
 
 
-__all__ = ["ResumeDocument", "ResumeGroup", "ResumeRole", "ResumeSection"]
+__all__ = ["ResumeDocument", "ResumeGroup", "ResumeRole", "ResumeSection", "SectionStyle"]
