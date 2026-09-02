@@ -79,8 +79,14 @@ function passLabel(attempt: number): string {
 export function Finding({
   finding,
   showAttempt = false,
+  detailText,
 }: {
   finding: ReviewerFinding;
+  /** Replaces the rendered detail — the gaps rows pass the explanatory
+   *  remainder of the same text so the requirement (already in their header)
+   *  is not said twice. Always a substring of `finding.detail`, never new
+   *  prose. */
+  detailText?: string;
   /**
    * Whether to say which review pass caught this one.
    *
@@ -103,7 +109,7 @@ export function Finding({
     >
       <span className="font-medium">{FINDING_LABEL[finding.kind]}</span>
       {" — "}
-      {finding.detail}
+      {detailText ?? finding.detail}
       {finding.quoted_text && (
         <span className="italic" style={{ color: "var(--faint)" }}>
           {" "}
@@ -430,16 +436,20 @@ export function TailorDiffItem({
 
           {/* No controls on an unchanged item: there is nothing to decide, and
               a button that changes nothing is the contradiction the import
-              reviewer's old Keep button had. */}
-          {!editing && !unchanged && !disabled && (
+              reviewer's old Keep button had. **None on an accepted one
+              either**: a decided proposal must stop reading as a question,
+              so the accepted state below replaces the three actions. (A
+              *rejected* proposal keeps them — US3's reject-then-edit flow
+              depends on Edit surviving a rejection.) */}
+          {!editing && !unchanged && !disabled && item.decision === "accepted" && (
+            <p className="text-xs font-semibold" style={{ color: "var(--color-brand-500)" }}>
+              ✓ Accepted — using the proposal in this version.
+            </p>
+          )}
+          {!editing && !unchanged && !disabled && item.decision !== "accepted" && (
             <div className="flex gap-2">
-              <Button
-                size="sm"
-                variant={item.decision === "accepted" ? "default" : "outline"}
-                disabled={busy}
-                onClick={() => decide("accepted")}
-              >
-                {item.decision === "accepted" ? "Accepted" : "Accept"}
+              <Button size="sm" variant="outline" disabled={busy} onClick={() => decide("accepted")}>
+                Accept
               </Button>
               {/* Rejecting starts no AI work (FR-026). It is the action that
                   means "stop", and a silent re-draft here would be a provider

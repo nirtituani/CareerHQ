@@ -6,7 +6,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TailorDiffItem } from "@/components/applications/tailor-diff-item";
-import { TailorTab } from "@/components/applications/tailor-tab";
+import { splitGapDetail, TailorTab } from "@/components/applications/tailor-tab";
 import { ApiError } from "@/lib/api";
 import type {
   ExportedVersion,
@@ -534,6 +534,61 @@ describe("the structured review", () => {
     expect(scroll).toHaveBeenCalled();
   });
 
+  it("an accepted proposal stops asking: actions gone, decided state shown", async () => {
+    mocked.decideItem.mockResolvedValue(item({ decision: "accepted" }));
+    await renderTab(version());
+
+    await userEvent.click(screen.getByRole("button", { name: /^accept$/i }));
+    await waitFor(() => expect(screen.getByTestId("decision-label")).toBeInTheDocument());
+
+    // The card collapsed with its verdict in the header; reopening it shows
+    // the decided state, never the three actions again.
+    const row = screen.getByTestId("diff-item");
+    await userEvent.click(within(row).getAllByRole("button")[0]);
+    expect(within(row).getByText(/accepted — using the proposal/i)).toBeInTheDocument();
+    expect(within(row).queryByRole("button", { name: /^accept$/i })).toBeNull();
+    expect(within(row).queryByRole("button", { name: /^reject$/i })).toBeNull();
+    expect(within(row).queryByRole("button", { name: /^edit$/i })).toBeNull();
+  });
+
+  it("a section chip turns green once its only proposal is decided", async () => {
+    await renderTab(
+      version({
+        items: [
+          item({ decision: "accepted" }),
+          item({ id: "item-2", source_item_id: "b2", source_kind: "summary" }),
+        ],
+      }),
+    );
+
+    const chips = screen.getByTestId("section-chips");
+    // Decided section: green, no pending count.
+    const experience = within(chips).getByRole("button", { name: /experience/i });
+    expect(experience.getAttribute("style")).toContain("--color-brand-500");
+    expect(experience.textContent).not.toMatch(/experience\s*1/i);
+    // Still-pending section: amber, counting the pending decision.
+    const summary = within(chips).getByRole("button", { name: /summary\s*1/i });
+    expect(summary.getAttribute("style")).toContain("--color-attention");
+  });
+
+  it("a partially decided section stays amber and counts only what is pending", async () => {
+    await renderTab(
+      version({
+        items: [
+          item({ decision: "accepted" }),
+          item({ id: "item-2", source_item_id: "b2" }),
+          item({ id: "item-3", source_item_id: "b3" }),
+        ],
+      }),
+    );
+
+    const chips = screen.getByTestId("section-chips");
+    // Three proposals, one decided: the chip says 2 — pending decisions,
+    // never the historical total.
+    const experience = within(chips).getByRole("button", { name: /experience\s*2/i });
+    expect(experience.getAttribute("style")).toContain("--color-attention");
+  });
+
   it("accept all records one accepted decision per pending proposal", async () => {
     mocked.decideItem.mockImplementation(async (_v, itemId) =>
       item({ id: itemId, decision: "accepted" }),
@@ -548,6 +603,59 @@ describe("the structured review", () => {
     // Recording decisions is not approval: FR-025's transition stays on its
     // own button, untouched.
     expect(mocked.approveVersion).not.toHaveBeenCalled();
+  });
+});
+
+// -- The gaps rows: WHAT in the header, WHY in the expansion ----------------
+
+describe("splitting a gap's detail", () => {
+  const detail =
+    "The posting names TypeScript/Node.js as the team's primary language. " +
+    "The resume lists C++, Python, Java (academic), and PHP, and no line anywhere addresses TypeScript.";
+
+  it("splits at the first sentence, a substring split that reassembles", () => {
+    const { requirement, explanation } = splitGapDetail(detail);
+    expect(requirement).toBe("The posting names TypeScript/Node.js as the team's primary language.");
+    expect(explanation).toContain("The resume lists C++");
+    // Never a paraphrase: the two halves are the original text.
+    expect(detail).toBe(`${requirement} ${explanation}`);
+  });
+
+  it("does not split inside e.g. or Node.js, and respects closing quotes", () => {
+    const eg = splitGapDetail(
+      "The posting requires an orchestration framework (e.g. LangGraph) and MCP. The draft never mentions either.",
+    );
+    expect(eg.requirement).toBe(
+      "The posting requires an orchestration framework (e.g. LangGraph) and MCP.",
+    );
+    const quoted = splitGapDetail(
+      'The posting asks for "Experience with Git, CI/CD, and testing." Git appears, testing does not.',
+    );
+    expect(quoted.requirement).toBe('The posting asks for "Experience with Git, CI/CD, and testing."');
+  });
+
+  it("leaves a single-sentence detail whole rather than inventing a reason", () => {
+    const single = splitGapDetail("Kubernetes is never addressed.");
+    expect(single.requirement).toBe("Kubernetes is never addressed.");
+    expect(single.explanation).toBeNull();
+  });
+
+  it("renders WHAT in the collapsed row and WHY in the expansion", async () => {
+    await renderTab(
+      version({
+        draft_findings: [finding({ kind: "uncovered", detail, quoted_text: null })],
+      }),
+    );
+    await userEvent.click(screen.getByTestId("gaps-toggle"));
+
+    const banner = screen.getByTestId("draft-findings");
+    const row = within(banner).getByRole("button", { name: /typescript\/node\.js/i });
+    expect(row.textContent).not.toContain("The resume lists C++");
+
+    await userEvent.click(row);
+    const why = within(banner).getByTestId("finding");
+    expect(why).toHaveTextContent("The resume lists C++");
+    expect(why.textContent).not.toContain("primary language.");
   });
 });
 
@@ -683,15 +791,18 @@ describe("approval", () => {
     expect(mocked.startTailoring).not.toHaveBeenCalled();
   });
 
-  it("leaves an approved version readable and still editable", async () => {
+  it("leaves an approved version readable, its decisions on record", async () => {
     await renderTab(version({ status: "ready", items: [item({ decision: "accepted" })] }));
 
-    // FR-029. Approved is not frozen in this slice; export is what will lock
-    // it, in slice 006. A decided card starts collapsed; opening it is the
-    // one click between an approved version and its Edit control.
+    // FR-029: approved is not frozen in this slice — the backend still
+    // accepts decisions until export locks the content. On this surface an
+    // *accepted* proposal deliberately shows its decided state instead of the
+    // three actions (a decided proposal must stop reading as a question);
+    // the tension with edit-after-accept is a recorded product follow-up.
     expect(screen.getByTestId("tailor-diff")).toHaveAttribute("data-status", "ready");
     await userEvent.click(within(screen.getByTestId("diff-item")).getAllByRole("button")[0]);
-    expect(screen.getByRole("button", { name: /^edit$/i })).toBeInTheDocument();
+    expect(screen.getByText(/accepted — using the proposal/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^edit$/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /approve this version/i })).toBeNull();
   });
 });
