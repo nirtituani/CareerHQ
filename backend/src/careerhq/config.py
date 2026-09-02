@@ -181,6 +181,20 @@ class Settings(BaseSettings):
     #: Resolved by task name via `effort_for_task`, the same discipline as
     #: `model_for_task` — a task, never a parameter, is what callers name.
     llm_effort_tailor_draft: str = "medium"
+    #: **Thinking effort for the plan, calibrated by experiment PE1 (2026-09-02).**
+    #: The Action Contract's explicit keep/reframe/rewrite decision tripled the
+    #: plan call's billed thinking (2,312 → 6,696 output tokens, $0.034 → $0.080
+    #: per call, ~+40s per run). Measured against the paired pc1 post-contract
+    #: pass, `medium` cut plan output tokens 73% and plan cost 61% — below even
+    #: the pre-contract level — with action validity 100%, actionable execution
+    #: 1.00, zero keep violations, zero ungrounded findings and no revision-rate
+    #: increase; the Silverfort specimen still chose a grounded reframe rather
+    #: than regressing to restatements. Watch-item carried from adoption: plans
+    #: at medium looked mildly less reframe-ambitious (0.83 vs 1.0 actionable
+    #: directives per run, small n) — judge the accumulating distribution, not
+    #: this sample. **Review deliberately stays unconfigured**: it is the
+    #: grounding guardrail and no experiment has measured effort there.
+    llm_effort_tailor_plan: str = "medium"
     # -- Slice 008: company research -----------------------------------------
     #
     #: **Gemini 3.6 Flash, chosen on measurement** (OQ-J). Benchmarked against
