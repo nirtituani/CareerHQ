@@ -53,6 +53,33 @@ import {
   startTailoring,
 } from "@/lib/api";
 
+/**
+ * Split an `uncovered` finding's detail into WHAT the posting asks for (its
+ * first sentence — measured across all 293 recorded findings, the Reviewer
+ * consistently opens with the requirement) and WHY it could not be addressed
+ * (the rest). **A substring split, never a paraphrase**: the two parts
+ * concatenate back to the original text. Sentence boundaries respect closing
+ * quotes/brackets and skip abbreviations (the `e.g.` trap was real: one
+ * recorded detail reads "framework (e.g. LangGraph)"). A single-sentence
+ * detail returns `explanation: null` and renders whole in the header.
+ */
+export function splitGapDetail(detail: string): {
+  requirement: string;
+  explanation: string | null;
+} {
+  const boundary = /[.!?]["”’)\]]?\s+(?=["‘“(A-Z0-9])/g;
+  const abbrev = /\b(?:e\.g|i\.e|etc|vs|approx)\.$/i;
+  let match: RegExpExecArray | null;
+  while ((match = boundary.exec(detail)) !== null) {
+    const punctuationEnd =
+      match.index + 1 + (/["”’)\]]/.test(detail[match.index + 1] ?? "") ? 1 : 0);
+    const first = detail.slice(0, punctuationEnd);
+    if (abbrev.test(first.replace(/["”’)\]]+$/, ""))) continue;
+    return { requirement: first, explanation: detail.slice(match.index + match[0].length) };
+  }
+  return { requirement: detail, explanation: null };
+}
+
 /** Statuses during which the workflow is still running. */
 const IN_FLIGHT = ["tailoring", "reviewing"] as const;
 
@@ -548,6 +575,12 @@ export function TailorTab({ applicationId }: { applicationId: string }) {
     kinds.map((kind) => [kind, proposals.filter((item) => item.source_kind === kind)]),
   );
   const sectionsTouched = kinds.filter((kind) => (proposalsByKind.get(kind) ?? []).length > 0);
+  const pendingByKind = new Map(
+    kinds.map((kind) => [
+      kind,
+      (proposalsByKind.get(kind) ?? []).filter((item) => item.decision === "pending").length,
+    ]),
+  );
   const openItemId =
     openSel && openSel.versionId === version.id
       ? openSel.id
@@ -761,7 +794,14 @@ export function TailorTab({ applicationId }: { applicationId: string }) {
         <div className="mt-2 flex flex-wrap gap-2" data-testid="section-chips">
           {kinds.map((kind) => {
             const inKind = proposalsByKind.get(kind) ?? [];
+            const pending = pendingByKind.get(kind) ?? 0;
             const touched = inKind.length > 0;
+            // The chips speak the tab's semantic palette: amber while one or
+            // more of the section's proposals still await a decision — the
+            // count is the *pending* count, not the historical total — green
+            // once every proposal in the section is decided, the quiet clear
+            // treatment when nothing was proposed, red only on the gaps chip.
+            const accent = pending > 0 ? "var(--color-attention)" : "var(--color-brand-500)";
             return (
               <button
                 key={kind}
@@ -770,19 +810,15 @@ export function TailorTab({ applicationId }: { applicationId: string }) {
                 onClick={() => setOpenSel({ versionId: version.id, id: inKind[0]?.id ?? null })}
                 className="flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold"
                 style={{
-                  // The chips speak the tab's semantic palette: amber for a
-                  // section with proposals awaiting attention, the quiet
-                  // clear treatment when there is nothing to do, red only on
-                  // the gaps chip below.
                   borderColor: touched
-                    ? "color-mix(in srgb, var(--color-attention) 35%, transparent)"
+                    ? `color-mix(in srgb, ${accent} 35%, transparent)`
                     : "var(--border)",
                   background: touched ? "var(--surface)" : "transparent",
-                  color: touched ? "var(--color-attention)" : "var(--faint)",
+                  color: touched ? accent : "var(--faint)",
                 }}
               >
                 {KIND_LABEL[kind]}
-                {touched ? (
+                {touched && pending > 0 && (
                   <span
                     className="rounded px-1.5 py-0.5 text-[10px]"
                     style={{
@@ -791,11 +827,11 @@ export function TailorTab({ applicationId }: { applicationId: string }) {
                       background: "color-mix(in srgb, var(--color-attention) 14%, transparent)",
                     }}
                   >
-                    {inKind.length}
+                    {pending}
                   </span>
-                ) : (
-                  <span style={{ color: "var(--faint)", fontWeight: 400 }}>clear</span>
                 )}
+                {touched && pending === 0 && <span aria-hidden>✓</span>}
+                {!touched && <span style={{ color: "var(--faint)", fontWeight: 400 }}>clear</span>}
               </button>
             );
           })}
@@ -948,8 +984,10 @@ export function TailorTab({ applicationId }: { applicationId: string }) {
                     onClick={() => setOpenGap((current) => (current === index ? null : index))}
                     className="flex w-full items-center gap-3 px-3.5 py-3 text-left"
                   >
+                    {/* WHAT the posting asks for — the detail's own first
+                        sentence, verbatim. The WHY lives in the expansion. */}
                     <span className="min-w-0 flex-1 truncate text-sm font-semibold">
-                      {finding.detail}
+                      {splitGapDetail(finding.detail).requirement}
                     </span>
                     <span aria-hidden className="flex-none text-sm" style={{ color: "var(--color-failure)" }}>
                       {openGap === index ? "−" : "+"}
@@ -961,7 +999,14 @@ export function TailorTab({ applicationId }: { applicationId: string }) {
                         Why we couldn't address this
                       </p>
                       <ul>
-                        <Finding finding={finding} />
+                        {/* The explanatory remainder of the same detail — the
+                            header already said the requirement. A
+                            single-sentence detail has nothing further, so the
+                            whole text stands rather than an invented reason. */}
+                        <Finding
+                          finding={finding}
+                          detailText={splitGapDetail(finding.detail).explanation ?? undefined}
+                        />
                       </ul>
                       <p className="mt-2 text-xs" style={{ color: "var(--faint)" }}>
                         No change was proposed. Nothing was added to your résumé to cover this
