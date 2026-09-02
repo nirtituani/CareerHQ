@@ -40,7 +40,13 @@ pytestmark = pytest.mark.asyncio
 
 def _plan() -> dict[str, object]:
     return {
-        "emphasise": [{"what": "Lead with platform ownership", "serves_requirement": "5+ years"}],
+        "emphasise": [
+            {
+                "action": "keep",
+                "what": "Lead with platform ownership",
+                "serves_requirement": "5+ years",
+            }
+        ],
         "de_emphasise": [],
         "protected_gaps": [],
         "strategy": "Lead with platform ownership.",

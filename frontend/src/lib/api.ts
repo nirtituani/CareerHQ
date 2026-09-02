@@ -614,7 +614,12 @@ export type TailoringRun = {
   status: "running" | "succeeded" | "failed" | "abandoned";
   failure_reason: string | null;
   plan: {
-    emphasise: { what: string; serves_requirement: string }[];
+    /** `action` is absent on plans persisted before the action contract. */
+    emphasise: {
+      action?: "keep" | "reframe" | "rewrite";
+      what: string;
+      serves_requirement: string;
+    }[];
     de_emphasise: string[];
     protected_gaps: { requirement: string; why_protected: string }[];
     strategy: string;

@@ -35,6 +35,7 @@ from careerhq.application.immutability import VersionLocked, ensure_version_muta
 from careerhq.application.plan_adherence import (
     FindingFacts,
     ItemFacts,
+    action_execution,
     emphasis_adherence,
     plan_execution,
 )
@@ -629,6 +630,46 @@ async def get_run(version_id: uuid.UUID, session: DbSession, user: CurrentUser) 
             status_code=status.HTTP_404_NOT_FOUND, detail="No run for this version."
         )
 
+    # Shared by `plan_execution` and `action_execution` below — built once so
+    # the two measures cannot drift apart in what they were shown.
+    item_facts = [
+        ItemFacts(
+            source_item_id=str(item.source_item_id),
+            source_kind=item.source_kind,
+            original_text=item.original_text,
+            proposed_text=item.proposed_text,
+            final_text=item.final_text,
+            position=item.position,
+            displaced_position=item.displaced_position,
+        )
+        for item in version.items
+        if item.source_item_id is not None
+    ]
+    finding_facts = [
+        FindingFacts(
+            source_item_id=str(item.source_item_id),
+            kind=finding.kind,
+            quoted_text=finding.quoted_text,
+        )
+        for item in version.items
+        if item.source_item_id is not None
+        for finding in item.findings
+    ]
+    # Pre-T094 a revision replaced the draft's item set. `review_confidences`
+    # is null exactly on runs persisted before that fix shipped — it and the
+    # merge landed in one deployment — so a null on a run that revised dates
+    # it to the code that could erase decisions.
+    contaminated = run.review_confidences is None and run.attempts > 0
+    # Whether this version's rows can say "no proposal arrived" at all.
+    # A run persisted before `displaced_position` existed has NULL
+    # everywhere, and reading that as "the draft did nothing" is the
+    # error T095 removes. Derived from the rows rather than a date so
+    # nothing depends on when a migration happened to run; a run whose
+    # draft proposed *nothing* would be read as unrecorded rather than
+    # as inactive, which errs toward "unknown" and is the safe way to
+    # be wrong.
+    position_evidence = any(item.displaced_position is not None for item in version.items)
+
     return {
         "id": str(run.id),
         "version_id": str(version.id),
@@ -659,43 +700,22 @@ async def get_run(version_id: uuid.UUID, session: DbSession, user: CurrentUser) 
         # accumulates; neither gates anything.
         "plan_execution": plan_execution(
             run.plan,
-            items=[
-                ItemFacts(
-                    source_item_id=str(item.source_item_id),
-                    source_kind=item.source_kind,
-                    original_text=item.original_text,
-                    proposed_text=item.proposed_text,
-                    final_text=item.final_text,
-                    position=item.position,
-                    displaced_position=item.displaced_position,
-                )
-                for item in version.items
-                if item.source_item_id is not None
-            ],
-            findings=[
-                FindingFacts(
-                    source_item_id=str(item.source_item_id),
-                    kind=finding.kind,
-                    quoted_text=finding.quoted_text,
-                )
-                for item in version.items
-                if item.source_item_id is not None
-                for finding in item.findings
-            ],
-            # Pre-T094 a revision replaced the draft's item set. `review_confidences`
-            # is null exactly on runs persisted before that fix shipped — it and the
-            # merge landed in one deployment — so a null on a run that revised dates
-            # it to the code that could erase decisions.
-            contaminated=run.review_confidences is None and run.attempts > 0,
-            # Whether this version's rows can say "no proposal arrived" at all.
-            # A run persisted before `displaced_position` existed has NULL
-            # everywhere, and reading that as "the draft did nothing" is the
-            # error T095 removes. Derived from the rows rather than a date so
-            # nothing depends on when a migration happened to run; a run whose
-            # draft proposed *nothing* would be read as unrecorded rather than
-            # as inactive, which errs toward "unknown" and is the safe way to
-            # be wrong.
-            position_evidence=any(item.displaced_position is not None for item in version.items),
+            items=item_facts,
+            findings=finding_facts,
+            contaminated=contaminated,
+            position_evidence=position_evidence,
+        ),
+        # The action-aware measure, for plans written under the `action`
+        # contract. Legacy plans answer `{"has_actions": false}` here rather
+        # than being scored against a promise they never made; the figures
+        # above keep grading every run so the accumulated distribution stays
+        # one series.
+        "action_execution": action_execution(
+            run.plan,
+            items=item_facts,
+            findings=finding_facts,
+            contaminated=contaminated,
+            position_evidence=position_evidence,
         ),
         "match_analysis_id": str(run.match_analysis_id),
         # Each with its source. Redundant while that source is a static rubric;

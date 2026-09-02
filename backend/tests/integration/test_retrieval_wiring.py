@@ -60,7 +60,11 @@ class CountingGuidelines:
 def _plan() -> dict[str, object]:
     return {
         "emphasise": [
-            {"what": "Six years on payments", "serves_requirement": "5+ years backend services"}
+            {
+                "action": "keep",
+                "what": "Six years on payments",
+                "serves_requirement": "5+ years backend services",
+            }
         ],
         "de_emphasise": [],
         "protected_gaps": [],
