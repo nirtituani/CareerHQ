@@ -13,6 +13,7 @@
 import { useState } from "react";
 
 import { MemoryCard } from "@/components/advisor/memory-card";
+import { groundedTech } from "@/lib/advisor-tech";
 import type { CareerMemory } from "@/lib/api";
 
 const TIER_DOT: Record<CareerMemory["tier"], string> = {
@@ -59,6 +60,7 @@ export function TopicChip({
 }) {
   const [open, setOpen] = useState(false);
   const label = TIER_LABEL[memory.tier];
+  const tech = groundedTech(memory.specifics ?? []);
 
   return (
     <div
@@ -83,16 +85,18 @@ export function TopicChip({
           <span className="block truncate text-xs" style={{ color: "var(--muted)" }}>
             {evidenceLine(memory)}
           </span>
-          {/* Grounded specifics: shortened **verbatim** requirement text, so
-              the card can be specific without inventing a technology name the
-              evidence never contained. */}
-          {memory.specific_labels && memory.specific_labels.length > 0 ? (
+          {/* Technologies the topic's own requirement rows literally name.
+              Never a snippet of requirement prose — that lives in the
+              expanded "What the roles ask" — and never a technology the
+              evidence does not contain. Absent where the asks are
+              capability-level. */}
+          {tech.length > 0 ? (
             <span
               className="mt-0.5 block truncate text-xs"
               style={{ color: "var(--faint)" }}
-              data-testid="specific-labels"
+              data-testid="tech-tags"
             >
-              {memory.specific_labels.join(" · ")}
+              {tech.join(" · ")}
             </span>
           ) : null}
         </span>
