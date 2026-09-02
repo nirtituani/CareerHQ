@@ -12,6 +12,42 @@
 > **Status markers below were true when written.** Where a section describes a state that has
 > since moved on, it is kept rather than rewritten — the reasoning is why it is worth reading.
 
+> ## CURRENT SESSION STATE (2026-09-02) — read this block first
+>
+> **Branch `feat/tailor-redesign` @ `793ab78`, two commits ahead of `main` @ `ddc9bdc`, not
+> pushed, not deployed.** Working tree clean except untracked `design/` (the Claude Design
+> reference files for the redesign; contains a fictional CV — **deliberately not committed**;
+> decide later whether to delete or gitignore).
+>
+> **The Tailor UI redesign is COMPLETE and FROZEN.** Do not continue UI work on it. The next
+> task is a **read-only investigation** into Tailor *output quality* — see §5 option A.
+>
+> **THE QUESTION FOR THE NEXT SESSION**: the real run `acf82dba-fc60-4d48-a3fc-40046a96075e`
+> (2026-09-02 07:31, Silverfort "Senior Backend Software Engineer (AI Engineering)") produced
+> **1 content rewrite, 0 drops, and 10 position-only reorders across 35 items**. Why so few
+> content changes, so many reorders — and **is that actually wrong?** It may be correct
+> behaviour: that job's match analysis scored **85/100 `strong`** with **0 `gap` verdicts**
+> (6 confirmed, 1 partial, 1 transferable, 2 unverified), so a profile that already answers the
+> posting arguably *should* be reordered rather than rewritten. Do not assume a bug. §5 A has
+> the full evidence trail and the specific tension to resolve.
+>
+> **Optimization state, all merged and live in code**: confidence threshold **65**
+> (`v3-final-pass-t65`, calibrated by experiment E1); `tailor_draft` runs **explicit adaptive
+> thinking at `effort: "medium"`** (experiment E2, `llm_effort_tailor_draft`); everything else
+> unchanged. **E3 (draft prompt selectivity) is BLOCKED** — the Anthropic API rejects the
+> configured key with "credit balance is too low" despite a $5.01 Console balance on the same
+> org `6480e45c-1b50-413b-a3f3-fcaddcef0bac`; a support report is written and waiting (see
+> §5 E). **$0 was spent on the blocked attempts** — every call was refused before billing.
+>
+> **Experiment evidence (~$8 of real spend) is preserved at `~/careerhq-eval-artifacts/`** —
+> 17 files: E1/E2/E3 result JSONs, raw completion capture JSONLs, the driver scripts, and the
+> Anthropic support report. **It was rescued out of a session-scoped scratchpad that dies with
+> the session**; the per-call telemetry itself is durable in `tailoring_run_calls`.
+>
+> **Hard constraints for the next session** (the user's own words, carried forward): do not
+> change prompts, models, thresholds, schemas, RAG, or pipeline behaviour until the
+> investigation says where the problem is; do not deploy; do not push unless asked.
+
 > ## Slice 009 — Career Advisor: built on branch `009-career-advisor`, unmerged
 >
 > **2026-09-01, awaiting review before any merge, push, PR or deploy — stopped there by
@@ -130,10 +166,13 @@
 > new tab was not attempted.
 
 
-**Last updated:** 2026-08-31 · **`main` @ `880d4c1`** · every number below was measured by a
-command run at the time it was written, not carried forward.
+**Last updated:** 2026-09-02 · **`main` @ `ddc9bdc`** · working branch
+**`feat/tailor-redesign` @ `793ab78`** (2 commits, unpushed) · every number below was measured by
+a command run at the time it was written, not carried forward. **The block dated 2026-08-31
+immediately below was true then and is kept for its reasoning; for current state read the
+CURRENT SESSION STATE block at the top and §2.**
 
-**`origin/main` is `880d4c1`** — the merge of PR #24. **Backend and frontend are both deployed at
+**As of 2026-08-31, `origin/main` was `880d4c1`** — the merge of PR #24. **Backend and frontend are both deployed at
 exactly this commit** (`railway deployment list`, `SUCCESS`, 2026-08-31T19:37:20Z) and production
 readiness answers **HTTP 200**: `database ok 11.0 ms · cache not_configured · object_storage ok
 148 ms · ai_provider ok`. Alembic head in production is `0020_application_research`.
@@ -325,9 +364,39 @@ deliberately has no `top_k`, no scores and no embedding parameters.
 
 ## 2. Current implementation status
 
-**Everything here was measured on 2026-08-29 by a command run in this session.**
+**Everything in this section was re-measured on 2026-09-02 by commands run in that session.**
+Figures below the task table that carry an older date were not re-run and say so.
+
+### Measured 2026-09-02
+
+| | Value | Command |
+|---|---|---|
+| Branch / HEAD | `feat/tailor-redesign` @ `793ab78` | `git branch --show-current && git log --oneline -1` |
+| `main` | `ddc9bdc`, identical to `origin/main` | `git rev-parse main origin/main` |
+| Unpushed | `2a60bee`, `793ab78` (the redesign) | `git log --oneline origin/main..feat/tailor-redesign` |
+| Backend tests | **1,374 passed**, coverage **87.97%** | `.venv/bin/pytest -q` |
+| Frontend tests | **257 passed**, 18 files | `npx vitest run` |
+| Slice tasks | **562 / 563**; the one open is 009 T045 (deploy), open **by instruction** | see table below |
 
 ### Slice task counts
+
+**Measured 2026-09-02 with `grep -cE '^- \[[xX]\]'`** — 010 now has a `tasks.md` (40/40) that
+did not exist when the older table below was written.
+
+| Slice | Done / total |
+|---|---|
+| 001 platform-foundation | 69 / 69 |
+| 002 deployment | 52 / 52 |
+| 003 data-foundation | 109 / 109 |
+| 004 match-analysis | 89 / 89 |
+| 005 resume-tailoring | 101 / 101 |
+| 006 document-retrieval | 57 / 57 |
+| 007 evaluation-benchmark | 50 / 50 (T047 now `[x]`) |
+| 009 career-advisor | 45 / 46 — **T045 deploy, open by instruction** |
+| 010 role-aware-research | 40 / 40 |
+
+### The older table (2026-08-29) — kept for its reasoning
+
 
 | Slice | Done / total | Open |
 |---|---|---|
@@ -573,6 +642,72 @@ needs a decision about whether `Usage.cost` should carry the amount billed or th
 equivalent, and either answer changes what historical rows mean.
 
 ---
+
+## 3b. The Tailor surface as of 2026-09-02 — what the redesign contains, and what must not move
+
+### The pipeline (unchanged by any of this work)
+
+```
+Plan ──► Draft ──► Review ──┬─ clears ──► finalise ──► persist rows (one transaction)
+Sonnet   Sonnet    Opus     │
+                            └─ fails ──► Revise ──► Review  (≤2 revisions; 2nd Revise = Opus)
+                                         Sonnet      Opus
+```
+
+Strictly sequential — every edge is a real data dependency, so **there is no safe parallelism
+here**; this was checked against the code, not assumed. 3 calls on a clean run, 5 with one
+revision, 7 at the budget. No automatic retry: a failed node ends the run (deliberate non-goal).
+
+### Frozen semantics — do NOT change during the investigation
+
+- **`ungrounded` blocks at any confidence.** `clears_review` fails on any ungrounded finding
+  regardless of the score. The threshold has never been part of the grounding guarantee.
+- **The severity split runs in the use case, before any row is written** (FR-018), and is judged
+  on the **final review pass's findings only** (`v3-final-pass-t65`). Earlier passes persist as
+  the audit record and are **not** served to the client.
+- **`CONFIDENCE_THRESHOLD = 65`** — calibrated by E1, versioned. Changing it is a new
+  `FINALISATION_RULES_VERSION`, never an edit (FR-020).
+- **`llm_effort_tailor_draft = "medium"`** — explicit adaptive thinking, `tailor_draft` **only**.
+  `effort_for_task` has **no fallback**: any other task sends no thinking parameters and is
+  byte-identical to before. Do not widen it casually.
+- **Models by task name, never by branch**; the Sonnet→Opus revision escalation is a *different
+  task name* (`tailor_revise_escalated`).
+- **Draft and Revise return only changed items**, by id. `merge_drafted_items` folds a Revise
+  delta over the standing draft — a drop the Reviser never re-emits must survive.
+- **Decision semantics**: accept keeps the proposal; reject restores the owner's original state
+  *whole* (including `included=True` for a rejected drop); edit stores the owner's words and also
+  restores inclusion. Blanket approval accepts every pending item (FR-025).
+- **Prompts, schemas, RAG/`GuidelineSource`, reviewer logic**: untouched, and off-limits until the
+  investigation says otherwise.
+
+### What the redesign changed (frontend only — 3 files, `2a60bee` + `793ab78`)
+
+`frontend/src/components/applications/tailor-tab.tsx`,
+`.../tailor-diff-item.tsx`, `frontend/src/components/__tests__/tailor.test.tsx`.
+
+- **Summary card**: grounding score (with the canonical FR-043 label, never presented as fit),
+  "N proposed changes across M CV sections · K requirements could not be supported", change-type
+  counts (rewrites / removals / reordered / decided), Approve, and **Accept all N** — which records
+  per-item decisions through the existing endpoint and deliberately does **not** perform FR-025's
+  approve transition.
+- **CV Sections chips**: one per `source_kind`, counting **pending decisions** (never historical
+  totals) — amber while any decision is outstanding, green with a check once all are decided,
+  quiet "clear" when nothing was proposed. Plus a red **Gaps N** chip that scrolls to the gaps
+  section.
+- **Accordion of recommendation cards**, one open at a time (state **derived at render**, not set
+  by an effect): REWRITE/REMOVE badge, section, headline (the *real* proposed text), decision
+  status; expanded to Current vs Recommended, "Why this change?" (Reviewer findings + a
+  deterministic effect line), and Accept / Edit / Reject. An **accepted** proposal replaces the
+  three controls with an explicit accepted state; a **rejected** one keeps them (US3's
+  reject-then-edit depends on Edit surviving rejection).
+- **Gaps section** (`uncovered` draft findings), red-toned, collapsed, one expandable row per
+  requirement. Row header shows **WHAT** (the finding detail's first sentence), the expansion shows
+  **WHY** (the remainder) — `splitGapDetail` is a **pure substring split that reassembles to the
+  original**, respecting closing quotes and skipping abbreviations, verified against all 293
+  recorded findings (283 clean splits, 10 genuine single-sentence details rendered whole, 0
+  suspicious). **Nothing is paraphrased or invented.**
+- **Deliberately absent because the data cannot support them**: High/Medium/Low impact tiers and
+  REQUIRED/PREFERRED gap tiers. See §5 E.
 
 ## 4. What failed
 
@@ -1315,71 +1450,196 @@ under `google_sub LIKE 'benchmark|%'`.
    **Ask the platform for the hostname; never pattern-match it.**
 
 ---
+## 4B. Sessions of 2026-09-01/02 — Tailor correctness, the E-series, and the redesign
+
+**Append-only, like the rest of §4.**
+
+### Tailor correctness bugs that shipped under a green suite (all now fixed, merged)
+
+- **A fabrication fixed by revision was still discarded.** `finalise` was fed the findings of
+  *every* review pass, so a pass-0 `ungrounded` finding discarded the item's proposal even after
+  the Reviser fixed it and the final review cleared it. The owner saw "Withdrawn before saving"
+  where a legitimate corrected proposal existed. **4 of 4** real ungrounded findings on record had
+  exactly this shape. T096 had already established the rule for the revision gate
+  (`active_findings`) and it was never applied one layer up. Fixed by scoping the discard *and*
+  the served findings to the final pass; `FINALISATION_RULES_VERSION` → `v2-final-pass-severity`.
+- **A pure drop (`included=false`) removed a bullet from the exported CV with no user decision.**
+  Not rendered (the diff surface keyed on `proposed_text`), not decidable (`decide_item` never
+  wrote `included`), and blanket approval then recorded that the owner *accepted* a change they
+  were never shown. Fixed: drops render as first-class proposals; reject/edit restore
+  `included=True`; accept keeps the line out.
+- **A position-only proposal was counted "left unchanged"** — a false statement about the document
+  being approved. `displaced_position` existed in the DB and was never served. Now served and
+  counted as "reordered".
+- **`DraftedItem.reason` is generated, validated, and then never persisted or shown.** Still true.
+  Principle III requires an explanation per recommendation, so this is a real contract gap; the
+  fix is one coherent change (persist + display, then require it for drops), deliberately not done
+  mid-experiment-series. **Every reason token paid for today is waste.**
+
+### The E-series (measured, ~$8 total)
+
+- **Draft output is mostly invisible thinking.** Sonnet 5 thinks adaptively by default at effort
+  *high*, billed as output tokens. Measured billed/visible ratio: **9.2× at default, 3.6× at
+  `medium`**. This — not JSON verbosity — was ~59% of draft output.
+- **E1 (threshold 70 → 65)**: measured on *true causal pairs* (one pass captured every validated
+  completion, so the lower-threshold counterfactual was reconstructed from the **same draft** and
+  judged). Revisions triggered at 65–69 only de-overstated one or two lines the owner sees flagged
+  anyway, with **no judged quality difference**; low-60s revisions fixed 2–3 overstatements each,
+  so 60 was **not** taken. Cost three dollars twenty-two cents (spelled out: the digit
+  string collides with the SC-008 (006) guard, which scans this file for the unrelated
+  percentage figure).
+- **E2 (draft effort → `medium`)**: draft cost −44–50%, draft latency −45–53%, judge scores
+  equivalent (17 of 20 paired cases identical). **Pass 1 spiked draft-stage `ungrounded` to 3/12**;
+  a confirmation pass returned it to **1/12 ≈ the historical base rate**, and the adoption carries
+  a monitoring rider. Cost ~$4.5 across both passes.
+- **A single A/B on total run cost cannot resolve a small effect** — the revision loop is a step
+  function worth ~⅓ of a run. Always compare the *controlled call* in `tailoring_run_calls`.
+- **The 007 `SpendGuard` refuses to record spend without `authorise()` first.** One judge call was
+  billed and then rejected at record time — the money was spent, the measurement lost. Call
+  `guard.authorise(projection)` before any guarded call in an ad-hoc harness.
+- **A benchmark driver that mis-routes its own `plan` subcommand runs a paid case.** An early E3
+  driver dispatched every command to `cmd_run`; the free projection check billed one real case
+  ($0.21). Dispatch on `args.command`, and run `plan` first as its own verification.
+- **`litellm` passes `thinking` and `output_config` through as top-level kwargs; `extra_body`
+  is rejected** by the Anthropic endpoint ("extra_body: Extra inputs are not permitted"). Verified
+  live on litellm 1.96.2.
+
+### Process failures worth not repeating
+
+- **`git checkout -- <file>` during a TDD drill wiped an uncommitted fix, three times.** The drill
+  pattern is: break by targeted edit → watch the named failure → **restore by the inverse edit**,
+  never by `git checkout` while the real change is uncommitted. Caught each time only because the
+  next test run failed.
+- **An effect-based UI initialiser raced the first click in tests.** The Tailor accordion's open
+  card was set in a `useEffect`; tests clicked before the flush and the failures *moved around*
+  between runs. Derive such state at render instead — a selection that exists only after a flush
+  is a selection that sometimes is not there.
+- **A `-k` selector that matches nothing prints a cheerful pass.** Hit again this session
+  (`-k failed_task` against a test named `..._which_task_failed`). Read the `N deselected` line.
+- **The session scratchpad is session-scoped and dies with the session.** ~$8 of experiment
+  evidence was living only there. Anything durable belongs in the DB, the repo, or a path outside
+  `/private/tmp/claude-*` (this session's artifacts were rescued to `~/careerhq-eval-artifacts/`).
+
+### Anthropic billing block (2026-09-02, unresolved)
+
+Every API call from the configured key is refused with `invalid_request_error: "Your credit
+balance is too low"` — **HTTP 400, nothing billed** — while the Console shows **$5.01** on the
+**same organization** (`anthropic-organization-id: 6480e45c-1b50-413b-a3f3-fcaddcef0bac`, read
+from the API's own response header, and matching the Console). Ruled out: wrong org, claude.ai
+subscription vs API credits, workspace spend limit (Default workspace), key validity (the same key
+billed successfully until 18:54 UTC on 09-01), client-side caching (reproduced with raw curl), and
+a platform incident (status page clean). Failing request ids: `req_011CedKVjwKm3nxvEKG7mzku`,
+`req_011CedKsgRrGreRpDmWniepN`, `req_011CedMa8ZhrQuK6dnRNDxDw`. **A finished support report is at
+`~/careerhq-eval-artifacts/anthropic-support-report.md`** (support conversation id
+215475745908918). Note also: LiteLLM's recorded costs price Sonnet/Opus at older, higher rates —
+the DB's cost columns are internally consistent for comparison but **overstate real billing by
+roughly 2×** (Console showed $3.81 lifetime for a key our telemetry credited with ~$8).
+
 ## 5. Exact next steps
 
-**The project is complete and deployed. There is no open task, and nothing is blocked.**
-`main` is `880d4c1`, both services run from it, and every slice is ticked at **567 / 567**. What
-follows is optional work, ordered by what a next session would most plausibly want.
+**Updated 2026-09-02.** The Tailor UI redesign is complete and **frozen** — do not continue UI
+work on it. `main` is `ddc9bdc`; the redesign sits unpushed on `feat/tailor-redesign` @ `793ab78`.
 
-### A — **Slice 010's own follow-up list** · owner: whoever picks 010 back up
+### A — **THE NEXT TASK: why did a real run produce 1 content change and 10 reorders?** · read-only investigation · owner: next session
 
-Recorded at the top of this file by the session that built it, and **deliberately not addressed
-since**. The two worth naming: the recorded `cost_basis="estimate"` constant overstates Tavily
-spend roughly **4× in the conservative direction** (the usage API posted ~129 research + 13 search
-credits hours late), and `docs/09` UI notes were never backfilled for the new research tab.
-Neither is a defect; both are known and written down.
+**The specimen** (all measured 2026-09-02 from the local dev database):
 
-### B — **Slice 009, Career Advisor** · owner: next session · **the only unbuilt slice**
+| Fact | Value |
+|---|---|
+| Run | `acf82dba-fc60-4d48-a3fc-40046a96075e` (2026-09-02 07:31) |
+| Version / application | `98099840-7542-4ec0-8f16-4a558cc63d3d` / `c5fa0822-ee6c-4dc6-96d8-e05bc03cbef6` |
+| Job | Silverfort — "Senior Backend Software Engineer (AI Engineering)", JD 7,419 chars |
+| Match analysis | `4d3de34f-99c5-4c27-a340-2b5e5c756bf7` — **85/100, band `strong`** |
+| Requirement verdicts | 6 confirmed, 1 partial, 1 transferable, 2 unverified, **0 gap** |
+| Plan | 8 `emphasise`, 9 `de_emphasise`, **2 `protected_gaps`** |
+| Calls | plan 3,308 out · draft 3,364 out · review 2,345 · revise 1,291 · review 1,660; $0.3379 |
+| Review pass 0 | 1 `ungrounded`, 2 `overstated`, 5 `uncovered` → confidence **78** |
+| Review pass 1 | 0 `ungrounded`, 1 `overstated`, 6 `uncovered` → confidence **86**, cleared |
+| Persisted result | 35 items: **1 rewrite, 0 drops, 10 position-only reorders** |
 
-There is no `specs/009`. It was always documented as droppable, and the project satisfies every
-graded requirement without it.
+**The question is whether this is a defect at all.** The strongest counter-hypothesis, and the one
+to test first: the profile *already answers* this posting (85/strong, zero gaps), so reordering to
+surface the relevant material may be exactly right, and rewriting more would be change for its own
+sake. Note the run revised **despite confidence 78 ≥ 65** — because an `ungrounded` finding blocks
+at any confidence, which is correct and by design.
 
-> ⚠️ **Its headline capability still has no input data**, and `docs/05` §5.9 says otherwise. The
-> JobTracker import supplies statuses, dates and outcomes — **not posting content**. All 96
-> imported rows have `requirements IS NULL`, which `scoreability.py` refuses outright as legacy,
-> so *"Python appeared in 14 of 20 roles"* has nothing to count.
->
-> Verify: `railway ssh --service pgvector "PGHOST=localhost PGPORT=5432 psql -U postgres -d railway`
-> `-c \"SELECT count(*) FILTER (WHERE requirements IS NULL) FROM applications;\""`
+**The specific tension worth resolving**: the match analysis found **zero `gap` requirements**,
+yet the Reviewer raised **5–6 `uncovered` findings** on the same job. Those two components disagree
+about whether the résumé addresses the posting. Either one is wrong, or they mean different things
+(coverage-of-the-*draft* vs fit-of-the-*profile*) — and if it is the latter, the UI currently
+presents `uncovered` as "gaps we couldn't address", which may overstate it.
 
-**Start with `/speckit-specify` and make the spec resolve that**, not the implementation. Two
-honest routes: scope 009 to what the data supports (role families, outcome and rejection rates —
-**63 of 96** imported rows are `rejected`, time-in-status, `imported_match_rating` as
-self-assessment), or make a **bounded posting backfill** its first user story. The backfill is the
-expensive one: ~96 user-supplied URLs through the SSRF-guarded fetcher plus a completion each, many
-links dead, and it **writes to real production rows** — so it needs idempotency and a dry run.
+**Method — evidence-driven, no changes to anything:**
 
-Own it in a **fresh worktree** with its own database:
-`CAREERHQ_TEST_DATABASE_URL=…/careerhq_test_009`.
+1. Read the JD (`applications.job_description`) and the master profile rendering for that user.
+2. Read the stored plan (`tailoring_runs.plan`) — did its 8 emphasis directives point at items the
+   draft then left alone? `application/plan_adherence.py::plan_execution` computes exactly this
+   from persisted rows, free, and is already used by the benchmark runner.
+3. Compare against `match_requirements` for the analysis (verbatim requirement text + importance).
+4. Read the persisted items: which 11 got proposals (`displaced_position IS NOT NULL`), which one
+   carried text, and what the Reviewer said about each.
+5. Check the run's warning logs for `"proposals could not be placed against the master"` —
+   `run_tailoring` logs unplaceable ids and id-less proposals. **If the draft proposed more than
+   11 items and the rest could not be mapped, that is a different bug entirely** (the class that
+   made the first two paid runs produce no changes at all).
+6. Compare with the reorder-heavy runs from 08-28/29 (`aae6f565` 17 reorders, `e70ecd76` 16,
+   `1070657e` 12) — reorder-dominance predates the `medium` effort change, so it is **not** an E2
+   regression. Worth confirming that explicitly.
 
-### C — **Push `poc/008-research-comparison`** · owner: either · small, and the only unpushed work
+**Constraint, restated**: do not change prompts, models, thresholds, schemas, RAG, or pipeline
+behaviour until this says where the problem is. No provider calls are needed for steps 1–6 — every
+input is already persisted — and none are possible anyway while B is blocked.
 
-`874ce1e` — the research-provider comparison harness from the Pango entity-resolution test, three
-files under `poc/008-research-comparison/`. It exists on one machine. This project has now had that
-situation three times; twice it was resolved by luck.
+### B — **Anthropic billing block** · owner: the user (account access) · blocks E3 and every paid run
 
-### D — **Off-machine backup of the paid evaluation evidence** · owner: the author · **largest unmanaged risk**
+Support report ready at `~/careerhq-eval-artifacts/anthropic-support-report.md`; conversation id
+**215475745908918**. Verify with one ~$0.005 probe before assuming it is fixed:
 
-Unchanged. The only backup is `~/CareerHQ-backups/2026-08-29/`, **on the same machine as the
-volumes**, and it predates both T052 arms and the Slice 007 benchmark. Roughly **$8.49** of paid
-evidence across **two** volumes — `careerhq_postgres_data` for rows, `careerhq_minio_data` for the
-exported PDF bytes a submission checksum refers to. Lose the second and re-verification fails
-permanently, by design.
+```bash
+docker compose exec -T backend python -c "
+import asyncio, litellm
+print(asyncio.run(litellm.acompletion(model='anthropic/claude-sonnet-5',
+  messages=[{'role':'user','content':'hi'}], max_tokens=8))['choices'][0]['message']['content'])"
+```
 
-### E — **Branch and worktree hygiene** · owner: either · cosmetic, and mildly hazardous
+### C — **E3: draft prompt selectivity** · blocked by B · owner: next session, on the user's word
 
-**26 local branches** and **23 remote branches** are merged into `main`, plus **15 worktrees**.
-Deleting merged branches loses nothing, but check `git log --branches --not --remotes` first —
-and note item 8 in §4: a shared clone with several worktrees is how an in-flight edit was lost
-twice in one day. **`poc/008-research-comparison` must not be deleted** until it is pushed.
+Fully staged and previously verified. One appended rule to `_DRAFT`:
+*"Prefer fewer, higher-impact changes. Propose a rewrite only when it materially improves alignment
+with this posting; preserve wording that already serves it."* The driver is
+`~/careerhq-eval-artifacts/e3_treatment.py` (patches the prompt **in-process only**; the repo is
+never touched) — copy it into the container's `/tmp` and run with `--static-arms 0 --judged 9
+--suffix e3sel3 --i-have-approval run`. It carries a hard $2.50 in-process cap. **Control is
+free**: the pooled `e2med` + `e2med2` passes (24 runs at today's exact production config) are the
+control arm; do not pay for another. **Note the interaction with A** — if A concludes the draft is
+already too conservative, E3 (which makes it *more* conservative) should be reconsidered, not run.
 
-### F — **The SC-008 gate does not scan `specs/006`** · owner: next session · recorded, not fixed
+### D — **Push / PR the Tailor redesign** · owner: the user · unblocked
 
-`test_sc008_is_not_relabelled.py` scans `specs/007-*`, `HANDOFF.md` and `CLAUDE.md` — **not**
-`specs/006`, where R15 and R16 live. Three pre-existing verdict-rule violations sit in R15.
-Widening `_artifacts()` would catch them.
+`feat/tailor-redesign` @ `793ab78`, two commits, gates green at commit time (frontend 257 tests,
+tsc, oxlint, production build). Nothing pushed by instruction. Decide separately what to do with
+the untracked `design/` folder (Claude Design reference; contains a fictional CV).
 
----
+### E — **Known follow-ups, explicitly NOT part of A** · owner: whoever schedules them
+
+- **`requirement_id` linkage for `uncovered` findings.** The gaps UI currently shows the AI's
+  sentence about the requirement, split by first sentence into WHAT/WHY. To show the *posting's own
+  words* (and REQUIRED/PREFERRED tiers, which the redesign mockup wanted and the payload cannot
+  support), the Reviewer must name the requirement it means: render the analysis's requirements
+  with `[req: <id>]` markers in the review prompt, add an optional `requirement_id` to
+  `ReviewFinding`, and serve `{requirement_text, importance}` resolved server-side.
+  **Measured: 0 of 293 recorded `uncovered` findings carry `quoted_text`** — fuzzy text matching
+  would be fabrication. Backend + prompt change: **do not start it during A**.
+- **`DraftedItem.reason` is never persisted or shown** — Principle III gap, and paid-for waste on
+  every run. Fix as one change: persist, display, then require it for drops.
+- **FR-029 tension in the redesigned UI**: an accepted proposal now hides Accept/Edit/Reject, so
+  after blanket approval a `ready` version offers no per-item controls, while FR-029 says approval
+  is not a one-way door until export. The backend still honours decision changes — restoring a
+  "change decision" affordance is UI-only. **Open product decision.**
+- Slice 010's own list (research `cost_basis` overstatement ~4×; `docs/09` UI notes never
+  backfilled) and slice 009's non-blocking review findings — both recorded above, both untouched.
+- **009 T045 (deploy the Career Advisor)** remains open by instruction, not omission.
+
 ## 5A. Real data that must not be deleted or modified
 
 The project's only evaluation evidence. It was paid for. **Tailoring-run counts measured

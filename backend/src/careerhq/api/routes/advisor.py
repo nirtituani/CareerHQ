@@ -18,6 +18,14 @@ from sqlalchemy import func, select
 
 from careerhq.api.deps import CompletionClient, CurrentUser, DbSession
 from careerhq.application.advise_career import create_pending_run, is_abandoned, run_advisor
+from careerhq.application.advisor_tiers import (
+    ADVISOR_TIER_RULES_VERSION,
+    SECTION_OF,
+    action_for,
+    classify,
+    read_tier_evidence,
+    topic_for,
+)
 from careerhq.application.ports import StructuredCompletion
 from careerhq.domain.models import (
     USER_DISMISSED,
@@ -46,6 +54,11 @@ def _iso(value: datetime | None) -> str | None:
 def _memory_out(
     memory: CareerMemory, last_disposition: MemoryDisposition | None = None
 ) -> dict[str, Any]:
+    # Read-time tier: derived from the memory's own frozen evidence, never
+    # stored. Orthogonal to the lifecycle status above it. The LLM's `priority`
+    # only orders within a tier; the tier itself is deterministic.
+    tier = classify(memory.evidence)
+    tier_ev = read_tier_evidence(memory.evidence)
     return {
         "id": str(memory.id),
         "claim": memory.claim,
@@ -54,6 +67,19 @@ def _memory_out(
         "status": memory.status,
         "priority": memory.priority,
         "priority_reason": memory.priority_reason,
+        "tier": tier,
+        "section": SECTION_OF[tier],
+        "topic": topic_for(tier, memory.evidence, kind=memory.kind, scope_value=memory.scope_value),
+        "counts": (
+            {
+                "occurrences": tier_ev.occurrences,
+                "coverage": tier_ev.coverage,
+                "gaps": tier_ev.gaps,
+            }
+            if tier_ev.is_skill
+            else None
+        ),
+        "action": action_for(tier, memory.evidence),
         "evidence": memory.evidence,
         "created_at": _iso(memory.created_at),
         "last_confirmed_at": _iso(memory.last_confirmed_at),
@@ -178,8 +204,25 @@ async def read_advisor(session: DbSession, user: CurrentUser) -> dict[str, Any]:
         for row in rows:
             last_by_memory[row.memory_id] = row
 
+    # `memories[]` is preserved for backward compatibility; `sections` is the
+    # topic-first grouping the refined UI reads. Both are the same rows, only
+    # partitioned by the derived tier's section — priority order within each is
+    # kept from the query above.
+    rendered = [_memory_out(m, last_by_memory.get(m.id)) for m in memories]
+    sections: dict[str, list[dict[str, Any]]] = {
+        "recommended": [],
+        "emerging": [],
+        "strengths": [],
+        "portfolio": [],
+        "data_notes": [],
+    }
+    for item in rendered:
+        sections[item["section"]].append(item)
+
     return {
-        "memories": [_memory_out(m, last_by_memory.get(m.id)) for m in memories],
+        "memories": rendered,
+        "sections": sections,
+        "tier_rules_version": ADVISOR_TIER_RULES_VERSION,
         "coverage": await _coverage(session, user.id),
         "latest_run": _run_out(latest_run, include_dispositions=True) if latest_run else None,
         "history_counts": {
