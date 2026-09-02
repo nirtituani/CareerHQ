@@ -70,11 +70,18 @@ def _memory_out(
     tier = classify(memory.evidence)
     tier_ev = read_tier_evidence(memory.evidence)
     # V2: the rows the frozen evidence points at, and the one next step they
-    # support. `specifics` is None only where the caller does not resolve them
-    # (the dismiss response); the mix then carries no rows and the taxonomy
-    # answers with its honest refusal rather than a guess.
+    # support.
+    #
+    # **`specifics is None` means "this caller did not resolve them", which is
+    # not the same as "they resolved to nothing".** Collapsing the two made
+    # every lineage entry and every dismiss response claim *"The requirements
+    # behind this claim are no longer available to read."* about rows that
+    # resolve perfectly well — printed beside `specifics_unresolved: 0`
+    # contradicting it. An unresolved view now says nothing rather than
+    # something false; a resolved-but-empty one still gets the honest refusal.
+    resolved = specifics is not None
     mix = mix_of(specifics)
-    action = recommend(tier, mix)
+    action = recommend(tier, mix) if resolved else None
     return {
         "id": str(memory.id),
         "claim": memory.claim,
@@ -110,8 +117,19 @@ def _memory_out(
         "specific_labels": specific_labels(specifics) if specifics else [],
         "profile_quotes": specifics.profile_quotes if specifics else [],
         "specifics_unresolved": specifics.unresolved if specifics else 0,
-        "assessment": assess(tier, mix),
-        "action": ({"category": action.category, "text": action.text} if action else None),
+        "assessment": assess(tier, mix) if resolved else None,
+        # **`action` stays a string for one deployment cycle** (B1). The frontend
+        # and the backend are separate Railway services and the backend lands
+        # first — it needs no rebuild, while the frontend inlines `BACKEND_URL`
+        # at build time. A bundle compiled against `action: string` that receives
+        # an object renders it as a React child, which throws, and the app has no
+        # error boundary: the whole Advisor page goes blank until the frontend
+        # build catches up. The typed form ships beside it under its own key and
+        # becomes the only form once both sides have shipped.
+        "action": action.text if action else None,
+        "recommended_action": (
+            {"category": action.category, "text": action.text} if action else None
+        ),
         "evidence": memory.evidence,
         "created_at": _iso(memory.created_at),
         "last_confirmed_at": _iso(memory.last_confirmed_at),

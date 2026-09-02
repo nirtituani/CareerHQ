@@ -925,6 +925,23 @@ export type ActionCategory =
 
 export type RecommendedAction = { category: ActionCategory; text: string };
 
+/**
+ * The next step to render, from whichever shape the server sent.
+ *
+ * Both directions of a staggered deploy are real: an older backend sends
+ * `action` as a string with no `recommended_action`, a newer one sends both.
+ * Neither should blank the page, so this normalises rather than assuming.
+ */
+export function actionOf(
+  memory: Pick<CareerMemory, "action" | "recommended_action">,
+): { category?: ActionCategory; text: string } | null {
+  if (memory.recommended_action) return memory.recommended_action;
+  const legacy = memory.action;
+  if (typeof legacy === "string") return legacy ? { text: legacy } : null;
+  if (legacy && typeof legacy === "object" && typeof legacy.text === "string") return legacy;
+  return null;
+}
+
 export type CareerMemory = {
   id: string;
   claim: string;
@@ -955,9 +972,18 @@ export type CareerMemory = {
   /** One number-free sentence naming what the rows show. The statistics live
    *  in the headline, once. */
   assessment: string | null;
-  /** The one next step the evidence supports, typed by category; null for
-   *  portfolio/data-note memories. */
-  action: RecommendedAction | null;
+  /** The one next step, as plain text.
+   *
+   *  **Kept as a string for one deployment cycle.** The two services deploy
+   *  independently and the backend lands first; a bundle compiled against
+   *  `string` that receives an object renders it as a React child, throws, and
+   *  the app has no error boundary. Read `recommended_action` for the typed
+   *  form and treat this as the fallback. Typed as both shapes because a
+   *  frontend deployed ahead of its backend can still meet either. */
+  action: string | RecommendedAction | null;
+  /** The same next step, typed by category; null for portfolio/data-note
+   *  memories, and absent from a backend that predates it. */
+  recommended_action?: RecommendedAction | null;
   evidence: MemoryEvidence;
   created_at: string;
   last_confirmed_at: string;

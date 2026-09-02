@@ -192,12 +192,18 @@ export function MemoryCard({
             Assessment
           </h3>
           <p className="mt-1 text-xs">{memory.assessment}</p>
-          {memory.priority_reason ? (
-            <p className="mt-1 text-xs" style={{ color: "var(--muted)" }} data-testid="priority">
-              {memory.priority_reason}
-            </p>
-          ) : null}
         </section>
+      ) : null}
+      {/* **Its own block, not nested inside the assessment.** `assess()` returns
+          null for every portfolio and data-note memory, so nesting it here hid
+          FR-022's reasoning entirely for that whole class — an expanded portfolio
+          card showed a kind/scope line and a Dismiss button and nothing else. The
+          reason the advisor gave for a priority is required wherever there is
+          one, whether or not the rows also support an assessment. */}
+      {memory.priority_reason ? (
+        <p className="mt-3 text-xs" style={{ color: "var(--muted)" }} data-testid="priority">
+          {memory.priority_reason}
+        </p>
       ) : null}
 
       {memory.recreates_dismissed_id ? (
