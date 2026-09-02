@@ -51,6 +51,7 @@ def _plan() -> dict[str, Any]:
     return {
         "emphasise": [
             {
+                "action": "keep",
                 "what": "Six years owning a payments platform",
                 "serves_requirement": "5+ years backend services",
             }
@@ -934,11 +935,13 @@ async def test_the_run_endpoint_reports_how_much_of_the_plan_was_carried_out(
         {
             "emphasise": [
                 {
+                    "action": "reframe",
                     "source_item_id": str(bullet),
                     "what": "Six years owning a payments platform",
                     "serves_requirement": "5+ years backend services",
                 },
                 {
+                    "action": "keep",
                     "source_item_id": str(seeded.skill_ids[0]),
                     "what": "Python",
                     "serves_requirement": "Python",

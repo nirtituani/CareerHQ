@@ -45,7 +45,11 @@ def _script(bullet_id, confidence: int = 90) -> dict:
         "tailor_plan": [
             {
                 "emphasise": [
-                    {"what": "Platform ownership", "serves_requirement": "5+ years backend"}
+                    {
+                        "action": "keep",
+                        "what": "Platform ownership",
+                        "serves_requirement": "5+ years backend",
+                    }
                 ],
                 "de_emphasise": [],
                 "protected_gaps": [],

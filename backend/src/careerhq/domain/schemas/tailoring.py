@@ -22,8 +22,39 @@ from pydantic import BaseModel, Field, model_validator
 
 
 class EmphasisDirective(BaseModel):
-    """One thing the plan says to lead with, and which requirement it serves."""
+    """One thing the plan says to lead with, and which requirement it serves.
 
+    `action` is what makes a directive executable rather than interpretable.
+    Without it, three real runs resolved the same field three ways: the prompt
+    said prominence, the draft read `what` as target wording and rewrote only
+    where it differed from the item, and the adherence measure graded text
+    proposals — so a plan that quoted the profile back produced a one-rewrite
+    run that scored 0.125 against a promise nobody had stated. The enum names
+    the decision; `keep` is a decision, not an omission.
+    """
+
+    #: **Required, no default.** A default would let "unconsidered" masquerade
+    #: as a decision — the exact ambiguity this field removes.
+    #:
+    #: The skill/language restriction below is prompt- and description-enforced
+    #: only: a directive does not know its target's kind at plan time, so a
+    #: validator cannot check it. `action_execution` observes the violation
+    #: instead and reports it as `invalid_target`.
+    action: Literal["keep", "reframe", "rewrite"] = Field(
+        description=(
+            "keep: the existing wording already serves the requirement — the draft must not "
+            "reword this item (its position may still change). "
+            "reframe: the item's facts serve the requirement but the wording does not say so — "
+            "the draft must propose new wording oriented toward `serves_requirement`, using "
+            "only facts the profile states; a reframe that merely restates the item is wrong, "
+            "and one that needs facts the profile lacks belongs in `protected_gaps` instead. "
+            "rewrite: `what` contains the target phrasing and the draft must move the item's "
+            "wording toward it. "
+            "For skill and language entries only `keep` is valid — a label has no wording to "
+            "change; its emphasis is position. "
+            "REQUIRED for reframe and rewrite: `source_item_id` must name the profile line."
+        )
+    )
     source_item_id: UUID | None = Field(
         default=None, description="The profile fact, when this points at exactly one"
     )
@@ -31,6 +62,21 @@ class EmphasisDirective(BaseModel):
     #: Which requirement this serves. Ties the strategy back to the posting, so
     #: a plan cannot emphasise something for no stated reason.
     serves_requirement: str = Field(description="The job requirement this addresses")
+
+    @model_validator(mode="after")
+    def _an_actionable_directive_names_its_target(self) -> Self:
+        """A reframe or rewrite with no target maps to nothing.
+
+        A proposal that names no real line is silently discarded at
+        finalisation — the failure that made the first two paid runs produce
+        no changes at all. Refusing the directive here keeps that class of
+        no-op from being planned in the first place. The rule is also stated
+        in `action`'s description, because a validator does not serialise and
+        the JSON Schema is the whole contract the gateway sends.
+        """
+        if self.action in ("reframe", "rewrite") and self.source_item_id is None:
+            raise ValueError(f"a {self.action} directive must carry source_item_id")
+        return self
 
 
 class ProtectedGap(BaseModel):

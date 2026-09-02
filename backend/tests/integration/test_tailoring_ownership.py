@@ -52,6 +52,7 @@ def _script(bullet_id: uuid.UUID) -> dict[str, list[dict[str, Any]]]:
             {
                 "emphasise": [
                     {
+                        "action": "keep",
                         "what": "Six years owning a payments platform",
                         "serves_requirement": "5+ years backend services",
                     }
