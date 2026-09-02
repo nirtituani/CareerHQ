@@ -26,6 +26,7 @@ from careerhq.domain.models import (
     MatchRequirement,
     MatchStatus,
     ProfessionalProfile,
+    ProfessionalTitle,
     ResumeProfile,
     Skill,
     SummaryBlock,
@@ -85,6 +86,22 @@ async def seed_tailorable(
     session.add(
         ContactInformation(profile_id=profile.id, full_name="Tailor Test", source="EXTRACTED")
     )
+    # The headline that sits under the contact line on a real CV. Two rows, because
+    # extraction splits "A | B" into two titles and composition restates them in order.
+    session.add_all(
+        [
+            ProfessionalTitle(
+                profile_id=profile.id,
+                title="Senior Backend Engineer",
+                ordinal=0,
+                source="EXTRACTED",
+            ),
+            ProfessionalTitle(
+                profile_id=profile.id, title="Payments Specialist", ordinal=1, source="EXTRACTED"
+            ),
+        ]
+    )
+
     summary = SummaryBlock(
         profile_id=profile.id,
         text="Backend engineer with six years on payment systems.",
@@ -114,9 +131,18 @@ async def seed_tailorable(
             source="EXTRACTED",
         ),
     ]
+    # **Categorised, because a category is what a Skills section is grouped by.** The
+    # profile has carried `Skill.category` since slice 003; nothing downstream used it
+    # until the export composed label/value rows, and a fixture without one cannot tell
+    # a working grouping from a missing snapshot.
     skills = [
-        Skill(profile_id=profile.id, name="Python", source="EXTRACTED"),
-        Skill(profile_id=profile.id, name="PostgreSQL", source="EXTRACTED"),
+        Skill(
+            profile_id=profile.id,
+            name="Python",
+            category="Programming Languages",
+            source="EXTRACTED",
+        ),
+        Skill(profile_id=profile.id, name="PostgreSQL", category="Databases", source="EXTRACTED"),
     ]
     for row in (*bullets, *skills):
         session.add(row)

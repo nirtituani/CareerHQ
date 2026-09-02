@@ -119,6 +119,18 @@ class ResumeDocument:
     full_name: str
     contact: tuple[str, ...]
     sections: tuple[ResumeSection, ...]
+    #: The professional headline that sits under the contact line — "Senior Backend
+    #: Engineer", and on many CVs two of them joined. `None` when the profile records
+    #: none, which must stay absent rather than being filled.
+    #:
+    #: **A slot of its own, and it had to be.** `_SECTIONS` folded `TITLE` into Summary
+    #: because this model had no header field, so a headline could only render as the
+    #: first sentence of a paragraph — which is not what a headline is, and is what the
+    #: first real export showed. It is one optional field rather than a redesign: it
+    #: defaults to `None`, so every document built before this renders unchanged, and
+    #: `lines_in_order()` excludes it for the same reason it excludes the name and the
+    #: section headings — it is document structure, not an approved item.
+    headline: str | None = None
 
     def lines_in_order(self) -> tuple[str, ...]:
         """Every approved line, flattened in render order.

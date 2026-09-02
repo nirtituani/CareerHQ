@@ -170,6 +170,13 @@ def _render_html(document: ResumeDocument) -> str:
     if document.contact:
         joined = " · ".join(html.escape(fragment) for fragment in document.contact)
         parts.append(f"<div class='contact'>{joined}</div>")
+    if document.headline:
+        # **Through the class this template already has, deliberately.** Adding a rule
+        # for it would change the markup — and so the bytes — of every résumé already
+        # exported on the plain template, against a checksum FR-021 recorded. The plain
+        # template shows what the document holds; giving the headline a *hierarchy* is
+        # the themed renderer's job.
+        parts.append(f"<p class='line'>{html.escape(document.headline)}</p>")
     for section in document.sections:
         parts.append(f"<h2>{html.escape(section.heading)}</h2>")
         for group in section.groups:
@@ -261,6 +268,11 @@ div.contact {{
   font-size: {theme.contact_font_size_pt}pt;
   text-align: {theme.contact_alignment};
   margin-top: 3pt;
+}}
+p.headline {{
+  font-size: {theme.role_font_size_pt}pt;
+  font-weight: {theme.role_font_weight};
+  margin-top: {theme.paragraph_space_pt}pt;
 }}
 h2.section {{
   font-size: {theme.section_heading_font_size_pt}pt;
@@ -358,6 +370,11 @@ def _render_themed_html(document: ResumeDocument, theme: ResumeTheme) -> str:
             html.escape(fragment) for fragment in document.contact
         )
         parts.append(f"<div class='contact'>{joined}</div>")
+    if document.headline:
+        # Set at the role face — the weight a CV gives the line under its contact
+        # details — rather than as the first sentence of the summary paragraph, which is
+        # where it landed while the document model had nowhere else to put it.
+        parts.append(f"<p class='headline'>{html.escape(document.headline)}</p>")
     for section in document.sections:
         if section.heading:
             parts.append(f"<h2 class='section'>{html.escape(section.heading)}</h2>")

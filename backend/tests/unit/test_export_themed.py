@@ -566,3 +566,66 @@ def test_a_missing_bundled_font_is_logged_rather_than_rendered_silently(
         render_module._FONT_FILES.values()
     ), "the warning should name every face it could not find"
     assert "@font-face" not in css, "no face should be declared when no file exists"
+
+
+def test_the_headline_renders_between_the_contact_line_and_the_first_heading() -> None:
+    """A headline is document structure, and must read as one.
+
+    Before `ResumeDocument` had a slot for it, the only place to put a headline was the
+    first line of the Summary paragraph, where it rendered as body prose at body weight.
+    It now sits on its own between the contact details and the first section heading, at
+    the theme's role face — the weight a CV gives that line.
+    """
+    document = _document()
+    headed = ResumeDocument(
+        full_name=document.full_name,
+        contact=document.contact,
+        sections=document.sections,
+        headline="Senior Backend Engineer · Payments Specialist",
+    )
+    data = render_resume_pdf(headed, _THEME)
+    with pdfplumber.open(io.BytesIO(data)) as pdf:
+        words = pdf.pages[0].extract_words(extra_attrs=["fontname", "size"])
+
+    def top_of(token: str) -> float:
+        for word in words:
+            if word["text"] == token:
+                return float(word["top"])
+        raise AssertionError(f"{token!r} was not rendered")
+
+    assert top_of(_NAME.split()[0]) < top_of("Senior") < top_of("SUMMARY")
+
+    headline_words = [w for w in words if w["text"] in {"Senior", "Backend", "Engineer"}]
+    assert headline_words, "the headline did not reach the page"
+    assert any(round(float(w["size"]), 1) == _THEME.role_font_size_pt for w in headline_words), (
+        "the headline did not render at the theme's role size"
+    )
+
+
+def test_a_document_with_no_headline_renders_none() -> None:
+    """Absence stays absent — every document built before the version snapshotted one.
+
+    This is what keeps the plain template's pinned markup valid: the headline rule is
+    inert unless the document carries one.
+    """
+    themed_markup = _render_themed_html(_BASELINE_DOCUMENT, _THEME)
+    assert "class='headline'" not in themed_markup
+    # And the plain template gained no rule for it at all — see the golden gate above.
+    assert "p.headline" not in _render_html(_BASELINE_DOCUMENT)
+
+
+def test_the_plain_renderer_also_shows_a_headline_it_is_given() -> None:
+    """The plain path must not silently drop content the document carries.
+
+    Not a fidelity change to the plain template — it is the same rule as the name and the
+    contact line: what the document holds, the renderer emits.
+    """
+    headed = ResumeDocument(
+        full_name="Dana Levi",
+        contact=("dana@example.com",),
+        sections=_BASELINE_DOCUMENT.sections,
+        headline="Senior Backend Engineer",
+    )
+    with pdfplumber.open(io.BytesIO(render_resume_pdf(headed))) as pdf:
+        text = pdf.pages[0].extract_text() or ""
+    assert "Senior Backend Engineer" in text
