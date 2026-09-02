@@ -380,12 +380,19 @@ export function TailorTab({ applicationId }: { applicationId: string }) {
     try {
       const updated = await decideItem(version.id, itemId, decision, text);
       // Replace the one item rather than refetching the version: a refetch here
-      // would discard any edit in progress on a neighbouring row.
+      // would discard any edit in progress on a neighbouring row. A functional
+      // updater, because two decisions can be in flight at once — the render
+      // closure's snapshot would let the later response erase the earlier
+      // item's update, exactly as `acceptAll` already avoids.
       if (live.current) {
-        setVersion({
-          ...version,
-          items: version.items.map((item) => (item.id === updated.id ? updated : item)),
-        });
+        setVersion((current) =>
+          current
+            ? {
+                ...current,
+                items: current.items.map((item) => (item.id === updated.id ? updated : item)),
+              }
+            : current,
+        );
         // The mockup collapses a card once it is decided — the decision shows
         // in its header, and the next undecided card is one click away.
         setOpenSel({ versionId: version.id, id: null });
