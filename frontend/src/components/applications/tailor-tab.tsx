@@ -33,7 +33,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { TailorDiffItem, Finding } from "@/components/applications/tailor-diff-item";
+import { Finding, KIND_LABEL, TailorDiffItem } from "@/components/applications/tailor-diff-item";
 import { Button } from "@/components/ui/button";
 import {
   type ProposalDecision,
@@ -52,6 +52,33 @@ import {
   refusalReason,
   startTailoring,
 } from "@/lib/api";
+
+/**
+ * Split an `uncovered` finding's detail into WHAT the posting asks for (its
+ * first sentence — measured across all 293 recorded findings, the Reviewer
+ * consistently opens with the requirement) and WHY it could not be addressed
+ * (the rest). **A substring split, never a paraphrase**: the two parts
+ * concatenate back to the original text. Sentence boundaries respect closing
+ * quotes/brackets and skip abbreviations (the `e.g.` trap was real: one
+ * recorded detail reads "framework (e.g. LangGraph)"). A single-sentence
+ * detail returns `explanation: null` and renders whole in the header.
+ */
+export function splitGapDetail(detail: string): {
+  requirement: string;
+  explanation: string | null;
+} {
+  const boundary = /[.!?]["”’)\]]?\s+(?=["‘“(A-Z0-9])/g;
+  const abbrev = /\b(?:e\.g|i\.e|etc|vs|approx)\.$/i;
+  let match: RegExpExecArray | null;
+  while ((match = boundary.exec(detail)) !== null) {
+    const punctuationEnd =
+      match.index + 1 + (/["”’)\]]/.test(detail[match.index + 1] ?? "") ? 1 : 0);
+    const first = detail.slice(0, punctuationEnd);
+    if (abbrev.test(first.replace(/["”’)\]]+$/, ""))) continue;
+    return { requirement: first, explanation: detail.slice(match.index + match[0].length) };
+  }
+  return { requirement: detail, explanation: null };
+}
 
 /** Statuses during which the workflow is still running. */
 const IN_FLIGHT = ["tailoring", "reviewing"] as const;
@@ -228,6 +255,16 @@ export function TailorTab({ applicationId }: { applicationId: string }) {
     versionId: null,
     ids: new Set(),
   });
+  // The redesign's one-open-at-a-time accordion. **Derived, not effectful**:
+  // until the owner touches it for this version, the open card is the first
+  // pending proposal (the mockup's "expanded recommendation" default); after
+  // that, it is exactly what they chose. An effect-based init raced the first
+  // click in tests — a selection that exists only after a flush is a
+  // selection that sometimes is not there.
+  const [openSel, setOpenSel] = useState<{ versionId: string; id: string | null } | null>(null);
+  const [gapsOpen, setGapsOpen] = useState(false);
+  const [openGap, setOpenGap] = useState<number | null>(null);
+  const gapsRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     live.current = true;
     return () => {
@@ -303,6 +340,36 @@ export function TailorTab({ applicationId }: { applicationId: string }) {
     }
   }
 
+  /** Accept every pending proposal, one decision at a time through the same
+   *  endpoint the buttons use. Deliberately not `approve`: FR-025's blanket
+   *  accept lives on the Approve button and also transitions the version —
+   *  this only records decisions, and approving stays a separate, explicit
+   *  step. */
+  async function acceptAll() {
+    if (!version) return;
+    const pending = version.items.filter(
+      (item) => (item.proposed_text !== null || !item.included) && item.decision === "pending",
+    );
+    setBusy(true);
+    setError(null);
+    try {
+      for (const item of pending) {
+        const updated = await decideItem(version.id, item.id, "accepted");
+        if (!live.current) return;
+        setVersion((current) =>
+          current
+            ? { ...current, items: current.items.map((i) => (i.id === updated.id ? updated : i)) }
+            : current,
+        );
+      }
+      if (live.current) setOpenSel({ versionId: version.id, id: null });
+    } catch (cause: unknown) {
+      if (live.current) setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      if (live.current) setBusy(false);
+    }
+  }
+
   async function decide(
     itemId: string,
     decision: Exclude<ProposalDecision, "pending">,
@@ -313,12 +380,22 @@ export function TailorTab({ applicationId }: { applicationId: string }) {
     try {
       const updated = await decideItem(version.id, itemId, decision, text);
       // Replace the one item rather than refetching the version: a refetch here
-      // would discard any edit in progress on a neighbouring row.
+      // would discard any edit in progress on a neighbouring row. A functional
+      // updater, because two decisions can be in flight at once — the render
+      // closure's snapshot would let the later response erase the earlier
+      // item's update, exactly as `acceptAll` already avoids.
       if (live.current) {
-        setVersion({
-          ...version,
-          items: version.items.map((item) => (item.id === updated.id ? updated : item)),
-        });
+        setVersion((current) =>
+          current
+            ? {
+                ...current,
+                items: current.items.map((item) => (item.id === updated.id ? updated : item)),
+              }
+            : current,
+        );
+        // The mockup collapses a card once it is decided — the decision shows
+        // in its header, and the next undecided card is one click away.
+        setOpenSel({ versionId: version.id, id: null });
       }
     } catch (cause: unknown) {
       // **The T037 fix, on the one path that never got it.** Without this the
@@ -496,52 +573,136 @@ export function TailorTab({ applicationId }: { applicationId: string }) {
   // Every entry above is decidable — a rewrite and a drop alike — so pending
   // alone is the count the approve note needs (FR-025).
   const undecided = proposals.filter((item) => item.decision === "pending").length;
+  const decided = proposals.length - undecided;
+  const rewrites = proposals.filter((item) => item.proposed_text !== null).length;
+  const removals = proposals.filter((item) => !item.included).length;
+  // The section chips: every kind, with how many proposals it carries.
+  const kinds = Object.keys(KIND_LABEL) as (keyof typeof KIND_LABEL)[];
+  const proposalsByKind = new Map(
+    kinds.map((kind) => [kind, proposals.filter((item) => item.source_kind === kind)]),
+  );
+  const sectionsTouched = kinds.filter((kind) => (proposalsByKind.get(kind) ?? []).length > 0);
+  const pendingByKind = new Map(
+    kinds.map((kind) => [
+      kind,
+      (proposalsByKind.get(kind) ?? []).filter((item) => item.decision === "pending").length,
+    ]),
+  );
+  const openItemId =
+    openSel && openSel.versionId === version.id
+      ? openSel.id
+      : (proposals.find((item) => item.decision === "pending")?.id ?? null);
 
   return (
     <div className="py-6" data-testid="tailor-diff" data-status={version.status}>
-      <div className="flex flex-wrap items-baseline justify-between gap-3">
-        <div>
+      {/* The redesign's summary card: grounding on the left, the proposal
+          arithmetic in the middle, the actions on the right. Same facts as
+          before — confidence (FR-043's own label), counts derived from the
+          rows, the FR-025 approve semantics — arranged as one surface. */}
+      <div
+        data-testid="tailor-summary"
+        className="flex flex-wrap items-start gap-6 rounded-xl border p-5"
+        style={{ borderColor: "var(--border)", background: "var(--surface)" }}
+      >
+        {version.confidence_score !== null && (
+          <>
+            <div className="w-44 flex-none">
+              <p
+                className="text-[10px] tracking-widest uppercase"
+                style={{ fontFamily: "var(--font-mono)", color: "var(--faint)" }}
+              >
+                Grounding score
+              </p>
+              <p
+                className="mt-1 text-4xl leading-none"
+                style={{ fontFamily: "var(--font-display)", color: "var(--color-brand-500)" }}
+              >
+                {version.confidence_score}
+                <span className="text-base" style={{ color: "var(--faint)" }}>
+                  /100
+                </span>
+              </p>
+              <div
+                className="mt-2 h-1 overflow-hidden rounded-full"
+                style={{ background: "color-mix(in srgb, var(--foreground) 8%, transparent)" }}
+              >
+                <div
+                  className="h-full"
+                  style={{
+                    width: `${version.confidence_score}%`,
+                    background: "var(--color-brand-500)",
+                  }}
+                />
+              </div>
+              {/* The canonical label (FR-043) — the number above is this same
+                  score, never a second one. */}
+              <p className="mt-2 text-xs">
+                <Confidence score={version.confidence_score} />
+              </p>
+            </div>
+            <div className="hidden w-px self-stretch sm:block" style={{ background: "var(--border)" }} />
+          </>
+        )}
+
+        <div className="min-w-0 flex-1">
           <p
             className="text-2xl leading-none"
             style={{ fontFamily: "var(--font-display)", color: "var(--foreground)" }}
           >
             {submitted ? "Sent" : approved ? "Approved" : "Ready for your approval"}
           </p>
-          {/* Said once the request has actually resolved, never on the click. This is
-              the state a person stops checking the job after, so it has to describe
-              what happened rather than what was asked for — and it says the one thing
-              that is not obvious: this version is finished, and changing the résumé for
-              this job means tailoring it again (FR-025). */}
+          {/* Said once the request has actually resolved, never on the click. */}
           {submitted && (
             <p data-testid="submitted-note" className="mt-1.5 text-sm" style={{ color: "var(--muted)" }}>
               This is the résumé on record for this job. To change it, tailor this job
               again — that produces a new version and leaves this one as it was sent.
             </p>
           )}
-          <p className="mt-1.5 text-sm" style={{ color: "var(--muted)" }}>
-            {version.confidence_score !== null && (
-              <>
-                <Confidence score={version.confidence_score} />
-                {" · "}
-              </>
-            )}
+          <p className="mt-2 text-sm" style={{ color: "var(--muted)" }}>
             <span className="tabular" style={{ fontFamily: "var(--font-mono)" }}>
               {proposals.length}
             </span>{" "}
-            proposed change{proposals.length === 1 ? "" : "s"}
+            proposed change{proposals.length === 1 ? "" : "s"} across {sectionsTouched.length} CV{" "}
+            section{sectionsTouched.length === 1 ? "" : "s"}.
+            {version.draft_findings.length > 0 && (
+              <span style={{ color: "var(--faint)" }}>
+                {" "}
+                {version.draft_findings.length} requirement
+                {version.draft_findings.length === 1 ? "" : "s"} could not be supported from your
+                profile.
+              </span>
+            )}
           </p>
+          {/* Counts by what the change *is* — the payload carries no impact
+              tiers, and inventing High/Medium/Low here would be a claim the
+              agent never made. */}
+          <div className="mt-3 flex gap-5 text-xs" style={{ color: "var(--muted)" }}>
+            {(
+              [
+                ["Rewrites", rewrites],
+                ["Removals", removals],
+                ["Reordered", reordered],
+                ["Decided", decided],
+              ] as const
+            ).map(([label, count]) => (
+              <span key={label} className="flex flex-col gap-0.5">
+                <span
+                  className="text-base font-bold"
+                  style={{ color: count > 0 ? "var(--foreground)" : "var(--faint)" }}
+                >
+                  {count}
+                </span>
+                {label}
+              </span>
+            ))}
+          </div>
         </div>
 
-        {/* Everything still undecided counts as accepted (FR-025) — the
-            import-review precedent, where an untouched review adds everything
-            not discarded. Said out loud, because a person who has read two of
-            eleven rows should know what the button means before pressing it. */}
         {approved && (
           /* Export renders the approved items to a PDF and stores it (FR-015).
              The download is a separate link because downloading again must not
-             export again — a second export is a second stored copy and a second
-             record, which is not what a person pressing "download" is asking for. */
-          <div className="flex items-center gap-3" data-testid="export-controls">
+             export again. */
+          <div className="flex flex-none items-center gap-3" data-testid="export-controls">
             {(exported || submitted) && (
               <a
                 data-testid="download-pdf"
@@ -557,29 +718,11 @@ export function TailorTab({ applicationId }: { applicationId: string }) {
                 {busy ? "Exporting…" : exported ? "Export again" : "Export as PDF"}
               </Button>
             )}
-            {/* **The action this screen already instructs** (FR-025). A locked
-                version's content cannot change, so tailoring again is the only
-                way forward — it produces a new version and leaves this one as
-                it was sent, which is what `create_pending_version` does by
-                reusing a `draft` and nothing else. It was implemented, tested
-                and unreachable: the submitted view said these words and offered
-                no control that performed them.
-
-                Not offered while the version is still `ready`, where the action
-                a person wants is Edit rather than a second paid run. */}
             {locked && (
-              <Button
-                data-testid="retailor"
-                variant="outline"
-                disabled={busy}
-                onClick={tailor}
-              >
+              <Button data-testid="retailor" variant="outline" disabled={busy} onClick={tailor}>
                 {busy ? "Starting…" : "Tailor this job again"}
               </Button>
             )}
-            {/* Offered only once a document exists, because a submission is a record
-                *of that document* — there is nothing to freeze before then, and the
-                endpoint refuses it. */}
             {exported && (
               <Button data-testid="submit-version" disabled={busy} onClick={markSubmitted}>
                 {busy ? "Marking…" : "Mark as submitted"}
@@ -589,12 +732,20 @@ export function TailorTab({ applicationId }: { applicationId: string }) {
         )}
 
         {!approved && (
-          <div className="text-right">
+          <div className="flex w-44 flex-none flex-col gap-2 text-right">
+            {/* Everything still undecided counts as accepted (FR-025) — said
+                out loud below, because a person who has read two of eleven
+                rows should know what the button means before pressing it. */}
             <Button disabled={busy} onClick={approve}>
               {busy ? "Approving…" : "Approve this version"}
             </Button>
             {undecided > 0 && (
-              <p data-testid="approve-note" className="mt-1 text-xs" style={{ color: "var(--faint)" }}>
+              <Button variant="outline" disabled={busy} onClick={acceptAll}>
+                Accept all {undecided}
+              </Button>
+            )}
+            {undecided > 0 && (
+              <p data-testid="approve-note" className="text-xs" style={{ color: "var(--faint)" }}>
                 {undecided} undecided will be accepted
               </p>
             )}
@@ -629,17 +780,6 @@ export function TailorTab({ applicationId }: { applicationId: string }) {
         </p>
       )}
 
-      {/* `uncovered` findings concern the draft as a whole — there is no item
-          for an unaddressed requirement to attach to, and inventing one would
-          demand a reference the Reviewer has no honest basis to give. */}
-      {version.draft_findings.length > 0 && (
-        <ul className="mt-5" data-testid="draft-findings">
-          {version.draft_findings.map((finding, index) => (
-            <Finding key={index} finding={finding} />
-          ))}
-        </ul>
-      )}
-
       {/* **Locked, not merely approved.** `application/immutability.py` freezes
           content at `exported` and `submitted` and nowhere else, so every
           `Accept`, `Reject` and `Edit` on one of those is a guaranteed 409 —
@@ -649,12 +789,109 @@ export function TailorTab({ applicationId }: { applicationId: string }) {
           flag the export controls are gated on — is the plausible stricter
           reading that would take that away. The rows still render in full; what
           is withdrawn is the offer to change them, not the document. */}
-      <ul className="mt-5">
+      {/* CV sections, as chips: every kind the résumé can hold, with how many
+          proposals it carries. Clicking opens that section's first card. */}
+      <div className="mt-6">
+        <p
+          className="text-[10px] tracking-widest uppercase"
+          style={{ fontFamily: "var(--font-mono)", color: "var(--faint)" }}
+        >
+          CV sections
+        </p>
+        <div className="mt-2 flex flex-wrap gap-2" data-testid="section-chips">
+          {kinds.map((kind) => {
+            const inKind = proposalsByKind.get(kind) ?? [];
+            const pending = pendingByKind.get(kind) ?? 0;
+            const touched = inKind.length > 0;
+            // The chips speak the tab's semantic palette: amber while one or
+            // more of the section's proposals still await a decision — the
+            // count is the *pending* count, not the historical total — green
+            // once every proposal in the section is decided, the quiet clear
+            // treatment when nothing was proposed, red only on the gaps chip.
+            const accent = pending > 0 ? "var(--color-attention)" : "var(--color-brand-500)";
+            return (
+              <button
+                key={kind}
+                type="button"
+                disabled={!touched}
+                onClick={() => setOpenSel({ versionId: version.id, id: inKind[0]?.id ?? null })}
+                className="flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold"
+                style={{
+                  borderColor: touched
+                    ? `color-mix(in srgb, ${accent} 35%, transparent)`
+                    : "var(--border)",
+                  background: touched ? "var(--surface)" : "transparent",
+                  color: touched ? accent : "var(--faint)",
+                }}
+              >
+                {KIND_LABEL[kind]}
+                {touched && pending > 0 && (
+                  <span
+                    className="rounded px-1.5 py-0.5 text-[10px]"
+                    style={{
+                      fontFamily: "var(--font-mono)",
+                      color: "var(--color-attention)",
+                      background: "color-mix(in srgb, var(--color-attention) 14%, transparent)",
+                    }}
+                  >
+                    {pending}
+                  </span>
+                )}
+                {touched && pending === 0 && <span aria-hidden>✓</span>}
+                {!touched && <span style={{ color: "var(--faint)", fontWeight: 400 }}>clear</span>}
+              </button>
+            );
+          })}
+          {version.draft_findings.length > 0 && (
+            <button
+              type="button"
+              data-testid="gaps-chip"
+              onClick={() => gapsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
+              className="flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold"
+              style={{
+                borderColor: "color-mix(in srgb, var(--color-failure) 35%, transparent)",
+                background: "var(--surface)",
+                color: "var(--color-failure)",
+              }}
+            >
+              Gaps
+              <span
+                className="rounded px-1.5 py-0.5 text-[10px]"
+                style={{
+                  fontFamily: "var(--font-mono)",
+                  color: "var(--color-failure)",
+                  background: "color-mix(in srgb, var(--color-failure) 14%, transparent)",
+                }}
+              >
+                {version.draft_findings.length}
+              </span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-6 flex items-baseline justify-between">
+        <h2
+          className="text-base font-bold"
+          style={{ color: "var(--foreground)", letterSpacing: "-0.01em" }}
+        >
+          Changes we recommend
+        </h2>
+        <span className="text-xs" style={{ color: "var(--muted)" }}>
+          {undecided} of {proposals.length} awaiting your decision
+        </span>
+      </div>
+
+      <ul className="mt-3">
         {proposals.map((item) => (
           <TailorDiffItem
             key={item.id}
             item={item}
             disabled={locked}
+            open={openItemId === item.id}
+            onToggle={() =>
+              setOpenSel({ versionId: version.id, id: openItemId === item.id ? null : item.id })
+            }
             onDecide={(decision, text) => decide(item.id, decision, text)}
           />
         ))}
@@ -666,6 +903,129 @@ export function TailorTab({ applicationId }: { applicationId: string }) {
           {untouched > 0 && reordered > 0 && " "}
           {reordered > 0 && `${reordered} reordered by the agent.`}
         </p>
+      )}
+
+      {/* `uncovered` findings concern the draft as a whole — there is no item
+          for an unaddressed requirement to attach to, and inventing one would
+          demand a reference the Reviewer has no honest basis to give. The
+          redesign renders them as a collapsed section with one expandable row
+          per requirement. **No REQUIRED/PREFERRED tiers**: the payload does
+          not carry requirement importance, and inventing a tier here would be
+          a claim nobody made. */}
+      {version.draft_findings.length > 0 && (
+        <div
+          ref={gapsRef}
+          data-testid="draft-findings"
+          className="mt-6 overflow-hidden rounded-xl border"
+          style={{
+            // Red, deliberately: the tab's convention is green = keep,
+            // amber = proposed change, red = missing/unsupported. Soft mixes
+            // keep it reading as "gap", not as a system error.
+            borderColor: "color-mix(in srgb, var(--color-failure) 30%, transparent)",
+            background: "var(--surface)",
+          }}
+        >
+          <button
+            type="button"
+            data-testid="gaps-toggle"
+            onClick={() => setGapsOpen((current) => !current)}
+            className="flex w-full items-center gap-3.5 px-4 py-3.5 text-left"
+          >
+            <span
+              className="flex-none rounded px-2 py-1 text-[10px] tracking-wider"
+              style={{
+                fontFamily: "var(--font-mono)",
+                color: "var(--color-failure)",
+                background: "color-mix(in srgb, var(--color-failure) 13%, transparent)",
+              }}
+            >
+              GAPS
+            </span>
+            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span className="flex items-center gap-2">
+                <span
+                  className="text-xs font-semibold tracking-wider"
+                  style={{ fontFamily: "var(--font-mono)", color: "var(--foreground)" }}
+                >
+                  GAPS WE COULDN'T ADDRESS
+                </span>
+                <span
+                  className="rounded px-1.5 py-0.5 text-[10px]"
+                  style={{
+                    fontFamily: "var(--font-mono)",
+                    color: "var(--color-failure)",
+                    background: "color-mix(in srgb, var(--color-failure) 12%, transparent)",
+                  }}
+                >
+                  {version.draft_findings.length} requirement
+                  {version.draft_findings.length === 1 ? "" : "s"}
+                </span>
+              </span>
+              <span className="text-xs" style={{ color: "var(--muted)" }}>
+                Job requirements with no supporting evidence in your profile
+              </span>
+            </span>
+            <span
+              aria-hidden
+              className="flex h-6 w-6 flex-none items-center justify-center rounded-md text-sm"
+              style={{
+                color: "var(--color-failure)",
+                background: "color-mix(in srgb, var(--color-failure) 12%, transparent)",
+              }}
+            >
+              {gapsOpen ? "−" : "+"}
+            </span>
+          </button>
+          {gapsOpen && (
+            <div className="flex flex-col gap-2 px-4 pt-0.5 pb-4">
+              {version.draft_findings.map((finding, index) => (
+                <div
+                  key={index}
+                  className="overflow-hidden rounded-lg border"
+                  style={{
+                    borderColor: "color-mix(in srgb, var(--color-failure) 18%, transparent)",
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setOpenGap((current) => (current === index ? null : index))}
+                    className="flex w-full items-center gap-3 px-3.5 py-3 text-left"
+                  >
+                    {/* WHAT the posting asks for — the detail's own first
+                        sentence, verbatim. The WHY lives in the expansion. */}
+                    <span className="min-w-0 flex-1 truncate text-sm font-semibold">
+                      {splitGapDetail(finding.detail).requirement}
+                    </span>
+                    <span aria-hidden className="flex-none text-sm" style={{ color: "var(--color-failure)" }}>
+                      {openGap === index ? "−" : "+"}
+                    </span>
+                  </button>
+                  {openGap === index && (
+                    <div className="px-3.5 pb-3.5">
+                      <p className="text-xs font-bold" style={{ color: "var(--foreground)" }}>
+                        Why we couldn't address this
+                      </p>
+                      <ul>
+                        {/* The explanatory remainder of the same detail — the
+                            header already said the requirement. A
+                            single-sentence detail has nothing further, so the
+                            whole text stands rather than an invented reason. */}
+                        <Finding
+                          finding={finding}
+                          detailText={splitGapDetail(finding.detail).explanation ?? undefined}
+                        />
+                      </ul>
+                      <p className="mt-2 text-xs" style={{ color: "var(--faint)" }}>
+                        No change was proposed. Nothing was added to your résumé to cover this
+                        requirement.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       )}
 
       {run && <RunDetail run={run} />}

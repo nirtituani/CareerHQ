@@ -6,7 +6,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TailorDiffItem } from "@/components/applications/tailor-diff-item";
-import { TailorTab } from "@/components/applications/tailor-tab";
+import { splitGapDetail, TailorTab } from "@/components/applications/tailor-tab";
 import { ApiError } from "@/lib/api";
 import type {
   ExportedVersion,
@@ -465,6 +465,239 @@ describe("a rewrite proposed together with exclusion", () => {
   });
 });
 
+// -- The redesign's accordion, chips, and bulk accept ------------------------
+
+describe("the structured review", () => {
+  const two = () =>
+    version({
+      items: [
+        item(),
+        item({ id: "item-2", source_item_id: "b2", source_kind: "summary" }),
+      ],
+    });
+
+  it("opens one card at a time, starting with the first pending proposal", async () => {
+    await renderTab(two());
+
+    // Exactly one comparison on screen — the first pending card's.
+    expect(screen.getAllByTestId("proposed-text")).toHaveLength(1);
+    const rows = screen.getAllByTestId("diff-item");
+    expect(within(rows[0]).getByTestId("proposed-text")).toBeInTheDocument();
+
+    // Opening the second closes the first: still one comparison, now the other's.
+    await userEvent.click(within(rows[1]).getAllByRole("button")[0]);
+    expect(screen.getAllByTestId("proposed-text")).toHaveLength(1);
+    expect(within(rows[1]).getByTestId("proposed-text")).toBeInTheDocument();
+  });
+
+  it("names the touched CV sections with their counts", async () => {
+    await renderTab(two());
+
+    const chips = screen.getByTestId("section-chips");
+    const touched = within(chips).getByRole("button", { name: /experience\s*1/i });
+    expect(touched).toBeInTheDocument();
+    expect(within(chips).getByRole("button", { name: /summary\s*1/i })).toBeInTheDocument();
+    // The semantic palette: a section with proposals wears the amber
+    // attention treatment — never the brand green, which would read as
+    // "clear" on the one chip that needs a decision.
+    expect(touched.getAttribute("style")).toContain("--color-attention");
+    expect(touched.innerHTML).not.toContain("--color-brand");
+    // An untouched section reads "clear" and offers nothing to open.
+    const clear = within(chips).getByRole("button", { name: /education\s*clear/i });
+    expect(clear).toBeDisabled();
+    expect(clear.getAttribute("style")).not.toContain("--color-attention");
+  });
+
+  it("offers a red gaps chip that jumps to the gaps section, only when gaps exist", async () => {
+    const scroll = vi.fn();
+    Element.prototype.scrollIntoView = scroll;
+
+    // No gaps: no chip.
+    await renderTab(version());
+    expect(screen.queryByTestId("gaps-chip")).toBeNull();
+    document.body.innerHTML = "";
+
+    await renderTab(
+      version({
+        draft_findings: [
+          finding({ kind: "uncovered", detail: "Kubernetes is never addressed.", quoted_text: null }),
+        ],
+      }),
+    );
+    const chip = screen.getByTestId("gaps-chip");
+    expect(chip).toHaveTextContent(/gaps\s*1/i);
+    // Red is the gap semantic here — missing/unsupported — distinct from the
+    // amber proposed-change language and scoped to this surface.
+    expect(chip.getAttribute("style")).toContain("--color-failure");
+
+    await userEvent.click(chip);
+    expect(scroll).toHaveBeenCalled();
+  });
+
+  it("an accepted proposal stops asking: actions gone, decided state shown", async () => {
+    mocked.decideItem.mockResolvedValue(item({ decision: "accepted" }));
+    await renderTab(version());
+
+    await userEvent.click(screen.getByRole("button", { name: /^accept$/i }));
+    await waitFor(() => expect(screen.getByTestId("decision-label")).toBeInTheDocument());
+
+    // The card collapsed with its verdict in the header; reopening it shows
+    // the decided state, never the three actions again.
+    const row = screen.getByTestId("diff-item");
+    await userEvent.click(within(row).getAllByRole("button")[0]);
+    expect(within(row).getByText(/accepted — using the proposal/i)).toBeInTheDocument();
+    expect(within(row).queryByRole("button", { name: /^accept$/i })).toBeNull();
+    expect(within(row).queryByRole("button", { name: /^reject$/i })).toBeNull();
+    expect(within(row).queryByRole("button", { name: /^edit$/i })).toBeNull();
+  });
+
+  it("a section chip turns green once its only proposal is decided", async () => {
+    await renderTab(
+      version({
+        items: [
+          item({ decision: "accepted" }),
+          item({ id: "item-2", source_item_id: "b2", source_kind: "summary" }),
+        ],
+      }),
+    );
+
+    const chips = screen.getByTestId("section-chips");
+    // Decided section: green, no pending count.
+    const experience = within(chips).getByRole("button", { name: /experience/i });
+    expect(experience.getAttribute("style")).toContain("--color-brand-500");
+    expect(experience.textContent).not.toMatch(/experience\s*1/i);
+    // Still-pending section: amber, counting the pending decision.
+    const summary = within(chips).getByRole("button", { name: /summary\s*1/i });
+    expect(summary.getAttribute("style")).toContain("--color-attention");
+  });
+
+  it("a partially decided section stays amber and counts only what is pending", async () => {
+    await renderTab(
+      version({
+        items: [
+          item({ decision: "accepted" }),
+          item({ id: "item-2", source_item_id: "b2" }),
+          item({ id: "item-3", source_item_id: "b3" }),
+        ],
+      }),
+    );
+
+    const chips = screen.getByTestId("section-chips");
+    // Three proposals, one decided: the chip says 2 — pending decisions,
+    // never the historical total.
+    const experience = within(chips).getByRole("button", { name: /experience\s*2/i });
+    expect(experience.getAttribute("style")).toContain("--color-attention");
+  });
+
+  it("keeps both decisions when two of them overlap in flight", async () => {
+    // The stale-closure trap: `decide()` replacing state built from the render
+    // closure lets the later-resolving response overwrite the earlier item's
+    // update — accept A, open B and accept it while A is still in flight, and
+    // A snaps back to "pending" on screen while the server has it accepted.
+    // Held-open promises make the overlap deterministic rather than a race.
+    const settle = new Map<string, (value: VersionItem) => void>();
+    mocked.decideItem.mockImplementation(
+      (_v, itemId) =>
+        new Promise<VersionItem>((resolve) => {
+          settle.set(itemId, resolve);
+        }),
+    );
+    await renderTab(two());
+
+    const rows = screen.getAllByTestId("diff-item");
+    // Accept the first card; its request stays in flight.
+    await userEvent.click(within(rows[0]).getByRole("button", { name: /^accept$/i }));
+    // Open the second card and accept it too, while the first has not resolved.
+    await userEvent.click(within(rows[1]).getAllByRole("button")[0]);
+    await userEvent.click(within(rows[1]).getByRole("button", { name: /^accept$/i }));
+
+    // Resolve in click order: the first decision lands, then the second.
+    settle.get("item-1")!(item({ decision: "accepted" }));
+    await waitFor(() =>
+      expect(screen.getAllByTestId("diff-item")[0]).toHaveAttribute("data-decision", "accepted"),
+    );
+    settle.get("item-2")!(
+      item({ id: "item-2", source_item_id: "b2", source_kind: "summary", decision: "accepted" }),
+    );
+
+    // Both decisions stay reflected — the second response must not carry a
+    // snapshot that forgets the first.
+    await waitFor(() =>
+      expect(screen.getAllByTestId("diff-item")[1]).toHaveAttribute("data-decision", "accepted"),
+    );
+    expect(screen.getAllByTestId("diff-item")[0]).toHaveAttribute("data-decision", "accepted");
+  });
+
+  it("accept all records one accepted decision per pending proposal", async () => {
+    mocked.decideItem.mockImplementation(async (_v, itemId) =>
+      item({ id: itemId, decision: "accepted" }),
+    );
+    await renderTab(two());
+
+    await userEvent.click(screen.getByRole("button", { name: /^accept all 2$/i }));
+
+    await waitFor(() => expect(mocked.decideItem).toHaveBeenCalledTimes(2));
+    expect(mocked.decideItem).toHaveBeenCalledWith("version-1", "item-1", "accepted");
+    expect(mocked.decideItem).toHaveBeenCalledWith("version-1", "item-2", "accepted");
+    // Recording decisions is not approval: FR-025's transition stays on its
+    // own button, untouched.
+    expect(mocked.approveVersion).not.toHaveBeenCalled();
+  });
+});
+
+// -- The gaps rows: WHAT in the header, WHY in the expansion ----------------
+
+describe("splitting a gap's detail", () => {
+  const detail =
+    "The posting names TypeScript/Node.js as the team's primary language. " +
+    "The resume lists C++, Python, Java (academic), and PHP, and no line anywhere addresses TypeScript.";
+
+  it("splits at the first sentence, a substring split that reassembles", () => {
+    const { requirement, explanation } = splitGapDetail(detail);
+    expect(requirement).toBe("The posting names TypeScript/Node.js as the team's primary language.");
+    expect(explanation).toContain("The resume lists C++");
+    // Never a paraphrase: the two halves are the original text.
+    expect(detail).toBe(`${requirement} ${explanation}`);
+  });
+
+  it("does not split inside e.g. or Node.js, and respects closing quotes", () => {
+    const eg = splitGapDetail(
+      "The posting requires an orchestration framework (e.g. LangGraph) and MCP. The draft never mentions either.",
+    );
+    expect(eg.requirement).toBe(
+      "The posting requires an orchestration framework (e.g. LangGraph) and MCP.",
+    );
+    const quoted = splitGapDetail(
+      'The posting asks for "Experience with Git, CI/CD, and testing." Git appears, testing does not.',
+    );
+    expect(quoted.requirement).toBe('The posting asks for "Experience with Git, CI/CD, and testing."');
+  });
+
+  it("leaves a single-sentence detail whole rather than inventing a reason", () => {
+    const single = splitGapDetail("Kubernetes is never addressed.");
+    expect(single.requirement).toBe("Kubernetes is never addressed.");
+    expect(single.explanation).toBeNull();
+  });
+
+  it("renders WHAT in the collapsed row and WHY in the expansion", async () => {
+    await renderTab(
+      version({
+        draft_findings: [finding({ kind: "uncovered", detail, quoted_text: null })],
+      }),
+    );
+    await userEvent.click(screen.getByTestId("gaps-toggle"));
+
+    const banner = screen.getByTestId("draft-findings");
+    const row = within(banner).getByRole("button", { name: /typescript\/node\.js/i });
+    expect(row.textContent).not.toContain("The resume lists C++");
+
+    await userEvent.click(row);
+    const why = within(banner).getByTestId("finding");
+    expect(why).toHaveTextContent("The resume lists C++");
+    expect(why.textContent).not.toContain("primary language.");
+  });
+});
+
 // -- FR-042: a finding sits against what it concerns ------------------------
 
 describe("Reviewer findings", () => {
@@ -488,7 +721,11 @@ describe("Reviewer findings", () => {
     // `uncovered` concerns the draft as a whole. Attaching it to an arbitrary
     // item would demand a reference the Reviewer has no honest basis to give —
     // the same trap slice 004 fell into demanding a shortfall on `unverified`.
+    // The redesign renders it as a collapsed "gaps" section with one
+    // expandable row per requirement — two disclosures to open.
     const banner = screen.getByTestId("draft-findings");
+    await userEvent.click(screen.getByTestId("gaps-toggle"));
+    await userEvent.click(within(banner).getByRole("button", { name: /kubernetes/i }));
     expect(within(banner).getByTestId("finding")).toHaveAttribute("data-kind", "uncovered");
     expect(within(screen.getByTestId("diff-item")).queryByTestId("finding")).toBeNull();
   });
@@ -534,7 +771,6 @@ describe("deciding one proposal", () => {
       item({ decision: "rejected", final_text: "Led the payments platform team for six years." }),
     );
     await renderTab(version());
-
     await userEvent.click(screen.getByRole("button", { name: /^reject$/i }));
 
     await waitFor(() => expect(mocked.decideItem).toHaveBeenCalledWith("version-1", "item-1", "rejected", undefined));
@@ -594,13 +830,18 @@ describe("approval", () => {
     expect(mocked.startTailoring).not.toHaveBeenCalled();
   });
 
-  it("leaves an approved version readable and still editable", async () => {
+  it("leaves an approved version readable, its decisions on record", async () => {
     await renderTab(version({ status: "ready", items: [item({ decision: "accepted" })] }));
 
-    // FR-029. Approved is not frozen in this slice; export is what will lock
-    // it, in slice 006.
+    // FR-029: approved is not frozen in this slice — the backend still
+    // accepts decisions until export locks the content. On this surface an
+    // *accepted* proposal deliberately shows its decided state instead of the
+    // three actions (a decided proposal must stop reading as a question);
+    // the tension with edit-after-accept is a recorded product follow-up.
     expect(screen.getByTestId("tailor-diff")).toHaveAttribute("data-status", "ready");
-    expect(screen.getByRole("button", { name: /^edit$/i })).toBeInTheDocument();
+    await userEvent.click(within(screen.getByTestId("diff-item")).getAllByRole("button")[0]);
+    expect(screen.getByText(/accepted — using the proposal/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^edit$/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /approve this version/i })).toBeNull();
   });
 });
@@ -770,6 +1011,10 @@ describe("correcting a proposal by hand", () => {
     await userEvent.click(screen.getByRole("button", { name: /^reject$/i }));
     await waitFor(() => expect(screen.getByTestId("decision-label")).toBeInTheDocument());
 
+    // The decided card collapsed; its header reopens it (the decision stays
+    // visible either way).
+    await userEvent.click(within(screen.getByTestId("diff-item")).getAllByRole("button")[0]);
+
     // Still there, and it edits the *restored* text rather than the proposal.
     const edit = screen.getByRole("button", { name: /^edit$/i });
     expect(edit).toBeInTheDocument();
@@ -804,8 +1049,9 @@ describe("correcting a proposal by hand", () => {
     // The master's original and the agent's proposal both survive an edit and
     // both stay visible. Replacing either with the owner's text would destroy
     // the lineage the version exists to record, and the diff would stop being
-    // a diff.
+    // a diff. The decided card starts collapsed; opened, all three read at once.
     const row = screen.getByTestId("diff-item");
+    await userEvent.click(within(row).getAllByRole("button")[0]);
     expect(within(row).getByTestId("original-text")).toHaveTextContent("Led the payments platform");
     expect(within(row).getByTestId("proposed-text")).toHaveTextContent("Owned the payments platform");
     expect(within(row).getByTestId("decision-label")).toHaveTextContent(/your words/i);
