@@ -109,3 +109,44 @@ def test_every_run_column_reaches_the_poll() -> None:
         and _RUN_RENAMES.get(column, column) not in exposed
     ]
     assert not missing, f"stored but never shown: {missing}"
+
+
+def test_the_derived_tier_fields_reach_the_page() -> None:
+    """The refinement slice adds read-time derived fields; they must reach the
+    API, not just be computed (the suite has never caught a display bug)."""
+    import uuid as _uuid
+    from datetime import UTC as _UTC
+    from datetime import datetime as _dt
+
+    memory = CareerMemory(
+        user_id=_uuid.uuid4(),
+        advisor_run_id=_uuid.uuid4(),
+        claim="AWS was a gap in 4 of 5 analysed postings",
+        kind="recurring_gap",
+        scope_kind="skill",
+        scope_value="AWS",
+        evidence={
+            "facts": [
+                {
+                    "fact_id": "tier2.requirement.g1",
+                    "scope_value": "AWS",
+                    "numerator": 5,
+                    "denominator": 7,
+                },
+                {"fact_id": "tier2.gap.g1", "scope_value": "AWS", "numerator": 4, "denominator": 7},
+            ]
+        },
+        status=MemoryStatus.ACTIVE,
+    )
+    memory.id = _uuid.uuid4()
+    memory.created_at = _dt.now(_UTC)
+    memory.last_confirmed_at = _dt.now(_UTC)
+
+    out = _memory_out(memory)
+    for field in ("tier", "section", "topic", "counts", "action"):
+        assert field in out, f"derived field {field} never reaches the API"
+    assert out["tier"] == "recommendation"
+    assert out["section"] == "recommended"
+    assert out["topic"] == "AWS"
+    assert out["counts"] == {"occurrences": 5, "coverage": 7, "gaps": 4}
+    assert out["action"] is not None
