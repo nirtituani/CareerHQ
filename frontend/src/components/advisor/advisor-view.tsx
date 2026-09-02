@@ -17,10 +17,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { MemoryCard } from "@/components/advisor/memory-card";
+import { TopicChip } from "@/components/advisor/topic-chip";
 import {
   type AdvisorRun,
   type AdvisorState,
+  type CareerMemory,
   dismissMemory,
   getAdvisor,
   getAdvisorRun,
@@ -111,8 +112,9 @@ export function AdvisorView() {
     );
   }
 
-  const { memories, coverage, history_counts } = state;
+  const { memories, sections, coverage, history_counts } = state;
   const running = run?.status === "pending";
+  const latestRunId = run?.status === "ready" ? run.id : null;
 
   return (
     <div className="space-y-4">
@@ -166,16 +168,41 @@ export function AdvisorView() {
         </div>
       ) : null}
 
-      <div className="space-y-3">
-        {memories.map((memory) => (
-          <MemoryCard
-            key={memory.id}
-            memory={memory}
-            latestRunId={run?.status === "ready" ? run.id : null}
+      {memories.length > 0 ? (
+        <div className="space-y-6">
+          <TierSection
+            title="Recommended actions"
+            memories={sections.recommended}
+            latestRunId={latestRunId}
+            onDismiss={onDismiss}
+            emptyState="No recommended actions yet — insufficient evidence. As more applications get a match analysis, recurring gaps strong enough to act on will surface here."
+          />
+          <TierSection
+            title="Emerging patterns"
+            memories={sections.emerging}
+            latestRunId={latestRunId}
             onDismiss={onDismiss}
           />
-        ))}
-      </div>
+          <TierSection
+            title="Strengths"
+            memories={sections.strengths}
+            latestRunId={latestRunId}
+            onDismiss={onDismiss}
+          />
+          <TierDrawer
+            title="Portfolio insights"
+            memories={sections.portfolio}
+            latestRunId={latestRunId}
+            onDismiss={onDismiss}
+          />
+          <TierDrawer
+            title="Data notes"
+            memories={sections.data_notes}
+            latestRunId={latestRunId}
+            onDismiss={onDismiss}
+          />
+        </div>
+      ) : null}
 
       {history_counts.superseded + history_counts.retired > 0 ? (
         <p className="text-xs" style={{ color: "var(--faint)" }} data-testid="history-counts">
@@ -184,5 +211,90 @@ export function AdvisorView() {
         </p>
       ) : null}
     </div>
+  );
+}
+
+
+function TierSection({
+  title,
+  memories,
+  latestRunId,
+  onDismiss,
+  emptyState,
+}: {
+  title: string;
+  memories: CareerMemory[];
+  latestRunId: string | null;
+  onDismiss: (memoryId: string) => Promise<void>;
+  emptyState?: string;
+}) {
+  if (memories.length === 0 && !emptyState) return null;
+  return (
+    <section data-testid={`section-${title.toLowerCase().replace(/\s+/g, "-")}`}>
+      <h2 className="mb-2 text-sm font-semibold">{title}</h2>
+      {memories.length === 0 && emptyState ? (
+        <p
+          className="rounded-lg border border-dashed p-4 text-xs"
+          style={{ borderColor: "var(--border)", color: "var(--muted)" }}
+          data-testid="section-empty"
+        >
+          {emptyState}
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {memories.map((memory) => (
+            <TopicChip
+              key={memory.id}
+              memory={memory}
+              latestRunId={latestRunId}
+              onDismiss={onDismiss}
+            />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function TierDrawer({
+  title,
+  memories,
+  latestRunId,
+  onDismiss,
+}: {
+  title: string;
+  memories: CareerMemory[];
+  latestRunId: string | null;
+  onDismiss: (memoryId: string) => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  if (memories.length === 0) return null;
+  return (
+    <section data-testid={`drawer-${title.toLowerCase().replace(/\s+/g, "-")}`}>
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center gap-2 text-sm font-semibold"
+      >
+        <span aria-hidden style={{ color: "var(--faint)" }}>{open ? "▾" : "▸"}</span>
+        {title}
+        <span className="text-xs font-normal" style={{ color: "var(--faint)" }}>
+          ({memories.length})
+        </span>
+      </button>
+      {open ? (
+        <div className="mt-2 space-y-2">
+          {memories.map((memory) => (
+            <TopicChip
+              key={memory.id}
+              memory={memory}
+              latestRunId={latestRunId}
+              onDismiss={onDismiss}
+            />
+          ))}
+        </div>
+      ) : null}
+    </section>
   );
 }
