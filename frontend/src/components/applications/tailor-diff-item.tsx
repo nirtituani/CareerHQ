@@ -2,7 +2,10 @@
 
 /**
  * One proposal in a tailored draft — what you wrote, what the agent proposes,
- * and the three things you can do about it.
+ * and the three things you can do about it. Rendered as an expandable card
+ * per the Tailor redesign: a collapsed header row (change badge, section,
+ * headline, decision, caret) opening into the Current/Recommended comparison,
+ * the Reviewer's notes, and the controls.
  *
  * **One component for every source kind**, and for every state an item can be
  * in. The import reviewer learned this the expensive way: it had two render
@@ -36,7 +39,7 @@ import { Button } from "@/components/ui/button";
 import type { ProposalDecision, ReviewerFinding, SourceKind, VersionItem } from "@/lib/api";
 
 /** What each source kind is called on screen, in the owner's terms. */
-const KIND_LABEL: Record<SourceKind, string> = {
+export const KIND_LABEL: Record<SourceKind, string> = {
   summary: "Summary",
   title: "Title",
   experience_bullet: "Experience",
@@ -76,8 +79,14 @@ function passLabel(attempt: number): string {
 export function Finding({
   finding,
   showAttempt = false,
+  detailText,
 }: {
   finding: ReviewerFinding;
+  /** Replaces the rendered detail — the gaps rows pass the explanatory
+   *  remainder of the same text so the requirement (already in their header)
+   *  is not said twice. Always a substring of `finding.detail`, never new
+   *  prose. */
+  detailText?: string;
   /**
    * Whether to say which review pass caught this one.
    *
@@ -88,10 +97,6 @@ export function Finding({
    * near-identical notes on one bullet read as three simultaneous complaints
    * about the wording currently on screen. They are a history, and saying so
    * costs four words.
-   *
-   * Off by default for the same reason `EXTRACTED` provenance is never
-   * labelled: a marker carried by every finding of every single-pass run tells
-   * a reader nothing and costs a line on each.
    */
   showAttempt?: boolean;
 }) {
@@ -104,7 +109,7 @@ export function Finding({
     >
       <span className="font-medium">{FINDING_LABEL[finding.kind]}</span>
       {" — "}
-      {finding.detail}
+      {detailText ?? finding.detail}
       {finding.quoted_text && (
         <span className="italic" style={{ color: "var(--faint)" }}>
           {" "}
@@ -118,28 +123,39 @@ export function Finding({
   );
 }
 
-/** One block of text, labelled by what it is rather than by who wrote it. */
+/** One half of the comparison, labelled by what it is rather than by who wrote
+ *  it. `tone` colours the panel, never the claim. */
 function Text({
   label,
+  sublabel,
   value,
-  muted = false,
+  tone,
   testId,
 }: {
   label: string;
+  sublabel?: string;
   value: string;
-  muted?: boolean;
+  tone: "current" | "recommended";
   testId: string;
 }) {
+  const accent = tone === "recommended" ? "var(--color-brand-500)" : "var(--color-attention)";
   return (
-    <div className="min-w-0">
-      <p className="text-xs tracking-wide uppercase" style={{ color: "var(--faint)" }}>
-        {label}
-      </p>
+    <div
+      className="min-w-0 overflow-hidden rounded-lg border"
+      style={{ borderColor: `color-mix(in srgb, ${accent} 30%, transparent)` }}
+    >
       <p
-        data-testid={testId}
-        className="mt-0.5 text-sm"
-        style={muted ? { color: "var(--muted)" } : undefined}
+        className="px-3 py-2 text-xs tracking-wide uppercase"
+        style={{ color: accent, background: `color-mix(in srgb, ${accent} 10%, transparent)` }}
       >
+        {label}
+        {sublabel && (
+          <span className="ml-2 normal-case" style={{ color: "var(--faint)", letterSpacing: 0 }}>
+            {sublabel}
+          </span>
+        )}
+      </p>
+      <p data-testid={testId} className="px-3 py-2.5 text-sm leading-relaxed">
         {value}
       </p>
     </div>
@@ -154,10 +170,32 @@ const DECIDED_LABEL: Record<Exclude<ProposalDecision, "pending">, string> = {
   edited: "Using your words",
 };
 
+/** The card's one-line headline: always the item's real content, never a
+ *  manufactured summary — the agent's rationale is not persisted, and a
+ *  paraphrase here would be a claim nobody made. */
+function headlineFor(item: VersionItem): string {
+  if (item.proposed_text !== null) return item.proposed_text;
+  if (!item.included) return "Remove this line from the tailored version";
+  return item.final_text;
+}
+
+/** What accepting does, stated deterministically from the proposal's shape. */
+function effectFor(item: VersionItem): string | null {
+  if (item.decision !== "pending") return null;
+  if (item.proposed_text !== null && !item.included)
+    return "Accepting replaces this line and removes it from this version.";
+  if (item.proposed_text !== null) return "Accepting replaces this line.";
+  if (!item.included) return "Accepting removes this line from this version.";
+  return null;
+}
+
 export function TailorDiffItem({
   item,
   onDecide,
   disabled = false,
+  open = true,
+  onToggle,
+  sectionLabel,
 }: {
   item: VersionItem;
   onDecide: (
@@ -168,25 +206,33 @@ export function TailorDiffItem({
    * True once the version's **content is locked** — `exported` or `submitted`,
    * the two states in `application/immutability.py`'s `LOCKED_STATUSES`.
    *
-   * **Not `ready`**, which this comment used to say while no caller passed the
-   * prop at all, so the wrong set was never exercised. FR-029 requires an
-   * approved version to remain editable; locking it here would be the stricter
-   * reading that removes the ability to fix a typo before exporting.
-   *
+   * **Not `ready`**: FR-029 requires an approved version to remain editable.
    * The item still renders in full either way — hiding what the document says
    * would be a different claim from saying it can no longer be changed.
    */
   disabled?: boolean;
+  /** Whether the card is expanded. Defaults open so the component stands
+   *  alone; the tab drives the one-open-at-a-time accordion. */
+  open?: boolean;
+  onToggle?: () => void;
+  /** "Experience — Meridian Systems" rather than the bare kind, when the tab
+   *  knows the role. Falls back to the kind label. */
+  sectionLabel?: string;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(item.final_text);
   const [busy, setBusy] = useState(false);
 
   const unchanged = item.proposed_text === null && item.included;
+  const isDrop = item.proposed_text === null && !item.included;
 
   // Whether this item was objected to across more than one review pass. Only
   // then does naming the pass tell the reader anything.
   const spansPasses = new Set(item.findings.map((f) => f.attempt)).size > 1;
+
+  const removes = !item.included;
+  const changeBadge = item.proposed_text !== null ? "REWRITE" : isDrop ? "REMOVE" : "KEPT";
+  const effect = effectFor(item);
 
   async function decide(decision: Exclude<ProposalDecision, "pending">, text?: string) {
     setBusy(true);
@@ -203,138 +249,227 @@ export function TailorDiffItem({
       data-testid="diff-item"
       data-decision={item.decision}
       data-kind={item.source_kind}
-      className="border-b py-3.5 last:border-0"
-      style={{ borderColor: "var(--border)" }}
+      className="mb-2.5 overflow-hidden rounded-xl border last:mb-0"
+      style={{
+        borderColor: open
+          ? "color-mix(in srgb, var(--color-brand-500) 30%, transparent)"
+          : "var(--border)",
+        background: "var(--surface)",
+        opacity: item.decision !== "pending" && !open ? 0.72 : 1,
+      }}
     >
-      <div className="flex items-baseline justify-between gap-4">
-        <p className="text-xs tracking-wide uppercase" style={{ color: "var(--muted)" }}>
-          {KIND_LABEL[item.source_kind]}
-        </p>
-
-        {item.decision !== "pending" && (
-          <span data-testid="decision-label" className="text-xs" style={{ color: "var(--muted)" }}>
+      {/* The whole header toggles — the card is the disclosure, per the
+          redesign's one-open-at-a-time accordion. */}
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-center gap-3.5 px-4 py-3.5 text-left"
+      >
+        <span
+          className="flex-none rounded px-2 py-1 text-[10px] tracking-wider"
+          style={{
+            fontFamily: "var(--font-mono)",
+            color: removes ? "var(--color-attention)" : "var(--color-brand-500)",
+            background: `color-mix(in srgb, ${
+              removes ? "var(--color-attention)" : "var(--color-brand-500)"
+            } 12%, transparent)`,
+          }}
+        >
+          {changeBadge}
+        </span>
+        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <span className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>
+            {sectionLabel ?? KIND_LABEL[item.source_kind]}
+          </span>
+          <span className="truncate text-xs" style={{ color: "var(--muted)" }}>
+            {headlineFor(item)}
+          </span>
+        </span>
+        {item.decision !== "pending" ? (
+          <span
+            data-testid="decision-label"
+            className="flex-none text-xs"
+            style={{ color: "var(--muted)" }}
+          >
             {DECIDED_LABEL[item.decision]}
           </span>
+        ) : (
+          !unchanged && (
+            <span className="flex-none text-xs" style={{ color: "var(--faint)" }}>
+              To review
+            </span>
+          )
         )}
-      </div>
+        <span
+          aria-hidden
+          className="flex h-6 w-6 flex-none items-center justify-center rounded-md text-sm"
+          style={{
+            color: open ? "var(--color-brand-500)" : "var(--muted)",
+            background: "color-mix(in srgb, var(--foreground) 6%, transparent)",
+          }}
+        >
+          {open ? "−" : "+"}
+        </span>
+      </button>
 
-      {unchanged ? (
-        // `final_text`, not `original_text`: for a genuinely unchanged row the
-        // two are identical, but a sticky row after an edited drop carries the
-        // owner's replacement in `final_text` — and this line must show what
-        // the document will actually contain.
-        <p className="mt-1 text-sm" style={{ color: "var(--muted)" }}>
-          {item.final_text}
-        </p>
-      ) : (
-        <div className="mt-1.5 grid gap-3 sm:grid-cols-2">
-          {/* Both, always, side by side (FR-041). A proposal shown without what
-              it replaces asks a person to approve a change they cannot see. */}
-          <Text
-            label="Your wording"
-            value={item.original_text}
-            muted
-            testId="original-text"
-          />
-          {item.proposed_text !== null ? (
-            <Text
-              // A rewrite proposed *together with* exclusion must say both —
-              // rendering the new wording under a plain "Proposed" would hide
-              // that accepting it removes the line from the document.
-              label={item.included ? "Proposed" : "Proposed — removed from this version"}
-              value={item.proposed_text}
-              testId="proposed-text"
-            />
+      {open && (
+        <div className="flex flex-col gap-3.5 px-4 pt-0.5 pb-4">
+          {unchanged ? (
+            // `final_text`, not `original_text`: for a genuinely unchanged row
+            // the two are identical, but a sticky row after an edited drop
+            // carries the owner's replacement in `final_text` — and this line
+            // must show what the document will actually contain.
+            <p className="text-sm" style={{ color: "var(--muted)" }}>
+              {item.final_text}
+            </p>
           ) : (
-            // A drop. What is proposed is an absence, so it is said as one —
-            // rendering nothing here would make the row read as a rewrite
-            // with the proposal missing.
-            <div className="min-w-0">
-              <p className="text-xs tracking-wide uppercase" style={{ color: "var(--faint)" }}>
-                Proposed
-              </p>
-              <p data-testid="proposed-removal" className="mt-0.5 text-sm">
-                Remove from this version.
-              </p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {/* Both, always, side by side (FR-041). A proposal shown without
+                  what it replaces asks a person to approve a change they
+                  cannot see. */}
+              <Text
+                label="Your wording"
+                sublabel="in your CV today"
+                value={item.original_text}
+                tone="current"
+                testId="original-text"
+              />
+              {item.proposed_text !== null ? (
+                <Text
+                  // A rewrite proposed *together with* exclusion must say both —
+                  // the new wording under a plain "Proposed" would hide that
+                  // accepting it removes the line from the document.
+                  label={item.included ? "Proposed" : "Proposed — removed from this version"}
+                  sublabel={item.included ? "replaces the text if accepted" : undefined}
+                  value={item.proposed_text}
+                  tone="recommended"
+                  testId="proposed-text"
+                />
+              ) : (
+                // A drop. What is proposed is an absence, so it is said as one —
+                // rendering nothing here would make the row read as a rewrite
+                // with the proposal missing.
+                <div
+                  className="min-w-0 overflow-hidden rounded-lg border"
+                  style={{
+                    borderColor: "color-mix(in srgb, var(--color-attention) 30%, transparent)",
+                  }}
+                >
+                  <p
+                    className="px-3 py-2 text-xs tracking-wide uppercase"
+                    style={{
+                      color: "var(--color-attention)",
+                      background: "color-mix(in srgb, var(--color-attention) 10%, transparent)",
+                    }}
+                  >
+                    Proposed
+                  </p>
+                  <p data-testid="proposed-removal" className="px-3 py-2.5 text-sm">
+                    Remove from this version.
+                  </p>
+                </div>
+              )}
             </div>
           )}
-        </div>
-      )}
 
-      {item.findings.length > 0 && (
-        <ul data-testid="item-findings">
-          {item.findings.map((finding, index) => (
-            <Finding key={index} finding={finding} showAttempt={spansPasses} />
-          ))}
-        </ul>
-      )}
-
-      {editing && (
-        <div className="mt-2.5">
-          <label className="block">
-            <span className="text-xs" style={{ color: "var(--faint)" }}>
-              Your words
-            </span>
-            <textarea
-              rows={3}
-              autoFocus
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-              aria-label={`Edit ${KIND_LABEL[item.source_kind]}`}
-              className="mt-0.5 w-full rounded-md border px-2 py-1 text-sm"
-              style={{ borderColor: "var(--border)", background: "var(--surface)" }}
-            />
-          </label>
-          <div className="mt-1.5 flex gap-2">
-            <Button
-              size="sm"
-              disabled={busy || draft.trim() === ""}
-              onClick={() => decide("edited", draft)}
+          {/* "Why this change?" holds everything that explains the proposal:
+              the Reviewer's notes — the only stored explanation; the agent's
+              own rationale is not persisted — and the deterministic statement
+              of what accepting does. Rendered only when there is something to
+              say: an empty explanation panel would be a promise nobody kept. */}
+          {(item.findings.length > 0 || effect !== null) && (
+            <div
+              className="rounded-lg border px-3.5 py-3"
+              style={{
+                borderColor: "var(--border)",
+                background: "color-mix(in srgb, var(--foreground) 2.5%, transparent)",
+              }}
             >
-              Save
-            </Button>
-            <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>
-              Cancel
-            </Button>
-          </div>
-        </div>
-      )}
+              <p className="text-xs font-bold" style={{ color: "var(--foreground)" }}>
+                Why this change?
+              </p>
+              {item.findings.length > 0 && (
+                <ul data-testid="item-findings">
+                  {item.findings.map((finding, index) => (
+                    <Finding key={index} finding={finding} showAttempt={spansPasses} />
+                  ))}
+                </ul>
+              )}
+              {effect !== null && (
+                <p className="mt-1.5 text-xs" style={{ color: "var(--faint)" }}>
+                  {effect}
+                </p>
+              )}
+            </div>
+          )}
 
-      {/* No controls on an unchanged item: there is nothing to decide, and a
-          button that changes nothing is the contradiction the import
-          reviewer's old Keep button had. */}
-      {!editing && !unchanged && !disabled && (
-        <div className="mt-2.5 flex gap-2">
-          <Button
-            size="sm"
-            variant={item.decision === "accepted" ? "default" : "outline"}
-            disabled={busy}
-            onClick={() => decide("accepted")}
-          >
-            {item.decision === "accepted" ? "Accepted" : "Accept"}
-          </Button>
-          {/* Rejecting starts no AI work (FR-026). It is the action that means
-              "stop", and a silent re-draft here would be a provider call the
-              person explicitly declined. */}
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={busy}
-            onClick={() => decide("rejected")}
-          >
-            {item.decision === "rejected" ? "Rejected" : "Reject"}
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={busy}
-            onClick={() => {
-              setDraft(item.final_text);
-              setEditing(true);
-            }}
-          >
-            Edit
-          </Button>
+          {editing && (
+            <div>
+              <label className="block">
+                <span className="text-xs" style={{ color: "var(--faint)" }}>
+                  Your words
+                </span>
+                <textarea
+                  rows={3}
+                  autoFocus
+                  value={draft}
+                  onChange={(event) => setDraft(event.target.value)}
+                  aria-label={`Edit ${KIND_LABEL[item.source_kind]}`}
+                  className="mt-0.5 w-full rounded-md border px-2 py-1 text-sm"
+                  style={{ borderColor: "var(--border)", background: "var(--surface)" }}
+                />
+              </label>
+              <div className="mt-1.5 flex gap-2">
+                <Button
+                  size="sm"
+                  disabled={busy || draft.trim() === ""}
+                  onClick={() => decide("edited", draft)}
+                >
+                  Save
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* No controls on an unchanged item: there is nothing to decide, and
+              a button that changes nothing is the contradiction the import
+              reviewer's old Keep button had. **None on an accepted one
+              either**: a decided proposal must stop reading as a question,
+              so the accepted state below replaces the three actions. (A
+              *rejected* proposal keeps them — US3's reject-then-edit flow
+              depends on Edit surviving a rejection.) */}
+          {!editing && !unchanged && !disabled && item.decision === "accepted" && (
+            <p className="text-xs font-semibold" style={{ color: "var(--color-brand-500)" }}>
+              ✓ Accepted — using the proposal in this version.
+            </p>
+          )}
+          {!editing && !unchanged && !disabled && item.decision !== "accepted" && (
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" disabled={busy} onClick={() => decide("accepted")}>
+                Accept
+              </Button>
+              {/* Rejecting starts no AI work (FR-026). It is the action that
+                  means "stop", and a silent re-draft here would be a provider
+                  call the person explicitly declined. */}
+              <Button size="sm" variant="ghost" disabled={busy} onClick={() => decide("rejected")}>
+                {item.decision === "rejected" ? "Rejected" : "Reject"}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={busy}
+                onClick={() => {
+                  setDraft(item.final_text);
+                  setEditing(true);
+                }}
+              >
+                Edit
+              </Button>
+            </div>
+          )}
         </div>
       )}
     </li>
