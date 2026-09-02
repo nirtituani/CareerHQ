@@ -75,7 +75,13 @@ def _assert_identical(before: dict[str, list[tuple]], after: dict[str, list[tupl
 
 def _plan() -> dict[str, object]:
     return {
-        "emphasise": [{"what": "Platform ownership", "serves_requirement": "5+ years backend"}],
+        "emphasise": [
+            {
+                "action": "keep",
+                "what": "Platform ownership",
+                "serves_requirement": "5+ years backend",
+            }
+        ],
         "de_emphasise": [],
         "protected_gaps": [],
         "strategy": "Lead with scale.",

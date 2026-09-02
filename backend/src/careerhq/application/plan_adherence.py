@@ -17,6 +17,17 @@ dropped what the plan named cannot be computed. Making it computable means
 changing the Plan schema and therefore the Plan prompt, and there is not yet
 evidence to justify touching either. It is the larger of the two blind spots:
 Zipher executed zero of nine.
+
+**Two contracts are measured here, and their figures must never be read as one
+series.** `emphasis_adherence` (D0) and `plan_execution` (D1/D3) grade the old
+promise — "did a text proposal appear for what the plan named" — which the old
+prompt never actually demanded; they are kept byte-identical because they are
+the accumulated distribution. `action_execution` grades the `action` contract,
+where a directive states `keep`/`reframe`/`rewrite` and compliance means doing
+what was stated — including doing *nothing* to a `keep`. A Silverfort-style run
+scoring D1 0.125 while scoring perfect action compliance is not a contradiction;
+it is the difference between the two promises (the SC-008 (006) lesson: when a
+definition changes, a comparison across the change measures the definition).
 """
 
 from __future__ import annotations
@@ -299,10 +310,159 @@ def plan_execution(
     }
 
 
+_ACTIONS = frozenset({"keep", "reframe", "rewrite"})
+
+_TEXT_EVIDENCE = frozenset({"survived", "reverted", "discarded", "attempted"})
+"""States that prove the draft acted on an item's *text*.
+
+`reordered` and `proposed` are deliberately absent: a `reframe` answered only
+by a move is non-compliance — the directive asked for wording, and a position
+change is not wording. The same set read against a `keep` directive means the
+draft acted where it was told not to, and a reverted or discarded proposal
+still counts as a violation there: the draft acted; a later step corrected it.
+"""
+
+_UNKNOWABLE = frozenset({"unknown", "unknown_position"})
+
+
+def action_execution(
+    plan: Mapping[str, Any] | None,
+    *,
+    items: Iterable[ItemFacts],
+    findings: Iterable[FindingFacts],
+    contaminated: bool = False,
+    position_evidence: bool = False,
+) -> dict[str, Any]:
+    """Did the draft do what each directive's `action` told it to?
+
+    The action-aware measure for plans written under the `action` contract.
+    `emphasis_adherence` and `plan_execution` above are **byte-identical to
+    what they were** and keep grading every run — they are the accumulated
+    distribution, and comparing their figures with this one is comparing two
+    different promises: they ask "did a text proposal appear", which the old
+    contract never actually demanded; this asks "was the stated action carried
+    out", which the new one does. Report them side by side, never as one
+    series.
+
+    A plan with no `action` on every directive predates the contract and is
+    answered with ``{"has_actions": False}`` and nothing else — a legacy run
+    cannot be scored against a promise it never made, and inventing decisions
+    for it retroactively would be exactly the ambiguity the field removes.
+
+    Two exclusions keep the ratios honest rather than flattering:
+
+    * A `reframe`/`rewrite` aimed at a label kind is the **plan's** violation,
+      not the draft's — a skill has no wording to change — so it is reported
+      as `invalid_target` and leaves the actionable denominator.
+    * A `keep` with no `source_item_id` cannot be checked against any row, so
+      it is counted (`keep_without_id`) and excluded from the compliance
+      denominator rather than presumed compliant.
+
+    No threshold, no gate — the same standing as the measures above.
+    """
+    directives = (plan or {}).get("emphasise") or []
+    carrying = [d for d in directives if isinstance(d, Mapping) and d.get("action") in _ACTIONS]
+    if not directives or len(carrying) != len(directives):
+        # Legacy, empty, or malformed. `malformed_actions` is non-zero only in
+        # the mixed case, which no valid completion can produce — its presence
+        # is evidence of a bug, not of an old run.
+        return {
+            "has_actions": False,
+            "malformed_actions": len(directives) - len(carrying) if carrying else 0,
+        }
+
+    # Deduplicated by target id, first directive wins — a plan that names one
+    # line twice asked for one change (the Cellebrite lesson, unchanged). A
+    # `keep` with no id has nothing to collide with and is kept as its own
+    # entry, keyed for reporting only.
+    chosen: dict[str, Mapping[str, Any]] = {}
+    keep_without_id = 0
+    for directive in directives:
+        item_id = directive.get("source_item_id")
+        if item_id is None:
+            # The validator forbids this for reframe/rewrite, so only `keep`
+            # lands here on data written through the schema.
+            keep_without_id += 1
+            continue
+        chosen.setdefault(str(item_id), directive)
+    duplicates_collapsed = (len(directives) - keep_without_id) - len(chosen)
+
+    by_id = {item.source_item_id: item for item in items}
+    findings_by_id: dict[str, list[FindingFacts]] = {}
+    for finding in findings:
+        if finding.source_item_id is not None:
+            findings_by_id.setdefault(finding.source_item_id, []).append(finding)
+
+    actions: dict[str, int] = {"keep": 0, "reframe": 0, "rewrite": 0}
+    per_item: dict[str, dict[str, str]] = {}
+    executed = actionable = invalid_target = 0
+    keep_total = keep_compliant = keep_violations = 0
+    unknowable = 0
+
+    for item_id, directive in chosen.items():
+        action = str(directive["action"])
+        actions[action] += 1
+        item = by_id.get(item_id)
+        state = _classify(
+            item,
+            findings_by_id.get(item_id, ()),
+            contaminated=contaminated,
+            position_evidence=position_evidence,
+        )
+        per_item[item_id] = {"action": action, "state": state}
+
+        if state in _UNKNOWABLE:
+            unknowable += 1
+            continue
+        if action == "keep":
+            keep_total += 1
+            if state in _TEXT_EVIDENCE:
+                keep_violations += 1
+            else:
+                keep_compliant += 1
+        elif item is not None and item.source_kind in LABEL_KINDS:
+            invalid_target += 1
+        else:
+            actionable += 1
+            if state in _TEXT_EVIDENCE:
+                executed += 1
+    actions["keep"] += keep_without_id
+
+    def ratio(numerator: int, denominator: int) -> float | None:
+        # An unknowable outcome poisons both ratios the way `unknown` blocks
+        # D1: what is known is still counted, but a figure computed over a
+        # shrunken denominator would read as a claim about the whole plan.
+        if unknowable or denominator <= 0:
+            return None
+        return round(numerator / denominator, 3)
+
+    return {
+        "has_actions": True,
+        "actions": actions,
+        "per_item": per_item,
+        "duplicates_collapsed": duplicates_collapsed,
+        "keep_without_id": keep_without_id,
+        "unknowable": unknowable,
+        "actionable_execution": {
+            "executed": executed,
+            "actionable": actionable,
+            "invalid_target": invalid_target,
+            "ratio": ratio(executed, actionable),
+        },
+        "keep_compliance": {
+            "compliant": keep_compliant,
+            "keep": keep_total,
+            "violations": keep_violations,
+            "ratio": ratio(keep_compliant, keep_total),
+        },
+    }
+
+
 __all__ = [
     "LABEL_KINDS",
     "FindingFacts",
     "ItemFacts",
+    "action_execution",
     "emphasis_adherence",
     "plan_execution",
 ]

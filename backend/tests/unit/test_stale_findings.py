@@ -75,7 +75,9 @@ def _state() -> TailoringState:
 
 def _plan() -> dict[str, Any]:
     return {
-        "emphasise": [{"what": "AI tooling fluency", "serves_requirement": "AI proficiency"}],
+        "emphasise": [
+            {"action": "keep", "what": "AI tooling fluency", "serves_requirement": "AI proficiency"}
+        ],
         "de_emphasise": [],
         "protected_gaps": [],
         "strategy": "Lead with AI tooling.",

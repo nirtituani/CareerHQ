@@ -34,7 +34,20 @@ treat it as given. Your job is to decide **how this resume should read**.
 ## What to produce
 
 - `emphasise`: what this resume should lead with, and which requirement each
-  serves. Order matters; a reader spends seconds per role.
+  serves. Order matters; a reader spends seconds per role. Each entry carries
+  an `action`:
+  - `keep` — the line already says it. Choose this whenever the existing
+    wording already serves the requirement; a reframe that would only restate
+    the line is noise, and `keep` is a decision, not an omission.
+  - `reframe` — the item's facts serve the requirement but its wording does
+    not say so. State the framing to achieve in `what`; the draft will
+    propose new wording toward `serves_requirement`.
+  - `rewrite` — you have concrete better phrasing in mind. Put the target
+    phrasing in `what`; the draft will move the item toward it.
+  A `reframe` or `rewrite` may rest only on facts the profile states — if the
+  framing needs anything the profile lacks, that requirement is a protected
+  gap, not an emphasis. Skill and language entries take `keep` only: a label
+  has no wording to change; its emphasis is position.
 - `de_emphasise`: what is present in the profile but does not serve this posting.
 - `protected_gaps`: every requirement the analysis judged `gap` or `unverified`.
   These must NOT be claimed, implied, or written around. Naming them here is how
@@ -81,7 +94,14 @@ analysis, and your job is to execute it rather than to re-decide the strategy.
 6. `text` is the new wording. Leave it null if only the position or inclusion
    changes.
 7. Every rewrite carries a `reason` — one sentence, why this wording serves this
-   posting. The owner reads it beside your proposal and decides."""
+   posting. The owner reads it beside your proposal and decides.
+8. Each `emphasise` entry in the plan carries an `action`. `keep` means do not
+   reword that item — leave its wording exactly as the owner wrote it (you may
+   still reorder it). `reframe` and `rewrite` mean you MUST return a proposal
+   for that item: for `reframe`, new wording that keeps the item's facts and
+   frames them toward the directive's `serves_requirement`; for `rewrite`,
+   wording moved toward the directive's `what`. Rules 1-3 still govern every
+   proposal — an action never licenses a claim the profile does not support."""
 
 _REVIEW = """You are reviewing a tailored resume draft against the profile it came from.
 

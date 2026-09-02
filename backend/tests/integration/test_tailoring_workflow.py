@@ -47,6 +47,7 @@ def _plan() -> dict[str, object]:
     return {
         "emphasise": [
             {
+                "action": "keep",
                 "what": "Six years owning a payments platform",
                 "serves_requirement": "5+ years backend services",
             }
