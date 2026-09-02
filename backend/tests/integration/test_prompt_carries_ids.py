@@ -138,7 +138,13 @@ async def test_ids_read_out_of_the_prompt_map_back_to_their_master_items(
             payload: dict[str, object]
             if task == "tailor_plan":
                 payload = {
-                    "emphasise": [{"what": "Platform ownership", "serves_requirement": "backend"}],
+                    "emphasise": [
+                        {
+                            "action": "keep",
+                            "what": "Platform ownership",
+                            "serves_requirement": "backend",
+                        }
+                    ],
                     "de_emphasise": [],
                     "protected_gaps": [],
                     "strategy": "Lead with the platform work.",
@@ -240,7 +246,7 @@ async def test_a_fabricated_id_changes_nothing_and_is_reported(
             payload: dict[str, object]
             if task == "tailor_plan":
                 payload = {
-                    "emphasise": [{"what": "x", "serves_requirement": "y"}],
+                    "emphasise": [{"action": "keep", "what": "x", "serves_requirement": "y"}],
                     "de_emphasise": [],
                     "protected_gaps": [],
                     "strategy": "s",

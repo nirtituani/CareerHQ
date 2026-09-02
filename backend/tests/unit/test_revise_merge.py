@@ -64,7 +64,11 @@ def _state() -> TailoringState:
 def _plan() -> dict[str, Any]:
     return {
         "emphasise": [
-            {"what": "Platform ownership", "serves_requirement": "5+ years backend services"}
+            {
+                "action": "keep",
+                "what": "Platform ownership",
+                "serves_requirement": "5+ years backend services",
+            }
         ],
         "de_emphasise": [],
         "protected_gaps": [],

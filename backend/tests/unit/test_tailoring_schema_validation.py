@@ -10,8 +10,14 @@ import uuid
 import pytest
 from pydantic import ValidationError
 
-from careerhq.application.agents.tailoring.prompts import _REVIEW
-from careerhq.domain.schemas.tailoring import DraftedItem, ReviewFinding, ReviewResult
+from careerhq.application.agents.tailoring.prompts import _DRAFT, _PLAN, _REVIEW
+from careerhq.domain.schemas.tailoring import (
+    DraftedItem,
+    EmphasisDirective,
+    ReviewFinding,
+    ReviewResult,
+    TailoringPlan,
+)
 
 
 def test_an_ungrounded_finding_must_quote_what_it_objects_to() -> None:
@@ -183,3 +189,82 @@ def test_the_drafted_item_says_where_its_id_comes_from() -> None:
     assert "REQUIRED" in described
     assert "[id:" in described, "it must say where the value is copied from"
     assert "invent" in described.lower()
+
+
+# --- the `action` contract on EmphasisDirective ---------------------------
+
+
+def test_an_actionable_directive_must_name_its_target() -> None:
+    """A reframe or rewrite with no `source_item_id` maps to nothing — the
+    proposal it demands would be silently discarded at finalisation, which is
+    the failure that made the first two paid runs produce no changes."""
+    for action in ("reframe", "rewrite"):
+        with pytest.raises(ValidationError, match=f"a {action} directive"):
+            EmphasisDirective(
+                action=action,
+                what="frame this toward the requirement",
+                serves_requirement="7+ years of backend development",
+            )
+
+
+def test_a_keep_directive_may_point_at_nothing() -> None:
+    """`keep` demands no proposal, so it has nothing that must map."""
+    directive = EmphasisDirective(
+        action="keep",
+        what="the summary already leads with scope",
+        serves_requirement="7+ years of backend development",
+    )
+    assert directive.source_item_id is None
+
+
+def test_action_is_required_with_no_default() -> None:
+    """A default would let "unconsidered" masquerade as a decision — the exact
+    ambiguity the field exists to remove. Three real runs resolved the old
+    contract three different ways; an omitted action must fail, not guess."""
+    with pytest.raises(ValidationError):
+        EmphasisDirective(
+            source_item_id=uuid.uuid4(),
+            what="emphasise this",
+            serves_requirement="a requirement",
+        )
+
+
+def test_the_action_rules_are_visible_in_what_the_model_is_sent() -> None:
+    """Same gate as `ReviewFinding`'s: a validator does not serialise, and the
+    JSON Schema is the whole contract the gateway sends. Every rule the model
+    must obey has to live in the one field that survives serialisation."""
+    directive = TailoringPlan.model_json_schema()["$defs"]["EmphasisDirective"]
+    described = directive["properties"]["action"].get("description", "")
+    lowered = described.lower()
+
+    assert "keep" in lowered and "reframe" in lowered and "rewrite" in lowered
+    # The conditional id requirement, stated where the model can read it.
+    assert "REQUIRED" in described and "source_item_id" in described
+    # The label restriction, which no validator can check (the directive does
+    # not know its target's kind) — the description is its only enforcement.
+    assert "skill" in lowered and "language" in lowered
+    # The grounding boundary: a reframe needing absent facts is a gap.
+    assert "protected_gaps" in described
+    # And the field itself is required in the serialised schema.
+    assert "action" in directive["required"]
+
+
+def test_the_plan_prompt_defines_all_three_actions() -> None:
+    """Belt and braces with the schema description; they fail differently."""
+    lowered = _PLAN.lower()
+    assert "`keep`" in _PLAN and "`reframe`" in _PLAN and "`rewrite`" in _PLAN
+    # keep is a decision, not an omission — the anti-noise rule.
+    assert "not an omission" in lowered
+    # The label restriction and the gap routing.
+    assert "keep` only" in lowered
+    assert "protected" in lowered
+
+
+def test_the_draft_prompt_mandates_the_actions() -> None:
+    """The Draft must read `keep` as a prohibition and the other two as a
+    mandate — and its diff-only rule must survive untouched beside them."""
+    assert "`action`" in _DRAFT
+    assert "MUST return a proposal" in _DRAFT
+    assert "do not\n   reword" in _DRAFT or "do not reword" in _DRAFT.replace("\n   ", " ")
+    # Rule 4 is the cost contract and stays.
+    assert "only the items you are changing or dropping" in _DRAFT
