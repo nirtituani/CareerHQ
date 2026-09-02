@@ -902,6 +902,29 @@ export type MemoryDisposition = {
   evidence_delta: { facts: EvidenceFact[] } | null;
 };
 
+/** One requirement row behind a topic, as the posting worded it. */
+export type SpecificRequirement = {
+  requirement_id: string;
+  text: string;
+  verdict: "confirmed" | "partial" | "transferable" | "gap" | "unverified";
+  /** Why it is unmet — null for `confirmed` and `unverified`, which the
+   *  database enforces. */
+  shortfall: "wording" | "evidence" | "capability" | null;
+  importance: number;
+  profile_quote: string | null;
+  resolved: boolean;
+};
+
+export type ActionCategory =
+  | "learn_build"
+  | "prove_it"
+  | "surface_it"
+  | "add_if_you_have_it"
+  | "keep_leading"
+  | "no_action_yet";
+
+export type RecommendedAction = { category: ActionCategory; text: string };
+
 export type CareerMemory = {
   id: string;
   claim: string;
@@ -918,9 +941,23 @@ export type CareerMemory = {
   topic: string;
   /** Skill memories only; null for portfolio/data-note memories. */
   counts: { occurrences: number | null; coverage: number | null; gaps: number | null } | null;
-  /** A deterministic next-step scaffold for recommendation/strength tiers;
-   *  null where an action is not yet warranted (a valid state, not an error). */
-  action: string | null;
+  /** The requirement rows the frozen evidence points at, resolved at read
+   *  time and ownership-filtered. Verbatim posting wording — never a
+   *  paraphrase, and never generalised into a technology name. */
+  specifics: SpecificRequirement[];
+  /** Shortened verbatim labels for the compact card (at most three). */
+  specific_labels: string[];
+  /** Distinct profile lines the match analysis quoted, in row order. */
+  profile_quotes: string[];
+  /** Rows the evidence names that no longer resolve (deleted, or not yours).
+   *  Reported rather than hidden: the headline counts stay frozen. */
+  specifics_unresolved: number;
+  /** One number-free sentence naming what the rows show. The statistics live
+   *  in the headline, once. */
+  assessment: string | null;
+  /** The one next step the evidence supports, typed by category; null for
+   *  portfolio/data-note memories. */
+  action: RecommendedAction | null;
   evidence: MemoryEvidence;
   created_at: string;
   last_confirmed_at: string;
@@ -969,6 +1006,7 @@ export type AdvisorState = {
   memories: CareerMemory[];
   sections: Record<AdvisorSection, CareerMemory[]>;
   tier_rules_version: string;
+  action_rules_version: string;
   coverage: AdvisorCoverage;
   latest_run: AdvisorRun | null;
   history_counts: { superseded: number; retired: number };

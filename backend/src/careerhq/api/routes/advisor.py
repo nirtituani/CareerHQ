@@ -18,10 +18,18 @@ from sqlalchemy import func, select
 
 from careerhq.api.deps import CompletionClient, CurrentUser, DbSession
 from careerhq.application.advise_career import create_pending_run, is_abandoned, run_advisor
+from careerhq.application.advisor_specifics import (
+    ADVISOR_ACTION_RULES_VERSION,
+    Specifics,
+    assess,
+    mix_of,
+    recommend,
+    resolve_specifics,
+    specific_labels,
+)
 from careerhq.application.advisor_tiers import (
     ADVISOR_TIER_RULES_VERSION,
     SECTION_OF,
-    action_for,
     classify,
     read_tier_evidence,
     topic_for,
@@ -52,13 +60,21 @@ def _iso(value: datetime | None) -> str | None:
 
 
 def _memory_out(
-    memory: CareerMemory, last_disposition: MemoryDisposition | None = None
+    memory: CareerMemory,
+    last_disposition: MemoryDisposition | None = None,
+    specifics: Specifics | None = None,
 ) -> dict[str, Any]:
     # Read-time tier: derived from the memory's own frozen evidence, never
     # stored. Orthogonal to the lifecycle status above it. The LLM's `priority`
     # only orders within a tier; the tier itself is deterministic.
     tier = classify(memory.evidence)
     tier_ev = read_tier_evidence(memory.evidence)
+    # V2: the rows the frozen evidence points at, and the one next step they
+    # support. `specifics` is None only where the caller does not resolve them
+    # (the dismiss response); the mix then carries no rows and the taxonomy
+    # answers with its honest refusal rather than a guess.
+    mix = mix_of(specifics)
+    action = recommend(tier, mix)
     return {
         "id": str(memory.id),
         "claim": memory.claim,
@@ -79,7 +95,23 @@ def _memory_out(
             if tier_ev.is_skill
             else None
         ),
-        "action": action_for(tier, memory.evidence),
+        "specifics": [
+            {
+                "requirement_id": str(item.requirement_id),
+                "text": item.text,
+                "verdict": item.verdict,
+                "shortfall": item.shortfall,
+                "importance": item.importance,
+                "profile_quote": item.profile_quote,
+                "resolved": item.resolved,
+            }
+            for item in (specifics.items if specifics else [])
+        ],
+        "specific_labels": specific_labels(specifics) if specifics else [],
+        "profile_quotes": specifics.profile_quotes if specifics else [],
+        "specifics_unresolved": specifics.unresolved if specifics else 0,
+        "assessment": assess(tier, mix),
+        "action": ({"category": action.category, "text": action.text} if action else None),
         "evidence": memory.evidence,
         "created_at": _iso(memory.created_at),
         "last_confirmed_at": _iso(memory.last_confirmed_at),
@@ -204,11 +236,19 @@ async def read_advisor(session: DbSession, user: CurrentUser) -> dict[str, Any]:
         for row in rows:
             last_by_memory[row.memory_id] = row
 
+    # One batched, ownership-filtered resolution for the whole page: a
+    # per-memory query would put the page's cost on the number of memories.
+    specifics = await resolve_specifics(
+        session,
+        user_id=user.id,
+        evidence_by_memory={m.id: m.evidence for m in memories},
+    )
+
     # `memories[]` is preserved for backward compatibility; `sections` is the
     # topic-first grouping the refined UI reads. Both are the same rows, only
     # partitioned by the derived tier's section — priority order within each is
     # kept from the query above.
-    rendered = [_memory_out(m, last_by_memory.get(m.id)) for m in memories]
+    rendered = [_memory_out(m, last_by_memory.get(m.id), specifics.get(m.id)) for m in memories]
     sections: dict[str, list[dict[str, Any]]] = {
         "recommended": [],
         "emerging": [],
@@ -223,6 +263,7 @@ async def read_advisor(session: DbSession, user: CurrentUser) -> dict[str, Any]:
         "memories": rendered,
         "sections": sections,
         "tier_rules_version": ADVISOR_TIER_RULES_VERSION,
+        "action_rules_version": ADVISOR_ACTION_RULES_VERSION,
         "coverage": await _coverage(session, user.id),
         "latest_run": _run_out(latest_run, include_dispositions=True) if latest_run else None,
         "history_counts": {
@@ -327,8 +368,16 @@ async def read_memory(
         ).all()
     )
 
+    # The head memory resolves its rows; lineage entries stay lean — they are
+    # history, read for how the understanding changed, not for today's advice.
+    head_specifics = (
+        await resolve_specifics(
+            session, user_id=user.id, evidence_by_memory={memory.id: memory.evidence}
+        )
+    ).get(memory.id)
+
     return {
-        "memory": _memory_out(memory),
+        "memory": _memory_out(memory, None, head_specifics),
         "lineage": [_memory_out(m) for m in lineage],
         "dispositions": [
             {

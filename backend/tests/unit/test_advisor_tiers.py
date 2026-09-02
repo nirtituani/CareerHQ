@@ -13,7 +13,6 @@ import pytest
 
 from careerhq.application.advisor_tiers import (
     Tier,
-    action_for,
     classify,
     topic_for,
 )
@@ -84,7 +83,6 @@ def test_tier1_memory_is_a_portfolio_insight_not_a_skill() -> None:
         "facts": [{"fact_id": "outcome.rejection_rate.global", "numerator": 6, "denominator": 12}]
     }
     assert classify(tier1) == Tier.PORTFOLIO
-    assert action_for(Tier.PORTFOLIO, tier1) is None
 
 
 def test_inconsistent_dates_fact_is_a_data_note() -> None:
@@ -95,13 +93,6 @@ def test_inconsistent_dates_fact_is_a_data_note() -> None:
 def test_backward_compatible_with_evidence_lacking_facts() -> None:
     for shape in ({}, {"facts": []}, {"facts": "not-a-list"}, None):
         assert classify(shape) == Tier.PORTFOLIO  # never raises
-
-
-def test_actions_only_for_recommendation_and_strength() -> None:
-    assert action_for(Tier.RECOMMENDATION, {}) is not None
-    assert action_for(Tier.STRENGTH, {}) is not None
-    for tier in (Tier.OBSERVATION, Tier.EMERGING, Tier.PATTERN):
-        assert action_for(tier, {}) is None, f"{tier} must not carry an action yet"
 
 
 def test_topic_prefers_the_skill_then_scope_then_kind() -> None:

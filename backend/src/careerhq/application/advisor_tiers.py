@@ -156,30 +156,6 @@ def classify(evidence: Any) -> Tier:
     return Tier.PATTERN
 
 
-#: Generic, deterministic action scaffolds by tier — grounded in the memory's
-#: own counts, no LLM and no shortfall/importance enrichment (that is v2). The
-#: "why this matters" line the UI shows is the model's existing, grounded
-#: `priority_reason`; this only supplies the neutral next-step framing.
-_ACTION_TEMPLATES: dict[Tier, str] = {
-    Tier.RECOMMENDATION: (
-        "This is a recurring gap in the roles you target. Prioritise closing it — "
-        "and make sure your profile shows any experience you already have here."
-    ),
-    Tier.STRENGTH: (
-        "A consistent strength across your target roles. Keep it prominent in your "
-        "profile and lead with it."
-    ),
-}
-
-
-def action_for(tier: Tier, evidence: Any) -> str | None:
-    """The next-step scaffold for a tier, or `None` where an action is not yet
-    warranted (observation / emerging / pattern) — 'insufficient evidence' is a
-    valid state, not an error."""
-    del evidence  # v1 templates are tier-generic; v2 keys on shortfall mix.
-    return _ACTION_TEMPLATES.get(tier)
-
-
 def topic_for(tier: Tier, evidence: Any, *, kind: str, scope_value: str | None) -> str:
     """The chip's headline. A skill memory names its skill; otherwise fall back
     to the cleaned kind so a Tier-1 memory still reads sensibly."""
