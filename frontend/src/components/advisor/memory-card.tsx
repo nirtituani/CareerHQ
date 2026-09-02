@@ -1,13 +1,21 @@
 "use client";
 
 /**
- * One career memory: the claim, its priority (with the stated reason —
- * FR-022 requires the reasoning shown, not just a number), the frozen
- * evidence with denominators, lifecycle badges, and the dismiss action.
+ * The expanded detail behind a topic chip (Advisor V2).
  *
- * The dismiss button lives on the card itself, not behind a second render
- * path — a second render path costs an affordance every time (testing
- * philosophy §9).
+ * V1 rendered the LLM's claim, then the raw fact sentences, then the priority
+ * reason — the same statistic three times, in three voices. V2 states the
+ * numbers **once** (in the chip's headline, above this) and uses the space for
+ * what the user could not see before:
+ *
+ *   What the roles ask   the verbatim requirement rows, with verdict and cause
+ *   Your evidence        the profile lines the match analysis quoted
+ *   Assessment           one deterministic, number-free sentence
+ *   Recommended action   one typed next step (rendered by the chip)
+ *
+ * Nothing was removed for brevity's sake: the claim still exists on the
+ * memory and is what the lineage view compares, and the grouping is shown as
+ * a fallback wherever the rows themselves cannot be resolved.
  */
 
 import { useState } from "react";
@@ -28,6 +36,16 @@ const ACTION_LABEL: Record<string, string> = {
   superseded: "Superseded",
   retired: "Retired",
   left_open: "Left open",
+};
+
+/** How each verdict reads at a glance — met and unmet asks must be
+ *  distinguishable without reading the words. */
+const VERDICT_MARK: Record<string, { mark: string; tone: string; label: string }> = {
+  confirmed: { mark: "✓", tone: "var(--color-outcome-offer)", label: "met" },
+  partial: { mark: "◐", tone: "var(--color-attention)", label: "partly met" },
+  transferable: { mark: "◐", tone: "var(--color-attention)", label: "adjacent" },
+  gap: { mark: "✕", tone: "var(--color-failure)", label: "gap" },
+  unverified: { mark: "?", tone: "var(--faint)", label: "profile silent" },
 };
 
 export function MemoryCard({
@@ -55,6 +73,10 @@ export function MemoryCard({
     setLineageOpen((open) => !open);
   };
 
+  const specifics = memory.specifics ?? [];
+  const quotes = memory.profile_quotes ?? [];
+  const groupings = memory.evidence?.groupings ?? [];
+
   return (
     <article
       data-testid={`memory-${memory.id}`}
@@ -62,7 +84,12 @@ export function MemoryCard({
       style={{ borderColor: "var(--border)", background: "var(--surface)" }}
     >
       <div className="flex items-start justify-between gap-3">
-        <p className="text-sm font-medium leading-snug">{memory.claim}</p>
+        <p className="text-xs" style={{ color: "var(--muted)" }}>
+          {memory.kind.replaceAll("_", " ")}
+          {memory.scope.value ? ` · ${memory.scope.kind}: ${memory.scope.value}` : ""}
+          {" · as of "}
+          {formatDate(memory.evidence.as_of)}
+        </p>
         <div className="flex shrink-0 items-center gap-1.5">
           {sinceLastRun ? (
             <span
@@ -86,41 +113,91 @@ export function MemoryCard({
         </div>
       </div>
 
-      <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>
-        {memory.kind.replaceAll("_", " ")}
-        {memory.scope.value ? ` · ${memory.scope.kind}: ${memory.scope.value}` : ""}
-        {" · as of "}
-        {formatDate(memory.evidence.as_of)}
-        {" · last confirmed "}
-        {formatDate(memory.last_confirmed_at)}
-      </p>
+      {specifics.length > 0 ? (
+        <section className="mt-3" data-testid="what-roles-ask">
+          <h3
+            className="text-[10px] font-medium uppercase tracking-wide"
+            style={{ color: "var(--muted)" }}
+          >
+            What the roles ask
+          </h3>
+          <ul className="mt-1.5 space-y-1">
+            {specifics.map((item) => {
+              const verdict = VERDICT_MARK[item.verdict] ?? VERDICT_MARK.unverified;
+              return (
+                <li key={item.requirement_id} className="flex gap-2 text-xs">
+                  <span aria-hidden style={{ color: verdict.tone }}>
+                    {verdict.mark}
+                  </span>
+                  <span className="flex-1">
+                    <span>{item.text}</span>{" "}
+                    <span style={{ color: "var(--faint)" }}>
+                      ({verdict.label}
+                      {item.shortfall ? ` · ${item.shortfall}` : ""})
+                    </span>
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ) : null}
 
-      {memory.priority !== null ? (
-        <p className="mt-2 text-xs" data-testid="priority">
-          <span className="font-medium">Priority {memory.priority}</span>
-          {memory.priority_reason ? (
-            <span style={{ color: "var(--muted)" }}> — {memory.priority_reason}</span>
-          ) : null}
+      {memory.specifics_unresolved > 0 ? (
+        <p className="mt-2 text-xs" style={{ color: "var(--faint)" }} data-testid="unresolved">
+          {memory.specifics_unresolved} of the requirements behind this claim are no longer
+          available to read.
         </p>
       ) : null}
 
-      <ul className="mt-2 space-y-1" data-testid="evidence">
-        {memory.evidence.facts.map((fact) => (
-          <li key={fact.fact_id} className="text-xs" style={{ color: "var(--muted)" }}>
-            {fact.value}{" "}
-            <span style={{ color: "var(--faint)" }}>
-              ({fact.numerator}/{fact.denominator})
-            </span>
-          </li>
-        ))}
-      </ul>
-
-      {memory.evidence.groupings.length > 0 ? (
-        <p className="mt-1 text-xs" style={{ color: "var(--faint)" }} data-testid="groupings">
-          {memory.evidence.groupings
-            .map((g) => `read as ${g.label}: ${g.member_ids.length} requirement${g.member_ids.length === 1 ? "" : "s"}`)
+      {/* Grouping stays visible only where the rows themselves cannot be
+          shown — otherwise the rows above are the better audit trail. */}
+      {specifics.length === 0 && groupings.length > 0 ? (
+        <p className="mt-2 text-xs" style={{ color: "var(--faint)" }} data-testid="groupings">
+          {groupings
+            .map(
+              (g) =>
+                `read as ${g.label}: ${g.member_ids.length} requirement${
+                  g.member_ids.length === 1 ? "" : "s"
+                }`,
+            )
             .join(" · ")}
         </p>
+      ) : null}
+
+      {quotes.length > 0 ? (
+        <section className="mt-3" data-testid="your-evidence">
+          <h3
+            className="text-[10px] font-medium uppercase tracking-wide"
+            style={{ color: "var(--muted)" }}
+          >
+            Your evidence
+          </h3>
+          <ul className="mt-1.5 space-y-1">
+            {quotes.map((quote) => (
+              <li key={quote} className="text-xs" style={{ color: "var(--muted)" }}>
+                &ldquo;{quote}&rdquo;
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {memory.assessment ? (
+        <section className="mt-3" data-testid="assessment">
+          <h3
+            className="text-[10px] font-medium uppercase tracking-wide"
+            style={{ color: "var(--muted)" }}
+          >
+            Assessment
+          </h3>
+          <p className="mt-1 text-xs">{memory.assessment}</p>
+          {memory.priority_reason ? (
+            <p className="mt-1 text-xs" style={{ color: "var(--muted)" }} data-testid="priority">
+              {memory.priority_reason}
+            </p>
+          ) : null}
+        </section>
       ) : null}
 
       {memory.recreates_dismissed_id ? (
@@ -153,7 +230,11 @@ export function MemoryCard({
       </div>
 
       {lineageOpen && detail ? (
-        <ol className="mt-3 space-y-2 border-l pl-3" style={{ borderColor: "var(--border)" }} data-testid="lineage">
+        <ol
+          className="mt-3 space-y-2 border-l pl-3"
+          style={{ borderColor: "var(--border)" }}
+          data-testid="lineage"
+        >
           {detail.lineage.map((predecessor) => (
             <li key={predecessor.id} className="text-xs" style={{ color: "var(--muted)" }}>
               <span className="font-medium">{formatDate(predecessor.created_at)}:</span>{" "}
