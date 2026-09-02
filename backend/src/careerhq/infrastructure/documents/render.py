@@ -51,7 +51,9 @@ for exactly that reason.
 from __future__ import annotations
 
 import html
+import logging
 import os
+import pathlib
 
 # Bound to a private name **so the boundary is real rather than conventional** (T035).
 # As `HTML`, `from careerhq.infrastructure.documents.render import HTML` worked, and any
@@ -60,7 +62,30 @@ import os
 # *weasyprint*, and such a caller imports this module instead.
 from weasyprint import HTML as _HTML
 
-from careerhq.domain.schemas.document import ResumeDocument
+from careerhq.domain.schemas.document import ResumeDocument, ResumeSection
+from careerhq.domain.schemas.theme import MAX_LABEL_CHARS, ResumeTheme
+
+logger = logging.getLogger(__name__)
+
+#: Font files this module may reference, bundled rather than installed.
+#:
+#: **A family that is merely named resolves to whatever fontconfig has.** That is how the
+#: plain template ends up in Verdana on macOS and something else again on
+#: `python:3.12-slim` — recorded above, and harmless there only because the plain
+#: template's guarantee is byte-determinism *within* one runtime. A theme makes a
+#: stronger claim: it says the document looks like the CV the owner uploaded. So its
+#: faces travel with the code, and `ResumeTheme.font_family` is a whitelist of what is
+#: actually in this directory rather than a string the caller chooses.
+_FONT_DIR = pathlib.Path(__file__).parent / "fonts"
+
+#: The weights `ResumeTheme.FontWeight` permits, and the file carrying each.
+_FONT_FILES: dict[int, str] = {
+    200: "Poppins-ExtraLight.ttf",
+    300: "Poppins-Light.ttf",
+    400: "Poppins-Regular.ttf",
+    600: "Poppins-SemiBold.ttf",
+    700: "Poppins-Bold.ttf",
+}
 
 #: Pins the timestamp `fontTools` writes into the embedded font subset (FR-031).
 #:
@@ -145,6 +170,13 @@ def _render_html(document: ResumeDocument) -> str:
     if document.contact:
         joined = " · ".join(html.escape(fragment) for fragment in document.contact)
         parts.append(f"<div class='contact'>{joined}</div>")
+    if document.headline:
+        # **Through the class this template already has, deliberately.** Adding a rule
+        # for it would change the markup — and so the bytes — of every résumé already
+        # exported on the plain template, against a checksum FR-021 recorded. The plain
+        # template shows what the document holds; giving the headline a *hierarchy* is
+        # the themed renderer's job.
+        parts.append(f"<p class='line'>{html.escape(document.headline)}</p>")
     for section in document.sections:
         parts.append(f"<h2>{html.escape(section.heading)}</h2>")
         for group in section.groups:
@@ -161,14 +193,222 @@ def _render_html(document: ResumeDocument) -> str:
     return "".join(parts)
 
 
-def render_resume_pdf(document: ResumeDocument) -> bytes:
-    """Render one résumé to PDF bytes.
+def _font_faces(family: str) -> str:
+    """`@font-face` for every bundled weight, by absolute `file://` URL.
+
+    Missing files are skipped rather than raising: a face that is absent degrades to the
+    nearest one WeasyPrint has, which is a worse-looking document, where raising here
+    would be a failed export of a résumé somebody is waiting for.
+    """
+    rules = []
+    missing = []
+    for weight, filename in _FONT_FILES.items():
+        path = _FONT_DIR / filename
+        if path.is_file():
+            rules.append(
+                f"@font-face {{ font-family: '{family}'; font-weight: {weight}; "
+                f"font-style: normal; src: url('{path.as_uri()}') format('truetype'); }}"
+            )
+        else:
+            missing.append(filename)
+    if missing:
+        # **Logged, because the failure is otherwise invisible.** A skipped face degrades
+        # to whatever fontconfig resolves, which changes the rendered bytes and looks
+        # merely "a bit wrong" — and two renders in the same environment fall back
+        # identically, so the determinism test stays green. The likeliest cause is a
+        # build that ships the package without its data files.
+        logger.warning(
+            "bundled font files are missing; themed exports will render in a fallback face",
+            extra={"family": family, "missing": missing, "font_dir": str(_FONT_DIR)},
+        )
+    return "\n".join(rules)
+
+
+def _themed_css(theme: ResumeTheme) -> str:
+    """FR-018's structural guarantees, restated in the imported CV's typography.
+
+    **Every clause the plain template refuses, this refuses too**: no table, no
+    `column-count`, no `float`, no `position`, no image, no background, no border and no
+    `letter-spacing`. What changes is family, size, weight, colour and space — none of
+    which any ATS assertion reads. The one addition is a flex row for a right-flushed
+    date, and flex is used precisely *because* it leaves DOM order alone: the employer
+    still precedes the date in the content stream, so extraction order is unchanged and
+    the page still measures as a single column (no gutter — a body line spans the full
+    measure on almost every row).
+    """
+    marker_width = theme.bullet_marker_width_pt()
+    label = (
+        f"span.label {{ font-weight: {theme.label_emphasis_weight}; }}"
+        if theme.label_emphasis_weight is not None
+        else ""
+    )
+    return f"""
+{_font_faces(theme.font_family)}
+@page {{ size: {theme.page_size};
+         margin: {theme.margin_top_pt}pt {theme.margin_right_pt}pt
+                 {theme.margin_bottom_pt}pt {theme.margin_left_pt}pt; }}
+* {{ margin: 0; padding: 0; box-sizing: border-box; }}
+body {{
+  font-family: '{theme.font_family}', sans-serif;
+  font-size: {theme.body_font_size_pt}pt;
+  font-weight: {theme.body_font_weight};
+  line-height: {theme.body_line_height};
+  color: #000;
+  /* Load-bearing for the same reason as the plain template. */
+  font-variant-ligatures: none;
+}}
+h1.name {{
+  font-size: {theme.name_font_size_pt}pt;
+  font-weight: {theme.name_font_weight};
+  color: {theme.name_color};
+  text-align: {theme.name_alignment};
+  line-height: 1.15;
+}}
+div.contact {{
+  font-size: {theme.contact_font_size_pt}pt;
+  text-align: {theme.contact_alignment};
+  margin-top: 3pt;
+}}
+p.headline {{
+  font-size: {theme.role_font_size_pt}pt;
+  font-weight: {theme.role_font_weight};
+  margin-top: {theme.paragraph_space_pt}pt;
+}}
+h2.section {{
+  font-size: {theme.section_heading_font_size_pt}pt;
+  font-weight: {theme.section_heading_font_weight};
+  color: {theme.section_heading_color};
+  text-transform: {theme.section_heading_transform};
+  margin-top: {theme.section_heading_space_before_pt}pt;
+  margin-bottom: {theme.section_heading_space_after_pt}pt;
+}}
+p.line {{ margin-bottom: {theme.paragraph_space_pt}pt; }}
+p.line.list {{ margin-bottom: {theme.list_item_space_pt}pt; }}
+{label}
+div.role {{ margin-top: {theme.list_item_space_pt}pt; }}
+div.role-row {{ display: flex; justify-content: space-between; align-items: baseline; }}
+p.role-employer {{ font-size: {theme.role_font_size_pt}pt; font-weight: {theme.role_font_weight}; }}
+p.role-dates {{
+  font-size: {theme.date_font_size_pt}pt;
+  font-weight: {theme.date_font_weight};
+  white-space: nowrap;
+}}
+p.role-title {{
+  font-size: {theme.role_font_size_pt}pt;
+  font-weight: {theme.role_font_weight};
+  margin-bottom: 3pt;
+}}
+/* A hanging indent built from padding and a negative margin, **not**
+   `text-indent`: WeasyPrint applied that a second time to the marker box and put the
+   glyph a full marker-width left of where the source CV has it. */
+p.bullet {{
+  padding-left: {theme.bullet_text_indent_pt}pt;
+  margin-bottom: {theme.paragraph_space_pt}pt;
+}}
+p.bullet::before {{
+  content: "{theme.bullet_glyph}";
+  display: inline-block;
+  width: {marker_width}pt;
+  margin-left: -{marker_width}pt;
+}}
+"""
+
+
+def _themed_line(text: str, section: ResumeSection, theme: ResumeTheme) -> str:
+    """One body line, with the label before its first colon set in the heavier face.
+
+    **Positional emphasis only, and that is the whole of the design.** The label is
+    "whatever precedes the first colon of a list entry", so nothing is stored about which
+    words the owner considered important and no markup enters item text — which means a
+    Tailor rewrite of the value cannot leave a bold span attached to words that are gone.
+    Author-chosen keyword emphasis is not preserved; that is recorded as a limitation,
+    not solved here.
+
+    **The extracted text is byte-for-byte what it would be without this.** A `<span>`
+    changes the face, not the characters or their order, so FR-017's assertion sees the
+    same document either way.
+    """
+    if section.style != "list":
+        return f"<p class='line'>{html.escape(text)}</p>"
+    if theme.label_emphasis_weight is not None:
+        # Split first, escape after: a long label is a long *label*, not a short one
+        # whose ampersand became five characters.
+        label, separator, rest = text.partition(":")
+        if separator and len(label) <= MAX_LABEL_CHARS:
+            return (
+                f"<p class='line list'><span class='label'>{html.escape(label)}:</span>"
+                f"{html.escape(rest)}</p>"
+            )
+    return f"<p class='line list'>{html.escape(text)}</p>"
+
+
+def _render_themed_html(document: ResumeDocument, theme: ResumeTheme) -> str:
+    """The same document, the same order, in the imported CV's typography.
+
+    **Deliberately a second emitter rather than a branch inside `_render_html`.** The
+    plain path's output must stay byte-for-byte what it was: FR-021 records a checksum
+    over an exported document and FR-031 requires a re-render to reproduce it, so a
+    conditional threaded through the untenanted path is a byte-drift risk on documents
+    that have already been sent. `test_export_themed.py` pins the plain path's markup to a
+    hash so an edit to it cannot pass unnoticed, and asserts both emitters carry the same
+    **approved lines** in the same order.
+
+    **The role heading is where the two deliberately differ, and that is pinned
+    separately.** Plain emits employer → title → dates as three stacked blocks; this emits
+    employer → dates on one flex row, then the title. `lines_in_order()` excludes role
+    context by design (it is document structure, not an approved item), so the
+    same-lines test cannot see this — `test_the_themed_role_row_orders_employer_dates_then_title`
+    states it directly instead.
+    """
+    parts = [
+        "<!DOCTYPE html><html><head><meta charset='utf-8'>",
+        f"<style>{_themed_css(theme)}</style></head><body>",
+        f"<h1 class='name'>{html.escape(document.full_name)}</h1>",
+    ]
+    if document.contact:
+        joined = f" {theme.bullet_glyph} ".join(
+            html.escape(fragment) for fragment in document.contact
+        )
+        parts.append(f"<div class='contact'>{joined}</div>")
+    if document.headline:
+        # Set at the role face — the weight a CV gives the line under its contact
+        # details — rather than as the first sentence of the summary paragraph, which is
+        # where it landed while the document model had nowhere else to put it.
+        parts.append(f"<p class='headline'>{html.escape(document.headline)}</p>")
+    for section in document.sections:
+        if section.heading:
+            parts.append(f"<h2 class='section'>{html.escape(section.heading)}</h2>")
+        for group in section.groups:
+            if group.role is not None:
+                parts.append("<div class='role'><div class='role-row'>")
+                parts.append(f"<p class='role-employer'>{html.escape(group.role.employer)}</p>")
+                if group.role.dates:
+                    parts.append(f"<p class='role-dates'>{html.escape(group.role.dates)}</p>")
+                parts.append("</div>")
+                parts.append(f"<p class='role-title'>{html.escape(group.role.title)}</p></div>")
+            for line in group.lines:
+                if group.role is not None:
+                    parts.append(f"<p class='bullet'>{html.escape(line)}</p>")
+                else:
+                    parts.append(_themed_line(line, section, theme))
+    parts.append("</body></html>")
+    return "".join(parts)
+
+
+def render_resume_pdf(document: ResumeDocument, theme: ResumeTheme | None = None) -> bytes:
+    """Render one résumé to PDF bytes, in `theme` or on the plain ATS template.
 
     Takes content, not a `ResumeVersion` and not a session: the renderer has no idea what
     a version is, which is what keeps the ATS assertions checkable without a database and
     keeps WeasyPrint out of every layer above this one.
+
+    **`theme=None` is the default and renders exactly what this function rendered before
+    themes existed** — same markup, same CSS, same bytes. Every import that yields no
+    recoverable design, every DOCX, and every profile created before slice 011 takes that
+    path, so it is the common case rather than a fallback.
     """
-    rendered = _HTML(string=_render_html(document)).write_pdf()
+    markup = _render_html(document) if theme is None else _render_themed_html(document, theme)
+    rendered = _HTML(string=markup).write_pdf()
     if rendered is None:  # pragma: no cover - write_pdf returns bytes when no target given
         raise RuntimeError("the renderer produced no bytes")
     return bytes(rendered)

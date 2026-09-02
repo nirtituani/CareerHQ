@@ -27,8 +27,10 @@ so a route can span several use cases in one transaction.
 from __future__ import annotations
 
 import hashlib
+import logging
 import uuid
 
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -37,6 +39,7 @@ from careerhq.application.export import ensure_exportable
 from careerhq.domain.models import (
     ContactInformation,
     ExportedDocument,
+    ResumeProfile,
     ResumeVersion,
     ResumeVersionItem,
     SourceKind,
@@ -47,9 +50,13 @@ from careerhq.domain.schemas.document import (
     ResumeGroup,
     ResumeRole,
     ResumeSection,
+    SectionStyle,
 )
+from careerhq.domain.schemas.theme import ResumeTheme
 from careerhq.infrastructure import storage
 from careerhq.infrastructure.documents.render import render_resume_pdf
+
+logger = logging.getLogger(__name__)
 
 #: Which conventional heading each kind of item belongs under, and the order the sections
 #: appear in. **This is where the heading vocabulary lives** — T034 established that the
@@ -61,14 +68,19 @@ from careerhq.infrastructure.documents.render import render_resume_pdf
 #: title is a headline, "Title" is not a conventional résumé heading, and
 #: `ResumeDocument` has no header field to put it in. Recorded as a compromise forced by
 #: the document model, not a preference — see the gap noted under T036.
-_SECTIONS: tuple[tuple[str, tuple[SourceKind, ...]], ...] = (
-    ("Summary", (SourceKind.TITLE, SourceKind.SUMMARY)),
-    ("Experience", (SourceKind.EXPERIENCE_BULLET,)),
-    ("Skills", (SourceKind.SKILL,)),
-    ("Projects", (SourceKind.PROJECT,)),
-    ("Education", (SourceKind.EDUCATION,)),
-    ("Certifications", (SourceKind.CERTIFICATION,)),
-    ("Languages", (SourceKind.LANGUAGE,)),
+#:
+#: **The third element is what the section *is*, not how it looks.** `list` means every
+#: line is a complete entry; `prose` means lines wrap into paragraphs. Only the caller
+#: assembling the section knows which, so it is decided here rather than guessed at by a
+#: renderer — and the plain template ignores it entirely.
+_SECTIONS: tuple[tuple[str, tuple[SourceKind, ...], SectionStyle], ...] = (
+    ("Summary", (SourceKind.TITLE, SourceKind.SUMMARY), "prose"),
+    ("Experience", (SourceKind.EXPERIENCE_BULLET,), "roles"),
+    ("Skills", (SourceKind.SKILL,), "list"),
+    ("Projects", (SourceKind.PROJECT,), "list"),
+    ("Education", (SourceKind.EDUCATION,), "list"),
+    ("Certifications", (SourceKind.CERTIFICATION,), "list"),
+    ("Languages", (SourceKind.LANGUAGE,), "list"),
 )
 
 
@@ -134,6 +146,39 @@ def _role_groups(members: list[ResumeVersionItem]) -> tuple[ResumeGroup, ...]:
     return tuple(groups)
 
 
+def _skill_rows(members: list[ResumeVersionItem]) -> tuple[str, ...]:
+    """Skills as one row per category — the shape a résumé's Skills block has.
+
+    **Grouped by the snapshot, never by the profile.** `source_category` was frozen onto
+    the item at version creation, so a later edit to how the owner files their skills
+    cannot reshape a document that has already been approved (FR-023).
+
+    Order is the owner's approved order: categories appear in the order their first
+    skill does, and skills within a category keep their own `position`. Nothing is
+    sorted alphabetically, because that would be this function choosing an order the
+    owner did not.
+
+    **Uncategorised skills stay as they were** — their own plain row, in place. That is
+    every item written before the snapshot column existed, and every skill the owner
+    left unfiled.
+    """
+    ordered = sorted(members, key=lambda item: item.position)
+    grouped: dict[str, list[str]] = {}
+    rows: list[tuple[int, str]] = []
+    for item in ordered:
+        category = (item.source_category or "").strip()
+        if not category:
+            rows.append((len(rows), item.final_text))
+            continue
+        if category not in grouped:
+            grouped[category] = []
+            rows.append((len(rows), category))
+        grouped[category].append(item.final_text)
+    return tuple(
+        f"{text}: {', '.join(grouped[text])}" if text in grouped else text for _, text in rows
+    )
+
+
 def _compose(version: ResumeVersion, contact: ContactInformation | None) -> ResumeDocument:
     """The approved items, in approved order, as a document.
 
@@ -145,17 +190,20 @@ def _compose(version: ResumeVersion, contact: ContactInformation | None) -> Resu
     included = [item for item in version.items if item.included]
 
     sections: list[ResumeSection] = []
-    for heading, kinds in _SECTIONS:
+    for heading, kinds, style in _SECTIONS:
         # **Filter before sorting.** `kinds.index()` raises for a kind that is not in
         # this section, so sorting the whole list first is a crash rather than a
         # mis-ordering — found by the drill-shaped failure of the re-export test.
         members = [item for item in included if item.source_kind in kinds]
         if not members:
             continue
-        groups = (
-            _role_groups(members)
-            if heading == "Experience"
-            else (
+        groups: tuple[ResumeGroup, ...]
+        if heading == "Experience":
+            groups = _role_groups(members)
+        elif heading == "Skills":
+            groups = (ResumeGroup(role=None, lines=_skill_rows(members)),)
+        else:
+            groups = (
                 ResumeGroup(
                     role=None,
                     lines=tuple(
@@ -166,15 +214,24 @@ def _compose(version: ResumeVersion, contact: ContactInformation | None) -> Resu
                     ),
                 ),
             )
-        )
-        sections.append(ResumeSection(heading=heading, groups=groups))
+        sections.append(ResumeSection(heading=heading, groups=groups, style=style))
 
+    # **Links are fragments too, and dropping them lost real contact detail.** The column
+    # stores them newline-separated; each becomes its own fragment so the rendered line
+    # separates them like the rest rather than carrying a newline through the middle of
+    # it. A profile that stores none composes exactly the line it composed before.
+    links = (
+        tuple(line.strip() for line in (contact.links or "").splitlines() if line.strip())
+        if contact
+        else ()
+    )
     fragments = tuple(
         value
         for value in (
             contact.email if contact else None,
             contact.phone if contact else None,
             contact.location if contact else None,
+            *links,
         )
         if value
     )
@@ -183,7 +240,41 @@ def _compose(version: ResumeVersion, contact: ContactInformation | None) -> Resu
         full_name=(contact.full_name if contact and contact.full_name else version.name),
         contact=fragments,
         sections=tuple(sections),
+        # Snapshotted onto the version at creation; `None` when the profile records none.
+        headline=version.professional_title,
     )
+
+
+async def _theme_for(session: AsyncSession, version: ResumeVersion) -> ResumeTheme | None:
+    """The design this version's résumé profile was imported in, if any.
+
+    **Read from the résumé profile the version was built from**, not from whichever
+    master exists now: `source_resume_profile_id` is the lineage the version already
+    records, and following it means a document renders in the design it was created
+    under.
+
+    **A stored theme that no longer validates falls back to the plain template rather
+    than failing the export.** The vocabulary is closed and versionless, so a field that
+    is removed or narrowed later would otherwise turn every historical row into a failed
+    export of a résumé somebody is waiting for. Logged, because silently changing how a
+    document looks is exactly the kind of thing that should leave a trace.
+    """
+    stored = await session.scalar(
+        select(ResumeProfile.theme).where(ResumeProfile.id == version.source_resume_profile_id)
+    )
+    if not stored:
+        return None
+    try:
+        return ResumeTheme.model_validate(stored)
+    except ValidationError:
+        logger.warning(
+            "stored resume theme no longer validates; exporting on the plain template",
+            extra={
+                "version_id": str(version.id),
+                "resume_profile_id": str(version.source_resume_profile_id),
+            },
+        )
+        return None
 
 
 async def export_version(session: AsyncSession, *, version_id: uuid.UUID) -> ExportedDocument:
@@ -207,8 +298,9 @@ async def export_version(session: AsyncSession, *, version_id: uuid.UUID) -> Exp
     contact = await session.scalar(
         select(ContactInformation).where(ContactInformation.profile_id == version.profile_id)
     )
+    theme = await _theme_for(session, version)
 
-    pdf = render_resume_pdf(_compose(version, contact))
+    pdf = render_resume_pdf(_compose(version, contact), theme)
     checksum = hashlib.sha256(pdf).hexdigest()
 
     # A fresh key per export. Re-export is legitimate and each one is its own object, so
