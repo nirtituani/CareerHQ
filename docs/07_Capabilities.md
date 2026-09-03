@@ -143,6 +143,15 @@ Takes a job description and adapts the CV to it.
 **The rule it must never break:** it may reorder, re-emphasize, and rewrite existing facts. It may
 never invent experience, skills, or qualifications the profile does not contain (AI-008).
 
+**Theme-faithful export.** When the profile came from a PDF whose design the importer could
+measure, the export carries that design — typography, accent colour, and spacing, drawn from a
+deliberately bounded theme vocabulary — instead of the plain template. This is deterministic
+export infrastructure rather than model behaviour: the theme is recovered from the PDF's own
+geometry at import, and no completion is spent. It is a bounded approximation, with one
+whitelisted font family today; without a recoverable theme (a DOCX, an unmeasured design), export
+uses the plain ATS template exactly as before. Mechanism and limitations:
+[08_Technical_Spec.md](08_Technical_Spec.md) §3.2.3.
+
 ---
 
 ## 3.3 Reviewer / Evaluation Layer

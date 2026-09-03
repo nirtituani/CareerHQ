@@ -291,6 +291,28 @@ not contain (AI-008, Principle III).
 **Version lineage is recorded, never inherited** (ADR-012). Live inheritance would silently
 alter already-submitted resumes and make historical analysis impossible.
 
+**Resume theme fidelity — export infrastructure, not part of the agent.** An imported PDF's
+visual design is recovered at import by deterministic geometry analysis
+(`infrastructure/documents/theme.py`, rules over pdfplumber character coordinates — no model
+call), staged beside the extracted items, copied **write-once** to the profile at approval under
+FR-006's presentation-preferences seam, and read at export through the version's own source
+profile (migrations `0022`–`0023`). The theme vocabulary is deliberately bounded — every field a
+bounded scalar from an enumerated set, with **Poppins the only whitelisted font family today** —
+which is what keeps ADR-013's no-resume-designer non-goal intact.
+
+`None` is an intentional outcome, not a failure: a DOCX, a PDF set in an unbundled family, or a
+page whose headings cannot be recovered all export on the plain ATS template, whose markup a
+golden-hash regression check keeps unchanged. Version snapshots (headline, skill category,
+contact links) freeze what export needs at version creation, so a locked document re-renders to
+its recorded checksum regardless of later profile edits. Rendering is byte-deterministic **on
+one runtime** — bundled fonts plus a fix for fontTools stamping the embedded subset's
+`head.modified` with wall-clock time — and no cross-environment byte-identity is claimed.
+
+The result is a **bounded approximation of the imported presentation, not pixel-perfect
+reproduction**, and a theme cannot be backfilled onto a profile once a document has been exported
+from it. Deployed and regression-covered — 62 tests across extraction, themed export,
+persistence, and version fidelity.
+
 ### 3.2.4 Presentation layer
 
 **Built** — four surfaces exist and are Playwright-covered:
@@ -307,7 +329,7 @@ parsed-content review step, the application list and detail, and the item-level 
 diff.
 
 **No wireframes or mockups exist.** The design is described in workflow prose only, which
-is an accepted gap: one ATS-safe resume template is the entire presentation scope, and the
+is an accepted gap: one ATS-safe template plus the bounded imported-theme variant is the entire presentation scope, and the
 `ResumeLayout` value object already carries the fields a designer surface would need, so
 that stays an interface addition rather than a schema change.
 
