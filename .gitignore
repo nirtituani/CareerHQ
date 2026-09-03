@@ -77,3 +77,8 @@ specs/006-document-retrieval/corpus-research/examples/
 # repository is PUBLIC. Only the aggregate comparison is ever committed, never
 # the data. Verify with `git check-ignore -v` before any `git add`.
 benchmark-real/
+
+# Claude Design reference files for the Tailor redesign, including a fictional
+# CV. Local working material, deliberately not part of the tree — and without
+# this rule it was the one sensitive-adjacent path `git add -A` would sweep up.
+design/

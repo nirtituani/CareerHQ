@@ -12,317 +12,52 @@
 > **Status markers below were true when written.** Where a section describes a state that has
 > since moved on, it is kept rather than rewritten — the reasoning is why it is worth reading.
 
-> ## CURRENT SESSION STATE (2026-09-02) — read this block first
+> ## CURRENT SESSION STATE (2026-09-03) — read this block first
 >
-> **Branch `feat/tailor-redesign` @ `793ab78`, two commits ahead of `main` @ `ddc9bdc`, not
-> pushed, not deployed.** Working tree clean except untracked `design/` (the Claude Design
-> reference files for the redesign; contains a fictional CV — **deliberately not committed**;
-> decide later whether to delete or gitignore).
+> **`main` @ `4bb7c64`, pushed, merged and DEPLOYED to production.** Working tree clean except
+> untracked `design/`. **No open PRs.** Both feature branches are merged and kept:
+> `feat/resume-themes` (PR #37) and `feat/advisor-v2` (PR #36).
 >
-> **The Tailor UI redesign is COMPLETE and FROZEN.** Do not continue UI work on it. The next
-> task is a **read-only investigation** into Tailor *output quality* — see §5 option A.
+> **Two workstreams shipped this session, and both are live:**
 >
-> **THE QUESTION FOR THE NEXT SESSION**: the real run `acf82dba-fc60-4d48-a3fc-40046a96075e`
-> (2026-09-02 07:31, Silverfort "Senior Backend Software Engineer (AI Engineering)") produced
-> **1 content rewrite, 0 drops, and 10 position-only reorders across 35 items**. Why so few
-> content changes, so many reorders — and **is that actually wrong?** It may be correct
-> behaviour: that job's match analysis scored **85/100 `strong`** with **0 `gap` verdicts**
-> (6 confirmed, 1 partial, 1 transferable, 2 unverified), so a profile that already answers the
-> posting arguably *should* be reordered rather than rewritten. Do not assume a bug. §5 A has
-> the full evidence trail and the specific tension to resolve.
+> 1. **Resume Themes** — an imported CV's visual design is extracted deterministically at import,
+>    persisted as a closed `ResumeTheme`, and reproduced on export. Migrations `0022` + `0023`.
+> 2. **Advisor V2** — evidence-grounded guidance and grounded technology signals, plus a
+>    review-driven fix commit (`b3f7b75`) covering one BLOCKER and four HIGH findings.
 >
-> **Optimization state, all merged and live in code**: confidence threshold **65**
-> (`v3-final-pass-t65`, calibrated by experiment E1); `tailor_draft` runs **explicit adaptive
-> thinking at `effort: "medium"`** (experiment E2, `llm_effort_tailor_draft`); everything else
-> unchanged. **E3 (draft prompt selectivity) is BLOCKED** — the Anthropic API rejects the
-> configured key with "credit balance is too low" despite a $5.01 Console balance on the same
-> org `6480e45c-1b50-413b-a3f3-fcaddcef0bac`; a support report is written and waiting (see
-> §5 E). **$0 was spent on the blocked attempts** — every call was refused before billing.
+> **Measured this session (2026-09-03), not carried forward:**
 >
-> **Experiment evidence (~$8 of real spend) is preserved at `~/careerhq-eval-artifacts/`** —
-> 17 files: E1/E2/E3 result JSONs, raw completion capture JSONLs, the driver scripts, and the
-> Anthropic support report. **It was rescued out of a session-scoped scratchpad that dies with
-> the session**; the per-call telemetry itself is durable in `tailoring_run_calls`.
+> | Thing | Value |
+> |---|---|
+> | Backend suite | **1505 passed**, 89.84% coverage |
+> | Frontend suite | **313 passed** (19 files) |
+> | Gates | ruff, mypy strict, oxlint, tsc — all clean |
+> | Production alembic | `0023_skill_category_snapshot` |
+> | Production data | users 2 · profiles 2 · applications 104 · analyses 9 · versions 3 · exports 1 · memories 17 |
+> | **Production themes** | **0** — see the warning below |
 >
-> **Hard constraints for the next session** (the user's own words, carried forward): do not
-> change prompts, models, thresholds, schemas, RAG, or pipeline behaviour until the
-> investigation says where the problem is; do not deploy; do not push unless asked.
-
-> ## Slice 009 — Career Advisor: built on branch `009-career-advisor`, unmerged
+> **⚠ Resume Themes is deployed but has never run in production.** `resume_profiles.theme` is
+> NULL for both accounts, because a theme is only attached when a **PDF is imported after the
+> feature shipped**. Every production export still renders on the plain ATS template. Measured
+> eligibility for the backfill (which the write-once guard refuses once a document exists):
 >
-> **2026-09-01, awaiting review before any merge, push, PR or deploy — stopped there by
-> instruction.** The full speckit cycle (`specs/009-career-advisor/`) ran first — specify,
-> five clarifications, plan (research D1–D15), 46 tasks, two analyze passes (pass 1 found a
-> HIGH: FR-017 had no boundary gate; all eight findings remediated; pass 2 clean at 29/29
-> coverage) — and **45/46 tasks are done; T045 (deploy) is open by instruction, not
-> omission.**
+> - The owner's account — master `241525d1`, theme NULL, **0 exported documents → a re-import
+>   WILL attach the theme.** This is the one action that turns the feature on.
+> - The second production account — master `cabd810b`, theme NULL, **1 exported document → the backfill is
+>   refused, permanently.** That account cannot gain a theme without a new master résumé. This is
+>   the guard working as designed, not a bug.
 >
-> **What it is**: agent-managed career memory, not an analytics page. A run computes a
-> deterministic evidence pack (the model is never the source of a number), reasons over the
-> facts **plus its own prior memories**, and must disposition every active memory —
-> confirm / supersede / retire / leave-open-with-reason; an omission fails the run.
-> Insert-only rows with supersession lineage; a `memory_dispositions` journal makes the
-> lifecycle queryable; a before_update listener freezes memory content (it caught the
-> pipeline itself setting `supersedes_id` post-flush — creates are born with lineage now).
-> The grounding gate discards claims whose digits are not in their cited facts, forces
-> `tentative` under the floor of 5, enforces the cap of 25 post-disposition (G4), and holds
-> dismissals in two layers. T046 whitelists every module allowed to touch the three advisor
-> classes.
+> **Railway auto-deploys on merge.** Merging a PR creates deployments on `backend` and `frontend`
+> within seconds. A "pre-deployment readiness check" run *after* merging is already too late —
+> gate on the merge, not on the deploy.
 >
-> **Verified live (2026-09-01, local Docker, real Sonnet)**: three runs at 41/40/40 s and
-> $0.0475/$0.0445/$0.0237; the gate discarded a real model claim twice (a digit not in the
-> cited fact — recorded, `ops_discarded=1`); run 2 superseded all four memories with
-> lineage ("4 of 10 (40%) rejected" → "6 of 12 (50%)"); a dismissed claim stayed
-> dismissed through a real re-run; a broken-key run failed honestly with the memory-set
-> hash byte-identical. Scratch user deleted; baseline counts (24/33/0/0) matched exactly.
-> Gates: backend **1,349 passed, 87.83%** coverage, ruff/mypy clean; frontend **238
-> passed**, typecheck/lint/build clean. The `/advisor` nav entry lost its *Soon* marker in
-> the same slice that built the page.
->
-> **A full `/code-review high` ran against the branch (2026-09-01) and its five
-> blockers are fixed** — each reproduced by execution first, then converted to a
-> watched-failing regression test: B1 supersede→create links resolved by object identity
-> after the final creates list (a cap drop had re-pointed lineage); B2 orphan repair now
-> runs before the cap (the active set had reached 26); B3 the pending→ready transition is
-> a compare-and-set, so a reaped run stays failed and the zombie's work rolls back; B4 the
-> applying transaction re-reads prior statuses locked and skips memories that went
-> terminal, so a mid-run dismissal's `user_dismissed` marker survives; B5 the gate
-> normalises a stray reason on confirm/supersede and repairs-or-discards malformed scope
-> shapes instead of letting either fail the billed run on a DB CHECK.
->
-> **The review's non-blocking findings are deliberately NOT fixed — they are the open
-> follow-up list**: lost-race 409 surfacing as 500; a stranded pending run disabling the
-> only button that reaps it; priority-0 falsy-coerced to unranked in ranking; dismissal's
-> deterministic layer keyed on exact model-chosen (kind, scope) strings; tentative→active
-> promotion living outside the gate and invisible in ops accounting; reaped/rolled-back
-> runs recording no spend; a skipped supersede's replacement still born with lineage to
-> the dismissed memory; frontend unhandled rejections on dismiss/lineage; five
-> query-shape efficiency items (DISTINCT ON for last dispositions, narrow `_load_inputs`,
-> lazy dispositions on the poll, grouped history counts, recursive-CTE lineage); and the
-> duplication set (`is_abandoned` 4th copy, `_iso` 3rd, `formatDate` 5th, twin except
-> blocks, seam guard, `_ACTIVE_STATUSES` literals, dead `history` parameter,
-> `is_fixture` migration default drift).
->
-> **Worth keeping**: the content-coverage gate caught `input_tokens`/`output_tokens`
-> stored-but-never-shown on its first run — the display-bug class the suite had never
-> caught before. And an unbilled failure records **no** usage on purpose: cost 0.000000
-> with a rejected key is correct (auth refused before billing), where inventing a
-> zero-token entry would miscount calls in the other direction.
-
-> ## Slice 010 — Role-Aware Research: merged and deployed
->
-> **2026-08-31 — merged as PR #22 and deployed.** *(This section was written while the slice was
-> still on its branch awaiting review; the status line is updated, and everything below it is kept
-> as written because the corrections and measurements are why it is worth reading.)* The full
-> speckit cycle
-> (`specs/010-role-aware-research/`) and all 40 tasks are implemented on the branch: research is
-> application-scoped and role-aware through a `ResearchProvider` port (Tavily Research primary,
-> the 008 pipeline as configured fallback), the sections-first UI replaced the tier taxonomy on
-> the surface, and migration `0020` reshaped the provably empty `role_research_snapshots` into
-> `application_research_snapshots` behind an emptiness guard that was watched failing.
->
-> **Corrections this slice recorded**: the decision document's "no schema change required" was
-> wrong (NOT NULL Layer 1 lineage column — research.md D2); and two provider contract facts cost
-> a real run each to learn — the research endpoint accepts only `properties`+`required` (no
-> `$defs`/`$ref`, so the adapter inlines pydantic's schema) and answers `pending` in <1 s, so the
-> adapter polls by request id. Both are now unit-tested from captured requests.
->
-> **Measured (2026-08-31)**: SC-001 on five real applications — 4 correct entities, 1
-> honest-uncertain (no public web presence, declared as such), 0 wrong, including one
-> deliberately name-ambiguous employer; provider runs 22–51 s wall; a no-posting collided name
-> resolves to a coin-flip entity, exposed by the identification tripwire. **Cost**: all runs
-> inside the Tavily plan — usage API posted ~129 research + 13 search credits hours late
-> (≈14 credits ≈ $0.11/run at paygo rates), so the recorded `cost_basis="estimate"` of $0.456
-> overstates ~4× in the conservative direction; revisiting the estimate constant is a small open
-> follow-up. LLM spend: two builtin fallback runs ≈ $0.065 (recorded per snapshot).
->
-> **Operational facts worth keeping**: one Tavily key serves provider *and* fallback, so a bad
-> key downs both (honest failure, last success preserved — verified in Docker with a broken key,
-> and the `RESEARCH_FALLBACK_ENABLED=false` path verified through the environment); the local
-> dev database is migrated to `0020`; the five real research snapshots from the SC-001
-> measurement remain in the dev database as legitimate product data; scratch `@example.com`
-> data was deleted.
->
-> **A full `/code-review high` ran against the branch (2026-08-31), and its five real-defect
-> clusters and two spec deviations are fixed on the branch** (commit `88cc884`), each behind a
-> watched-failing regression test: reuse now compares a stored posting-context fingerprint so
-> paste-JD-then-refresh actually runs (verified live: `reused: false`, role-aware result, 30 s);
-> the Tavily adapter no longer launders `Rejected` into `Unavailable` across the polling phase
-> and budgets its deadline in wall clock; terminal rows re-read the database and refuse
-> resurrection; failures stay observable (`last_failure` rides along the current research,
-> failed-only histories no longer hide legacy research, abandoned/stuck-running rows read as
-> nothing so recovery stays reachable); cost accounting keeps every channel
-> (`ExtractionFailedError.usage`, the provider attempt behind a successful fallback in
-> `run_facts`, the abandoned run's documented estimate, `produced_by` from the wired adapter);
-> the tiered payload names its company again and sources order naturally with visible citation
-> numbers. The review's follow-up improvements (dead Layer-2 removal, prompt-version registry,
-> connection lifetime, duplicated helpers, polling backoff, the estimate constant) are
-> deliberately NOT done — they are the open follow-up list.
->
-> **`/security-review` ran against the branch diff**: zero findings at the confidence bar; its
-> one hardening note (scheme-filter the identification website link, matching the source-URL
-> filter) was applied with a test. **Merge and deploy were stopped for review at the time; both
-> have since happened** — PR #22, deployed at `d68c85e`. Backfilling `docs/09` UI notes for the
-> new tab was not attempted.
-
-
-**Last updated:** 2026-09-02 · **`main` @ `ddc9bdc`** · working branch
-**`feat/tailor-redesign` @ `793ab78`** (2 commits, unpushed) · every number below was measured by
-a command run at the time it was written, not carried forward. **The block dated 2026-08-31
-immediately below was true then and is kept for its reasoning; for current state read the
-CURRENT SESSION STATE block at the top and §2.**
-
-**As of 2026-08-31, `origin/main` was `880d4c1`** — the merge of PR #24. **Backend and frontend are both deployed at
-exactly this commit** (`railway deployment list`, `SUCCESS`, 2026-08-31T19:37:20Z) and production
-readiness answers **HTTP 200**: `database ok 11.0 ms · cache not_configured · object_storage ok
-148 ms · ai_provider ok`. Alembic head in production is `0020_application_research`.
-
-**Every slice is complete: 567 / 567 tasks across eight slices, no task open.** Measured with
-`grep -cE '^- \[[xX]\]'` — 001 69/69, 002 52/52, 003 109/109, 004 89/89, 005 101/101,
-006 57/57, 007 50/50, 010 40/40. There is no `specs/009`; the Career Advisor was never started
-and is the documented droppable slice.
-
-**Tests on `880d4c1`**: backend **1,273 passed**, coverage **87.53%** (gate 80%); frontend
-**224 passed** across 17 files; CI green on the merge commit.
-
-**Production data**: 1 user, 97 applications, 90 companies, 1 resume version, 2 application
-research snapshots.
-
-> ⚠️ **One branch is unpushed**: `poc/008-research-comparison` holds `874ce1e`, the
-> research-provider comparison harness from the Pango entity-resolution test — three files under
-> `poc/008-research-comparison/`. It is on this machine only. Everything else is pushed;
-> `git log --branches --not --remotes` shows nothing else.
-
-> **`010-role-aware-research` is merged.** An earlier revision of this file warned that the branch
-> was unpushed and existed on one machine only. It was pushed, reviewed and merged as PR #22; the
-> warning is kept here in past tense rather than deleted, because "the only copy is on a laptop"
-> recurred often enough in this project to be worth remembering.
-
-Merged 2026-08-31, latest first: **#24** (the last stale Slice 010 status line), **#23** (three
-Slice 010 status statements), **#22** (**Slice 010** itself), **#21** (the submission-readiness
-pass — see the box below), **#20** (T047), **#19**, **#18** (the tailor model-attribution test
-flake), **#17** (**T083**), **#16**, **#15**. **#12 was closed, not merged** — superseded by
-`main`, and merging it would have reintroduced an older copy of this file. Earlier: **#8**
-(Slice 003 JobTracker import), **#9** (Slice 006 item D), **#10** (the frontend healthcheck),
-**#11** (documentation reconciliation), **#13** (per-worktree test databases) and **#14** (Slice
-008).
-
-> ⚠️ **The last deployment observed was at `c904380`** (`railway deployment list`, `SUCCESS`,
-> 2026-08-30T21:17:35Z). `32f5be2` adds a frontend screen and two documentation changes; **whether
-> it has deployed was not checked this session.** Read it from the commit, never the deployment id.
-
-> ## Slice 003 is complete, and so is Slice 005
->
-> **T083** shipped in PR #17 and **T084**, **T088** are ticked. All three were verified rather than
-> assumed: T084 and T088 against the deployed database on 2026-08-31, T083 in a browser.
->
-> **The `tasks.md` disagreement recorded in the previous revision is resolved.** `003` is now
-> **109 / 109** and `005` is **101 / 101**. T084's tick had been lost by §4's *"replace-script that
-> asserts before writing"*; T088's had been **withheld on purpose** pending a paid production run,
-> which is a different thing and is recorded as such in its task. **T047 is now the only open task
-> in the project.**
-
-> ## The Railway frontend blocker is FIXED
->
-> It had blocked every frontend release since 2026-08-26. The fix was to give the healthcheck a
-> target that answers 200 without redirecting: production now probes **`/healthz`** rather than
-> `/`, which had been answering 307. The deployment succeeded **on the first healthcheck attempt**.
->
-> Verified publicly: `/healthz` -> **200 with zero redirects**, `/` -> **307 to /login** (correct),
-> `/api/health/ready` -> **200** with `database ok - cache not_configured - object_storage ok -
-> ai_provider ok`.
->
-> **Treat this as closed.** No further investigation, no support ticket. The earlier analysis stays
-> in §4B as history rather than as an open problem. **The frontend is live**, so every user-facing
-> change from slices 006 and 007 has finally shipped.
-
-> ## T088 is COMPLETE — the first real paid production run
->
-> Slice 005 is now **101 / 101**. Run `f116683f`, **`succeeded`**, `is_fixture = false`,
-> **3m 15.9s**, **$0.312825** — 35,785 input / 18,808 output tokens across three calls. Plan and
-> Draft on `claude-sonnet-5`, Review on **`claude-opus-5`** (its configured model, not an
-> escalation). **No revision**: `attempts = 0`, confidence 84, one `overstated` and six `uncovered`
-> findings, and **no `ungrounded`** — so the discard path still has no production exercise.
->
-> **The first production proof that retrieval works.** `guidelines_used` holds **28 real corpus
-> citations across 9 documents**, not the `StaticGuidelines` constant, and **all 28 content hashes
-> resolve to live `knowledge_chunks`** — FR-012's resolvability verified against real data. 15 of
-> the 28 rules come from integrity documents (the mandatory inclusion working), and the Israeli
-> market rules were hoisted for an Israeli employer.
->
-> ⚠️ **The interface reports one model for a run that used two.** The UI showed
-> `anthropic/claude-sonnet-5` while the Review call ran on Opus at 5x the input price. Cosmetic,
-> but it understates cost attribution.
-
-> ## Slice 006 item D is COMPLETE
->
-> `verify_corpus_ingested()` re-reads the corpus files and re-queries the database after ingestion,
-> refusing an empty or incomplete result. The existing pre-deploy exit code now gates the
-> **outcome** as well as the ordering, with **no Railway configuration change**. Confirmed in
-> production's own pre-deploy log: `chunks_expected=79 chunks_present=79 changed=false`.
->
-> Before this, that log read `0/0/0/0` — indistinguishable from the `75cd8ea` failure where the
-> corpus was empty. **It does not catch ingestion never running at all**; that remains what T048's
-> configuration test is for.
-
-> 🔴 **Paid evaluation evidence still lives in two local Docker volumes** — $3.562567 from slices
-> 004–006 and $4.925403 from the Slice 007 benchmark, plus **$0.352047 now in production** (the
-> match analysis and the T088 run). The local backup is dated 2026-08-29, **predates the two T052
-> arms and the whole Slice 007 benchmark**, and sits **on the same machine**. See §5A.
->
-> **Slice 007's results are the exception and are safe**: they are committed *files* under
-> `specs/007-evaluation-benchmark/results/`, so they survive `docker compose down -v`. The
-> tailoring rows behind them do not.
-
-> ## Slice 008 is COMPLETE, merged and production-validated
->
-> Merged as **PR #14**; `origin/main` is **`e6335bc`**. Not "locally validated", not "unbacked" —
-> it is on `main`, deployed, and has produced real research against a real company in production.
-> The earlier ownership fence around `research_*`, `citation_check.py` and `ports.py` is **gone**;
-> those files are ordinary `main` code now.
->
-> **The whole chain works, end to end:**
->
-> ```
-> Tavily search -> SearchHit (url/title/snippet, no body) -> SourceFetcher
->   -> the shared SSRF-guarded fetch -> Gemini synthesis -> verify_excerpts -> persistence
->   -> API -> the Company tab
-> ```
->
-> **`gemini/gemini-3.6-flash` is the production default, deliberately** (OQ-J). Chosen on
-> measurement across four frozen fixtures with `verify_excerpts` as judge, not on price: its
-> citation rejection rate is **1.7%**, against 18% for Step 3.7 Flash and **42%** for GPT-OSS-20B,
-> whose fabrications only the verbatim check caught. Claude Sonnet 5 stays denser and is **one
-> setting away** — `llm_model_research_synthesise_company` — with nothing provider-specific
-> anywhere above `infrastructure/`.
->
-> **`v2-dense` is the shared synthesis prompt**, for every model rather than for Gemini. Density
-> was a prompting problem: the old text said "summarise" and never said how much to extract. The
-> extraction block and the anti-fabrication block were validated **together** and must not be
-> separated — the first raises density, the second is why that did not become invention. Exact text
-> in `specs/008-company-research/contracts/optimised-synthesis-prompt.md`.
->
-> **Production validation, 2026-08-30, against Cloudflare:** 22 claims (20 `fact`,
-> 2 `interpretation`), 5/5 sections, 25 evidence entries, **0 uncited facts and 0 unknown source
-> ids**. Six source rows persisted — **three retrieved and three recorded as failed** (GlobalData,
-> Yahoo Finance, Gartner all refuse automated access), which is FR-009 holding on real data: the
-> brief is honest that half of what it consulted could not be read. Citations render in the browser
-> as verbatim quotes with clickable links, and failed sources are shown as unreadable rather than
-> hidden.
->
-> **Reuse verified in production and it does not spend again.** A second request returned the same
-> `snapshot_id` with `reused: true`; snapshot count, total cost and source-row count were all
-> byte-identical afterwards. That is FR-013's economics — Layer 1 paid for once per employer —
-> confirmed on the ledger rather than from the response body.
->
-> **Layer 2 role research remains built-but-unwired.** `research_role.py`, its schemas and
-> `role_research_snapshots` all exist and are tested against doubles. **There is no route and no
-> UI**, and nothing in production reaches it.
-
-> **Implementation priority: Correctness → Simplicity → Efficiency → Course requirements.** Do not
-> add agent/ReAct complexity to look more agentic.
+> **Resume Themes shipped without a speckit slice.** There is no `specs/011-*`: it was specified,
+> planned and implemented conversationally across this session. The reasoning is captured in this
+> file and in the module docstrings, but the usual `specify → plan → tasks → analyze` artefacts do
+> not exist for it. Recorded as a deviation, not a recommendation.
 
 ---
+
 
 ## 1. Core goal
 
@@ -362,265 +97,134 @@ deliberately has no `top_k`, no scores and no embedding parameters.
 
 ---
 
+
 ## 2. Current implementation status
 
-**Everything in this section was re-measured on 2026-09-02 by commands run in that session.**
-Figures below the task table that carry an older date were not re-run and say so.
+**Everything in this section was measured on 2026-09-03 at `4bb7c64`.** Commands are inline so the
+next session can re-measure rather than trust.
 
-### Measured 2026-09-02
+### Slices
 
-| | Value | Command |
+`for f in specs/*/tasks.md; do echo "$f: $(grep -c '^- \[x\]' $f) / $(grep -c '^- \[[ x]\]' $f)"; done`
+
+| Slice | Tasks | State |
 |---|---|---|
-| Branch / HEAD | `feat/tailor-redesign` @ `793ab78` | `git branch --show-current && git log --oneline -1` |
-| `main` | `ddc9bdc`, identical to `origin/main` | `git rev-parse main origin/main` |
-| Unpushed | `2a60bee`, `793ab78` (the redesign) | `git log --oneline origin/main..feat/tailor-redesign` |
-| Backend tests | **1,374 passed**, coverage **87.97%** | `.venv/bin/pytest -q` |
-| Frontend tests | **257 passed**, 18 files | `npx vitest run` |
-| Slice tasks | **562 / 563**; the one open is 009 T045 (deploy), open **by instruction** | see table below |
+| 001 platform-foundation | 69 / 69 | merged, live |
+| 002 deployment | 52 / 52 | merged, live |
+| 003 data-foundation | 109 / 109 | merged, live |
+| 004 match-analysis | 89 / 89 | merged, live |
+| 005 resume-tailoring | 1 / 1 | merged, live |
+| 006 document-retrieval | 57 / 57 | merged, live |
+| 007 evaluation-benchmark | 50 / 50 | merged, live |
+| 008 company-research | non-checkbox format | merged, live |
+| 009 career-advisor | **45 / 46** | merged, live — **T045 is stale, see below** |
+| 010 role-aware-research | non-checkbox format | merged, live |
+| — Resume Themes | **no slice exists** | merged, live |
 
-### Slice task counts
+**The single unchecked task is `009 T045` and it is out of date.** Its text says *"Open —
+deliberately. Implementation stopped before merge/push/PR/deploy per instruction."* Slice 009
+merged as PR #34 → `2a99fe0`, which `git merge-base --is-ancestor 2a99fe0 origin/main` confirms is
+an ancestor of live `main`. The advisor is deployed and serving. **The task should be ticked or its
+text corrected; it is the only thing making the slice read as incomplete.** Note its acceptance
+line quotes *"N of 97 analysed"* — production now measures **9 analyses across 104 applications**,
+so that figure is stale too.
 
-**Measured 2026-09-02 with `grep -cE '^- \[[xX]\]'`** — 010 now has a `tasks.md` (40/40) that
-did not exist when the older table below was written.
+### Tests and gates — run, not quoted
 
-| Slice | Done / total |
-|---|---|
-| 001 platform-foundation | 69 / 69 |
-| 002 deployment | 52 / 52 |
-| 003 data-foundation | 109 / 109 |
-| 004 match-analysis | 89 / 89 |
-| 005 resume-tailoring | 101 / 101 |
-| 006 document-retrieval | 57 / 57 |
-| 007 evaluation-benchmark | 50 / 50 (T047 now `[x]`) |
-| 009 career-advisor | 45 / 46 — **T045 deploy, open by instruction** |
-| 010 role-aware-research | 40 / 40 |
+```
+(cd backend  && .venv/bin/pytest -q)        -> 1505 passed, 89.84% coverage
+(cd frontend && npm test -- --run)          -> 313 passed (19 files)
+(cd backend  && .venv/bin/ruff check . && .venv/bin/mypy src)   -> clean
+(cd frontend && npm run lint && npm run typecheck)              -> clean
+```
 
-### The older table (2026-08-29) — kept for its reasoning
+### Live system
 
+Deployed at **https://frontend-production-02ac.up.railway.app**, three Railway services
+(`backend`, `frontend`, `pgvector`) each with its own `railway.toml`.
 
-| Slice | Done / total | Open |
-|---|---|---|
-| 001 platform-foundation | 69 / 69 | none |
-| 002 deployment | 52 / 52 | none |
-| 003 data-foundation | **109 / 109** | none — **T083 and T084 done 2026-08-31**, see the header |
-| 004 match-analysis | 89 / 89 | none |
-| 005 resume-tailoring | **101 / 101** | none — **T088 ticked 2026-08-31** against the deployed run |
-| 006 document-retrieval | **57 / 57** | none |
-| 007 evaluation-benchmark | **49 / 50**, T047 marked `[~]` | **T047** — built and isolated, deliberately unpopulated |
-| 008 company-research | **no `tasks.md`** | **COMPLETE and merged** (PR #14). Never went through `/speckit-tasks`, so it cannot be counted — a process gap, not open work. **Layer 2 is built and tested against doubles but has no route and no UI**, and is deliberately *not* scheduled |
-| **Total** | **526 / 527** | **1 — T047**, and it is open by choice rather than by omission |
+- Both services report deployment **SUCCESS** on commit **`4bb7c64`**.
+- Readiness through the public door (`/api/health/ready` genuinely traverses the proxy):
+  `database ok · cache not_configured · object_storage ok · ai_provider ok`.
+- Backend logs at the deploy: alembic initialised, **no `Running upgrade` line** (production was
+  already at head, so the `preDeployCommand` was a no-op), `Application startup complete`,
+  `embedding model ready (BAAI/bge-small-en-v1.5, 384 dims)`. **Zero ERROR/CRITICAL lines.**
+- Production database: `alembic_version = 0023_skill_category_snapshot`; the three added columns
+  (`imported_resumes.theme`, `resume_profiles.theme`, `resume_version_items.source_category`) all
+  present.
 
-**The two totals the previous revision carried are now one.** It recorded "as ticked" and "in
-reality" separately because `T084` and `T088` were done but unticked; both are ticked, so the
-figures agree again. That entry is kept in §4 rather than deleted — the reason they diverged is
-worth more than the fact that they did.
+```bash
+railway ssh --service pgvector "PGHOST=localhost PGPORT=5432 psql -U postgres -d railway \
+  -tAc \"SELECT version_num FROM alembic_version;\""
+```
 
-> ⚠️ **Count these with `grep -cE '^- \[[xX]\]'`.** Slice 005 marks **100** of its 101 done tasks
-> `- [X]` with a **capital X** while every other slice uses lowercase, so `grep -c '^- \[x\]'`
-> reports **1 / 101** for a slice that is complete. The one lowercase entry is **T088**, ticked on
-> 2026-08-31 — so the file is now mixed-case, and the trap is easier to fall into, not harder.
+### What Resume Themes actually does, in one paragraph
 
-### Live system — deployed and verified
+At import, `infrastructure/documents/theme.py` reads the uploaded PDF's own geometry with
+pdfplumber — font family and weights, sizes, the accent colour, margins, heading style, date
+alignment, bullet indents, and two separate spacings — and returns a `ResumeTheme` or `None`.
+Nothing is inferred by a model and no completion is spent. The theme is staged on
+`imported_resumes.theme` (the only moment the bytes exist), copied to `resume_profiles.theme` at
+approval, and read at export through the version's own `source_resume_profile_id`. `theme=None`
+renders **byte-identically** to the pre-feature plain template — proven by a golden markup hash.
 
-**All measured 2026-08-31** — production over `railway ssh --service pgvector`, local over
-`docker compose exec postgres`.
-
-| | Production | Local |
-|---|---|---|
-| Commit | **`c904380`**, backend *and* frontend `SUCCESS` | `c904380` |
-| Alembic head | **`0019_company_research`** | **`0018_corpus_embedding_model`** — one behind |
-| knowledge documents / chunks | **18 / 79** | 18 / 79 |
-| Readiness | **HTTP 200** — `database ok 18.5 ms · cache not_configured · object_storage ok 178 ms · ai_provider ok` | — |
-| users | **1** | 24 |
-| applications / companies | **97 / 90** | 33 / — |
-| match analyses | **1** | 31 |
-| resume_versions | **1** | 31 |
-| company research snapshots | **0** — and that is correct, see below | 0 |
-
-**Local is one migration behind production.** `0019_company_research` shipped with Slice 008 and
-has not been applied locally. Run `docker compose exec backend alembic upgrade head` before
-trusting any local research work; nothing else is affected.
-
-**Local counts are inflated by benchmark rows and are not comparable to production.** The Slice 007
-harness seeds users under `google_sub LIKE 'benchmark|%'`; the 24 users and 31 versions are mostly
-those. §5A's protected records are the subset that matters.
-
-**Production's 0 research snapshots is not a failure.** Slice 008 *was* validated end to end
-against Cloudflare; the verifying session then deleted its temporary user and that user's snapshot
-and source rows, per §6's *"delete anything seeded by hand"*. Its note records the real account's
-**97 applications and 90 companies** counted before and after and unchanged — **independently
-re-measured this session and matching exactly**. Read the 0 as the cleanup rule working, not as
-the feature failing.
-
-**Local and production disagree about the embedding model, and that is expected.** Local `.env`
-sets MiniLM, the image bakes and production uses `bge-small`. The local corpus was embedded with
-MiniLM (measured: cosine **1.000000** to MiniLM, **0.345992** to bge-small) and records NULL,
-because it predates migration `0018`. T053's guard treats NULL as *unknown*, warns once and
-proceeds. **Every local measurement — SC-007, SC-008, retrieval quality — was taken on MiniLM.**
-
-### Tests — run this session
-
-| Suite | Result |
-|---|---|
-| Backend, local on `c904380` | **1,232 passed**, coverage **87.52%** (gate 80%) |
-| Frontend, local on `32f5be2` | **207 passed**, 14 files |
-| CI on `32f5be2` | **success** — Backend and Frontend both |
-| `ruff format` / `ruff check` / `mypy` | clean — 273 files / all checks / 102 source files |
-
-**The backend figure is from `c904380` and still stands**: nothing since has touched `backend/`,
-which was verified byte-identical rather than assumed. The frontend gained 12 tests with T083.
-
-**The old 831-vs-785 gap is gone**: it was Slice 008's untracked test files, which are now on
-`main`. Local and CI measure the same tree again.
-
-**The frontend suite is no longer flaky.** `tailor.test.tsx > "names every model a run used"` had
-been failing **5 runs in 20** — it waited for the version fetch and then asserted on the *run*, two
-effects that resolve independently. PR #18 wrapped the assertion in `waitFor`: **0 in 20** after.
-No production code changed.
-
-### Success criteria
-
-| | Result |
-|---|---|
-| **SC-007** | **MET** — p50 12.1 ms / max 24.8 ms against 500 ms (T044, not re-measured today) |
-| **SC-008** | **MISSED — 3.22%** against the unchanged **≤2%** threshold |
-
-**SC-008, re-measured at T052 on current code**, two fresh paid arms, one application
-(`2c36feee`), one process, one pricing window, neither revising:
-
-| | static `aae6f565` | retrieval `1070657e` |
-|---|---|---|
-| total cost | **$0.233124** | **$0.245262** |
-| `tailor_plan` | 7,221 | 8,936 → **+1,715** |
-| `tailor_draft` | 7,816 | 9,855 → +2,039 |
-
-**+3,754 tokens × $2.00/MTok = $0.007508 ÷ $0.233124 = 3.22%, MISSED against ≤2%.** Paid this
-session: **$0.478386**.
-
-**Two arms were needed, not one.** T052 removed the citation from the *static* rubric too, so the
-old baseline `e70ecd76` sent guidance current code does not — a **207-token** provider-measured
-difference. A one-arm comparison would have credited retrieval with that saving.
-
-**The 1.68% against `e70ecd76` is not a pass.** That run revised (5 calls); both arms here did not
-(3 calls). It is not the same-session measurement and must not be recorded as one.
-
-**The fix worked and the metric still does not resolve.** The numerator fell 21% and is now
-provider-measured on both sides, yet the same-session verdict worsened 2.12% → 3.22% — missed
-before the fix and still missed after it — because the
-denominator nearly halved. SC-008 divides a fixed per-run overhead by a total run cost that varies
-2.7× with revision behaviour, so it cannot establish the overhead's position relative to the
-threshold **independently of revision count**. **No target was adjusted and no metric redefined.**
-
-**Re-derived free at R16 (2026-08-31), and the miss is robust.** `specs/006-document-retrieval/`
-`research.md` §R16 reads both arms back out of the database, spending nothing. It settles three
-things. The retrieval ceiling **is** honoured — 1,497 rule tokens against a configured 1,500 — so
-there is **no implementation defect** behind the number. `tailor_review` grew **+670** input tokens
-while consuming no guidance at all, so the numerator was already mixing overhead with the
-*downstream effects* of better guidance. And the recorded **3.22% MISSED** figure is the narrower
-`plan+draft` input-token proxy, where SC-008 (006) as written says *cost per run* — directly
-observable as `$0.245262 − $0.233124`, which is **5.21%** of the same-session baseline.
-**Both figures miss the ≤2% threshold**, so correcting the accounting makes the verdict worse
-rather than rescuing it. The target was itself calibrated against `spec.md`'s estimate of *"+1,000
-input tokens across the two calls"*, against a measured guidance delta of **1,165 per call — 2,330
-across the two**, roughly 2.3× the arithmetic the threshold was set on.
-**No metric redefined, no threshold moved, no test altered, no production behaviour changed.**
-
----
 
 ## 3. Files modified
-
-### This session (2026-08-31) — `e6335bc..32f5be2`
 
 Regenerate with:
 
 ```bash
-git diff --name-status e6335bc..32f5be2
-git log --oneline e6335bc..32f5be2
+git diff --name-status 2a99fe0..4bb7c64 -- backend/src backend/tests backend/alembic frontend/src
 ```
-
-**Thirteen files across four PRs** — **#15** (docs only), **#16** (three small follow-ups),
-**#18** (one test assertion) and **#17** (T083). The seven below came from #15/#16; T083 added six
-more, listed with the slice-003 work rather than here.
-
-| File | Why |
-|---|---|
-| `api/routes/imports.py`, `api/routes/applications.py` | `HTTP_413_CONTENT_TOO_LARGE`. One line each; they **must** move together because the second imports `MAX_UPLOAD_BYTES` from the first |
-| `tests/unit/test_architecture.py` | The new gate. Reads `starlette.status.__deprecated__` **at run time**, so it covers all four deprecated names and any future one |
-| `components/applications/tailor-tab.tsx` | `modelsUsed()` — the provenance line names every distinct model from `run.models` |
-| `components/__tests__/tailor.test.tsx` | `renderTabWithRun` — the fixture that made the line testable at all |
-| `specs/006-document-retrieval/research.md` | **R16**, the free re-derivation of SC-008 (006) |
-| `HANDOFF.md` | This file |
-
-**T083's six files** (PR #17), all frontend plus one task record:
-
-| File | Why |
-|---|---|
-| `lib/api.ts` | `importJobtracker()`, `JobtrackerImportReport`, `MAX_IMPORT_BYTES`. Uses `fetch` directly rather than `request()`, because a `FormData` body must not carry a hand-set `Content-Type` |
-| `app/applications/import/page.tsx` | The route. Under `/applications`, **not** beside `/import`, which is the CV extraction flow and shares nothing but the word |
-| `components/applications/jobtracker-import.tsx` | The flow and the four-outcome report |
-| `components/applications/applications-page.tsx` | The Import entry point, secondary to Add Application |
-| `components/__tests__/jobtracker-import.test.tsx` | 12 tests |
-| `specs/003-data-foundation/tasks.md` | T083 and T084 |
-
-**Nothing under `backend/src/careerhq/domain/` or `application/` changed**, and no migration was
-added — `backend/` was verified byte-identical to `main` at each step rather than assumed. The
-deployed schema moved only because Slice 008's `0019` shipped in PR #14, before this session.
-
-### Slice 006 (earlier) — regenerate with
-
-```bash
-git diff --name-status 1cf9a70~1..HEAD -- backend/src frontend/src
-git log --oneline 1cf9a70~1..HEAD
-```
-
-`1cf9a70` is slice 006's first commit. **Twelve commits on the branch**, all pushed and CI-green:
-
-| Commit | What |
-|---|---|
-| `01030f6` | **T052 docs** — SC-008 re-measurement recorded. **Not on `main`** |
-| `2f0ba29` | **T048** — corpus ingestion in the Railway pre-deploy |
-| `1c11ad5` | **T056** — the sent résumé, on the Details tab |
-| `5601c3f` | **T055** — CI gets production's renderer |
-| `94955af` | **T053** — the corpus records which model embedded it |
-| `aad97a6` | **T052** — prompt citation decoupled from the recorded snapshot |
-| `c64b9c9` | **T051** — role context snapshotted; grouped Experience |
-| `941eac4` | **T054** — the tailor screen's dead controls and silent refusals |
-| `bf4bbcd` | font timestamp pinned, so a re-export is byte-identical |
-| `5d666fa`, `0c5ed56` | embedding-model test determinism; submission-refusal transaction |
-| `1cf9a70` | retrieval, export and submission — the slice but deployment |
 
 ### Read these first
 
-| File | Why |
+| File | Why it matters |
 |---|---|
-| `backend/railway.toml` | The T048 fix and the reason it is `/bin/sh -c`. **`preDeployCommand` is a single command**; Railway's schema types it as a string or a one-element array, so a bare `&&` runs only the first half |
-| `application/immutability.py` | The two locked states, and why `READY` is not one |
-| `application/ingest_corpus.py` | T053's guard: refuses a model swap before embedding or writing anything; NULL means unknown |
-| `application/export_resume.py` | `_role_groups` — role order is snapshotted `role_ordinal`, bullet order is `position` within a role |
-| `agents/tailoring/prompts.py::_guidelines` | T052: rule text only; the citation lives in `guidelines_used` |
-| `specs/006-document-retrieval/tasks.md` | Every decision, drill and finding, per task |
+| `backend/src/careerhq/domain/schemas/theme.py` | The closed `ResumeTheme` vocabulary. Its docstring is the argument for why a theme is not CSS. Also holds `MAX_LABEL_CHARS` / `MAX_LINE_HEIGHT`, shared so extraction and rendering cannot drift. |
+| `backend/src/careerhq/infrastructure/documents/theme.py` | Deterministic extraction. Three inference rules were each measured wrong before landing; the comments say which and why. |
+| `backend/src/careerhq/infrastructure/documents/render.py` | `render_resume_pdf(document, theme=None)`. Two emitters on purpose — the plain path must stay byte-identical. |
+| `backend/src/careerhq/application/tailor_resume.py` | Where the headline and the skill category are **snapshotted onto the version**. The one-line `source_category=` at the `ResumeVersionItem(...)` site is the bug that shipped once. |
+| `backend/tests/unit/test_master_item_consumption.py` | The AST gate that fails when a field is put on a master item and never read at the construction site. |
 
-### By layer
+### Backend — domain
 
-- **Backend application** — added `embeddings.py`, `export.py`, `export_resume.py`,
-  `immutability.py`, `ingest_corpus.py`, `retrieved_guidelines.py`, `submissions.py`,
-  `submit_resume.py`; modified `guidelines.py`, `tailor_resume.py`,
-  `agents/tailoring/prompts.py`
-- **Backend domain** — added `models/knowledge.py`, `schemas/document.py`; modified
-  `models/tailoring.py` (role-context columns), `models/__init__.py`
-- **Backend infrastructure** — added `corpus/loader.py`, `documents/render.py`,
-  `embeddings/fastembed_source.py`, `ingest.py`; modified `config.py`, `main.py`
-- **Migrations** — `0015` corpus, `0016` export/submission, `0017` role context, `0018` corpus
-  embedding model. All four applied in production
-- **Deployment** — `backend/railway.toml`, `.github/workflows/ci.yml`, `.env.example`, `README.md`
-- **Frontend** — `tailor-tab.tsx`, `tailor-diff-item.tsx`, `detail-tabs.tsx`, `lib/api.ts`
+`domain/schemas/theme.py` (new) · `domain/schemas/document.py` (`SectionStyle`, `ResumeDocument.headline`) ·
+`domain/models/imports.py` (`theme`) · `domain/models/profile.py` (`theme`) ·
+`domain/models/tailoring.py` (`source_category`)
 
-### Not in this list, deliberately
+### Backend — application
 
-`application/ports.py` and every `research_*` module were Slice 008's, and are **now on `main`**
-(PR #14, `e6335bc`). The ownership fence is gone; they are ordinary code. Listed here only because
-an earlier handoff fenced them off and someone reading that sentence out of context would still
-avoid them.
+`application/tailor_resume.py` (headline + category snapshots) · `application/export_resume.py`
+(`_skill_rows`, section styles, contact links, `_theme_for`) · `application/extract_resume.py` ·
+`application/approve_import.py` (write-once theme, `with_for_update`) ·
+`application/advisor_specifics.py` (new) · `application/advisor_tiers.py` ·
+`api/routes/advisor.py`
+
+### Backend — infrastructure
+
+`infrastructure/documents/theme.py` (new) · `infrastructure/documents/render.py` ·
+`infrastructure/documents/pdf.py` · `infrastructure/documents/__init__.py` ·
+`infrastructure/documents/fonts/` (new — `OFL.txt` + five Poppins faces, ~800 KB, SIL OFL 1.1)
+
+### Migrations
+
+`alembic/versions/0022_resume_theme.py` — two nullable JSONB columns, no default, no backfill.
+`alembic/versions/0023_skill_category_snapshot.py` — one nullable `VARCHAR(128)`, same shape.
+Both reversible; **neither should ever be downgraded in production** (see §5).
+
+### Frontend
+
+`lib/advisor-tech.ts` (new) · `lib/api.ts` (`actionOf`, the B1 contract) ·
+`components/advisor/topic-chip.tsx` · `components/advisor/memory-card.tsx`
+
+### Tests added
+
+`tests/unit/test_resume_theme.py` · `tests/unit/test_export_themed.py` ·
+`tests/unit/test_master_item_consumption.py` · `tests/integration/test_resume_theme_persistence.py` ·
+`tests/integration/test_resume_fidelity.py` · `tests/integration/test_advisor_specifics_resolution.py` ·
+`tests/unit/test_advisor_specifics.py` · `frontend/src/lib/__tests__/advisor-tech.test.ts`
+
 
 ---
 
@@ -708,6 +312,7 @@ revision, 7 at the budget. No automatic retry: a failed node ends the run (delib
   suspicious). **Nothing is paraphrased or invented.**
 - **Deliberately absent because the data cannot support them**: High/Medium/Low impact tiers and
   REQUIRED/PREFERRED gap tiers. See §5 E.
+
 
 ## 4. What failed
 
@@ -1524,121 +1129,197 @@ under `google_sub LIKE 'benchmark|%'`.
 
 Every API call from the configured key is refused with `invalid_request_error: "Your credit
 balance is too low"` — **HTTP 400, nothing billed** — while the Console shows **$5.01** on the
-**same organization** (`anthropic-organization-id: 6480e45c-1b50-413b-a3f3-fcaddcef0bac`, read
-from the API's own response header, and matching the Console). Ruled out: wrong org, claude.ai
+**same organization** (the `anthropic-organization-id` read from the API's own response header
+matches the Console). Ruled out: wrong org, claude.ai
 subscription vs API credits, workspace spend limit (Default workspace), key validity (the same key
 billed successfully until 18:54 UTC on 09-01), client-side caching (reproduced with raw curl), and
-a platform incident (status page clean). Failing request ids: `req_011CedKVjwKm3nxvEKG7mzku`,
-`req_011CedKsgRrGreRpDmWniepN`, `req_011CedMa8ZhrQuK6dnRNDxDw`. **A finished support report is at
-`~/careerhq-eval-artifacts/anthropic-support-report.md`** (support conversation id
-215475745908918). Note also: LiteLLM's recorded costs price Sonnet/Opus at older, higher rates —
+a platform incident (status page clean). **A finished support report — including the failing
+request ids and the support conversation id — is at
+`~/careerhq-eval-artifacts/anthropic-support-report.md`.** Note also: LiteLLM's recorded costs price Sonnet/Opus at older, higher rates —
 the DB's cost columns are internally consistent for comparison but **overstate real billing by
 roughly 2×** (Console showed $3.81 lifetime for a key our telemetry credited with ~$8).
 
+
+## 4C. Session of 2026-09-02/03 — Resume Themes and the Advisor V2 review
+
+**Append-only, like everything above it.** Two workstreams, and the same failure class appeared in
+both: a value computed correctly in one place and dropped by a *different* caller, under a green
+suite.
+
+### The one that reached production behaviour
+
+**A test that hand-builds the object under test cannot protect the persistence hop.**
+`_render_master` computed `source_category` for every skill and put it on the master-item dict.
+The one site that turns a master item into a `ResumeVersionItem` read five `role_*` keys and
+**never read `source_category`**, so every skill persisted `NULL` and the exported Skills block
+stayed flat — 22 bare lines instead of ~6 label rows, which also cost the one-page fit. The
+integration test "covering" it constructed the row by hand with
+`source_category=item["source_category"]`, performing the exact step production skipped. It was
+found by a **real browser export**, not by the suite. This is CLAUDE.md testing rule 4 verbatim, and
+it is the second time this class has shipped.
+*Fix:* one line at the construction site, a `ScriptedSeam`-driven test that asserts the rows the
+database actually holds, and `tests/unit/test_master_item_consumption.py` — an AST gate comparing
+the keys `_render_master` produces against the keys the construction site reads.
+
+**Corollary worth keeping:** when a regression test *cannot* fail on the old code because the old
+code was already right, say so and drill it the other way. The `specifics_unresolved` route test
+passes at both revisions; hard-coding the field to `0` is what proves it has teeth.
+
+### Theme extraction — three inference rules, each measured wrong first
+
+- **Leading: median → mode → lower quartile.** Consecutive-line deltas are two or three
+  populations (wrapped lines, new paragraphs, list entries). A **median** landed between them
+  (12.55pt against a true 12.0pt) and 0.55pt compounded over forty lines into a page break the
+  original does not have. A **mode** returns whichever population is largest — on a list-heavy CV
+  that is the 21pt Skills spacing, reading the leading as 2.1. The **lower quartile** is the
+  tightest recurring delta and measured exactly 12.0pt on both documents drilled.
+- **One paragraph-spacing scalar cannot serve prose and lists.** Measured: 2pt between summary
+  paragraphs, 8pt between Skills entries. Collapsing them put the following heading **30pt** out of
+  place. Hence two values, and `ResumeSection.style` so the *document* says which a section is.
+- **A bottom margin measured from where content stops is not a margin.** A half-full page yielded
+  `467.8pt`, which failed the schema bound and — through the blanket `except` — discarded the
+  entire theme. A plausible measurement is trusted; an implausible one mirrors the top.
+
+### Renderer and font traps
+
+- **WeasyPrint embeds Poppins with hyphenated style names** (`Poppins-Ultra-Light`,
+  `Poppins-Semi-Bold`). Matching the raw string finds `Light` inside `Ultra-Light`, so extra-light
+  headings tied the body face, no headings were detected, and the whole design came back `None`.
+  The style token is now stripped of punctuation before matching.
+- **`text-indent` was applied twice** by WeasyPrint for the hanging indent, putting the bullet
+  glyph a full marker-width (9.6pt) left of where the source CV has it. Built from `padding-left`
+  plus a negative `margin-left` on `::before` instead.
+- **Adding a CSS rule to the plain template changes the bytes of every already-exported document.**
+  A `p.headline` rule was added to `_CSS`; the golden markup hash caught it immediately. The plain
+  path now gains **zero** CSS — the headline renders through the existing `p.line` class, and
+  giving it hierarchy is the themed renderer's job.
+- **The plain renderer is provably unchanged**: same document, same SHA-256
+  (`bf03e6f6…`) under `origin/main`'s renderer and the new one at `theme=None`.
+
+### What the ATS suite did and did not catch
+
+11 of 12 assertions passed against a fully themed render. The single failure, `ats-1`, is a
+**latent fragility in the assertion**, not a defect: a soft line break at an existing hyphen makes
+extraction yield `cross- functional`, which the exact-substring walk cannot match. The original CV
+breaks at the same hyphen. Left unfixed and reported separately, by instruction.
+
+### Advisor V2 — review findings that a green suite did not surface
+
+- **Collapsing "not resolved" with "resolved to nothing"** made two endpoints assert a falsehood:
+  every lineage entry and every dismiss response claimed *"The requirements behind this claim are
+  no longer available to read"* about rows that resolve perfectly well, printed beside
+  `specifics_unresolved: 0` contradicting it.
+- **`assess()` and `recommend()` checked the same condition in different order**, so one memory
+  could answer *"no longer available to read"* and *"a consistent strength — keep leading with
+  it"* in the same payload. Both now check the row count before the tier; verified across every
+  tier × mix combination.
+- **A case-insensitive matcher over a lexicon containing ordinary English** produced technology
+  tags the employer never wrote: *"work at a swift pace"* → Swift, *"taking the helm"* → Helm,
+  *"bring a spark"* → Spark, *"react quickly"* → React, and worst, *"familiar with lambda
+  expressions"* → **Serverless**, where the displayed string was not even the matched token.
+  Ambiguous names now require the lexicon's capitalisation. **Capitalisation cannot separate every
+  pair** — `Spring 2026` and `RAG status reporting` are capitalised in both meanings — so those
+  match only spellings that can mean nothing else. The cost is real and measured: twelve
+  false-negative classes, including bare `RAG`, which is common in AI postings.
+- **A field nested inside an optional block disappears wherever that block is always absent.**
+  `priority_reason` (FR-022) lived inside the assessment section, and `assess()` returns `None`
+  unconditionally for portfolio and data-note memories — so an expanded portfolio card showed a
+  kind/scope line and a Dismiss button and nothing else.
+- **An API shape change can white-screen a bundle that is already deployed.** `action` went from
+  `string` to `{category, text}` while the live frontend rendered `<p>{memory.action}</p>` — an
+  object as a React child throws, and **the app has no `error.tsx` anywhere**. Backend and frontend
+  are independent Railway services and the backend lands first. Fixed by keeping `action` a string
+  for one cycle with the typed form beside it, plus a client normaliser tolerant in both deploy
+  directions.
+
+### Process
+
+- **Railway auto-deploys on merge.** A readiness check requested *before deployment* but run
+  *after* the merge found deployments already in flight, created two seconds after the merge. Gate
+  on the merge.
+- **Local `main` silently diverged.** It carried two Advisor commits that were never on
+  `origin/main`, so "branch isolation" required resetting it — safe only because the commits were
+  provably contained in a pushed branch. Check `git rev-list --left-right --count origin/main...main`
+  before assuming local `main` is clean.
+- **Another session wrote to this checkout mid-task.** Seven Advisor files changed on disk during
+  an unrelated investigation. If `git status` shows files you did not touch, stop and say so.
+
+
 ## 5. Exact next steps
 
-**Updated 2026-09-02.** The Tailor UI redesign is complete and **frozen** — do not continue UI
-work on it. `main` is `ddc9bdc`; the redesign sits unpushed on `feat/tailor-redesign` @ `793ab78`.
+**Updated 2026-09-03 at `4bb7c64`.** Everything is merged and deployed; there is no in-flight work
+and no open PR. Each option below names what blocks it, who owns it, and how to verify it.
 
-### A — **THE NEXT TASK: why did a real run produce 1 content change and 10 reorders?** · read-only investigation · owner: next session
+### A. Turn Resume Themes on in production — **owner: the account holder, blocked on nothing**
 
-**The specimen** (all measured 2026-09-02 from the local dev database):
+The feature is live but has never run: `resume_profiles.theme` is NULL for both production
+accounts, so every export still uses the plain template. A theme is only attached when a **PDF is
+imported after the feature shipped**.
 
-| Fact | Value |
-|---|---|
-| Run | `acf82dba-fc60-4d48-a3fc-40046a96075e` (2026-09-02 07:31) |
-| Version / application | `98099840-7542-4ec0-8f16-4a558cc63d3d` / `c5fa0822-ee6c-4dc6-96d8-e05bc03cbef6` |
-| Job | Silverfort — "Senior Backend Software Engineer (AI Engineering)", JD 7,419 chars |
-| Match analysis | `4d3de34f-99c5-4c27-a340-2b5e5c756bf7` — **85/100, band `strong`** |
-| Requirement verdicts | 6 confirmed, 1 partial, 1 transferable, 2 unverified, **0 gap** |
-| Plan | 8 `emphasise`, 9 `de_emphasise`, **2 `protected_gaps`** |
-| Calls | plan 3,308 out · draft 3,364 out · review 2,345 · revise 1,291 · review 1,660; $0.3379 |
-| Review pass 0 | 1 `ungrounded`, 2 `overstated`, 5 `uncovered` → confidence **78** |
-| Review pass 1 | 0 `ungrounded`, 1 `overstated`, 6 `uncovered` → confidence **86**, cleared |
-| Persisted result | 35 items: **1 rewrite, 0 drops, 10 position-only reorders** |
-
-**The question is whether this is a defect at all.** The strongest counter-hypothesis, and the one
-to test first: the profile *already answers* this posting (85/strong, zero gaps), so reordering to
-surface the relevant material may be exactly right, and rewriting more would be change for its own
-sake. Note the run revised **despite confidence 78 ≥ 65** — because an `ungrounded` finding blocks
-at any confidence, which is correct and by design.
-
-**The specific tension worth resolving**: the match analysis found **zero `gap` requirements**,
-yet the Reviewer raised **5–6 `uncovered` findings** on the same job. Those two components disagree
-about whether the résumé addresses the posting. Either one is wrong, or they mean different things
-(coverage-of-the-*draft* vs fit-of-the-*profile*) — and if it is the latter, the UI currently
-presents `uncovered` as "gaps we couldn't address", which may overstate it.
-
-**Method — evidence-driven, no changes to anything:**
-
-1. Read the JD (`applications.job_description`) and the master profile rendering for that user.
-2. Read the stored plan (`tailoring_runs.plan`) — did its 8 emphasis directives point at items the
-   draft then left alone? `application/plan_adherence.py::plan_execution` computes exactly this
-   from persisted rows, free, and is already used by the benchmark runner.
-3. Compare against `match_requirements` for the analysis (verbatim requirement text + importance).
-4. Read the persisted items: which 11 got proposals (`displaced_position IS NOT NULL`), which one
-   carried text, and what the Reviewer said about each.
-5. Check the run's warning logs for `"proposals could not be placed against the master"` —
-   `run_tailoring` logs unplaceable ids and id-less proposals. **If the draft proposed more than
-   11 items and the rest could not be mapped, that is a different bug entirely** (the class that
-   made the first two paid runs produce no changes at all).
-6. Compare with the reorder-heavy runs from 08-28/29 (`aae6f565` 17 reorders, `e70ecd76` 16,
-   `1070657e` 12) — reorder-dominance predates the `medium` effort change, so it is **not** an E2
-   regression. Worth confirming that explicitly.
-
-**Constraint, restated**: do not change prompts, models, thresholds, schemas, RAG, or pipeline
-behaviour until this says where the problem is. No provider calls are needed for steps 1–6 — every
-input is already persisted — and none are possible anyway while B is blocked.
-
-### B — **Anthropic billing block** · owner: the user (account access) · blocks E3 and every paid run
-
-Support report ready at `~/careerhq-eval-artifacts/anthropic-support-report.md`; conversation id
-**215475745908918**. Verify with one ~$0.005 probe before assuming it is fixed:
+The owner's master (`241525d1`) has **0 exported documents**, so the write-once
+guard permits the backfill. Import the PDF CV again in production, approve it, then tailor and
+export.
 
 ```bash
-docker compose exec -T backend python -c "
-import asyncio, litellm
-print(asyncio.run(litellm.acompletion(model='anthropic/claude-sonnet-5',
-  messages=[{'role':'user','content':'hi'}], max_tokens=8))['choices'][0]['message']['content'])"
+railway ssh --service pgvector "PGHOST=localhost PGPORT=5432 psql -U postgres -d railway \
+  -tAc \"SELECT count(theme) FROM resume_profiles;\""    # expect 1 afterwards, 0 today
 ```
 
-### C — **E3: draft prompt selectivity** · blocked by B · owner: next session, on the user's word
+**The second production account can never gain one** — its master already has an exported document, and the
+guard refuses the backfill permanently. That is the invariant working, not a defect.
 
-Fully staged and previously verified. One appended rule to `_DRAFT`:
-*"Prefer fewer, higher-impact changes. Propose a rewrite only when it materially improves alignment
-with this posting; preserve wording that already serves it."* The driver is
-`~/careerhq-eval-artifacts/e3_treatment.py` (patches the prompt **in-process only**; the repo is
-never touched) — copy it into the container's `/tmp` and run with `--static-arms 0 --judged 9
---suffix e3sel3 --i-have-approval run`. It carries a hard $2.50 in-process cap. **Control is
-free**: the pooled `e2med` + `e2med2` passes (24 runs at today's exact production config) are the
-control arm; do not pay for another. **Note the interaction with A** — if A concludes the draft is
-already too conservative, E3 (which makes it *more* conservative) should be reconsidered, not run.
+### B. Correct `009 T045` — **owner: whoever next opens the slice, blocked on nothing**
 
-### D — **Push / PR the Tailor redesign** · owner: the user · unblocked
+The only unchecked task in `specs/` claims the advisor was never deployed. It was: PR #34 →
+`2a99fe0`, an ancestor of live `main`. Tick it or rewrite its text, and fix the stale *"N of 97
+analysed"* acceptance line — production measures **9 analyses across 104 applications**.
 
-`feat/tailor-redesign` @ `793ab78`, two commits, gates green at commit time (frontend 257 tests,
-tsc, oxlint, production build). Nothing pushed by instruction. Decide separately what to do with
-the untracked `design/` folder (Claude Design reference; contains a fictional CV).
+```bash
+grep -rn '^- \[ \]' specs/*/tasks.md          # expect no output when done
+```
 
-### E — **Known follow-ups, explicitly NOT part of A** · owner: whoever schedules them
+### C. The Advisor V2 MEDIUM/LOW review findings — **owner: engineering, blocked on nothing**
 
-- **`requirement_id` linkage for `uncovered` findings.** The gaps UI currently shows the AI's
-  sentence about the requirement, split by first sentence into WHAT/WHY. To show the *posting's own
-  words* (and REQUIRED/PREFERRED tiers, which the redesign mockup wanted and the payload cannot
-  support), the Reviewer must name the requirement it means: render the analysis's requirements
-  with `[req: <id>]` markers in the review prompt, add an optional `requirement_id` to
-  `ReviewFinding`, and serve `{requirement_text, importance}` resolved server-side.
-  **Measured: 0 of 293 recorded `uncovered` findings carry `quoted_text`** — fuzzy text matching
-  would be fabrication. Backend + prompt change: **do not start it during A**.
-- **`DraftedItem.reason` is never persisted or shown** — Principle III gap, and paid-for waste on
-  every run. Fix as one change: persist, display, then require it for drops.
-- **FR-029 tension in the redesigned UI**: an accepted proposal now hides Accept/Edit/Reject, so
-  after blanket approval a `ready` version offers no per-item controls, while FR-029 says approval
-  is not a one-way door until export. The backend still honours decision changes — restoring a
-  "change decision" affordance is UI-only. **Open product decision.**
-- Slice 010's own list (research `cost_basis` overstatement ~4×; `docs/09` UI notes never
-  backfilled) and slice 009's non-blocking review findings — both recorded above, both untouched.
-- **009 T045 (deploy the Career Advisor)** remains open by instruction, not omission.
+Deliberately left out of the fix commit. Recorded here so they are not rediscovered:
+`specific_labels` is dead payload computed on every page load and rendered nowhere; the app has
+**no `error.tsx`**, so any render throw still blanks the page; `requirement_ids` keeps only the
+last `tier2.requirement.*` fact; the route test asserts `body["memories"]` while the UI renders
+`sections.*`; batching is tested on the resolver rather than the route; the `transferable` verdict
+is untested everywhere; `VERDICT_MARK` is typed `Record<string, …>`, so a sixth backend verdict
+would compile and mislabel rows; tech tags are not filtered against the topic; `groundedTech`
+recompiles ~56 regexes per row per render during a 2-second poll.
+
+### D. Reconsider the `RAG` and `Spring` lexicon narrowing — **owner: product judgement**
+
+Measured false negatives from the H2 fix: bare `RAG`, bare `Spring`, bare `Lambda`, and nine
+lowercase product spellings. `RAG` is the one that matters — very common in AI postings, and the
+false positive it now guards against (`RAG status reporting`) is delivery-management jargon
+unlikely in these target roles. Restoring the bare pattern is one line. Decide deliberately.
+
+### E. `ats-1` hyphen normalisation — **owner: engineering, blocked on nothing**
+
+`test_export_ats.py`'s assertion 1 cannot tolerate a soft break at an existing hyphen
+(`cross-functional` extracts as `cross- functional`). Measure-sensitive, unrelated to themes, and
+present in the original CV. Worth fixing on its own merits; explicitly not bundled into the theme
+work.
+
+### F. Documented Resume Themes limitations — **owner: product, no action required**
+
+Military service and volunteering have no `SourceKind` and cannot enter a version; section order is
+the fixed `_SECTIONS` vocabulary; education composes to one line rather than a hierarchy;
+author-chosen inline bold is lost at extraction (positional label emphasis before a colon *is*
+recovered); Poppins is the only bundled family, and navy/blue accents fall under the luminance
+threshold and yield no theme.
+
+### Not next steps
+
+- **Do not `alembic downgrade`.** `0022` and `0023` are reversible in form, but `drop_column`
+  destroys the stored themes and skill categories; re-running the migration returns empty columns,
+  not the data. Rolling the *application* back is safe without touching the schema — old code
+  simply never selects the columns.
+- **Do not commit `design/`.** It is untracked, **not gitignored**, and contains a fictional CV.
+  Stage by explicit path; never `git add -A` or `git add .`.
+
 
 ## 5A. Real data that must not be deleted or modified
 
@@ -1693,7 +1374,7 @@ production observation.
 
 ### Backed up 2026-08-29 — and the backup is already behind
 
-**`/Users/nirtituani/CareerHQ-backups/2026-08-29/`**, outside the repository.
+**`~/CareerHQ-backups/2026-08-29/`**, outside the repository.
 
 | File | Size | Verification |
 |---|---|---|
@@ -1734,6 +1415,7 @@ holding the paid evaluation evidence.
 This cost a wrong conclusion before it was fixed: a suite run against a shared `careerhq_test`
 reported **351 failures and took 12m47s**, and the same code run alone passed 1,219 in 70 seconds.
 **A failure count that changes between runs of identical code is this, not a flaky test.**
+
 
 ---
 ## 6. Process reminders

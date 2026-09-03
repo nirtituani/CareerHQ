@@ -171,3 +171,68 @@ def test_no_source_file_carries_a_personal_email_address() -> None:
         + "\n  ".join(offences)
         + "\nUse a reserved example domain in fixtures."
     )
+
+
+#: Reserved documentation/example domains for root-level Markdown. Wider than the
+#: fixture allowance above on purpose: prose may *cite* `example.test` — the
+#: pydantic gotcha it documents is precisely that fixtures must not use it.
+_ALLOWED_DOC_EMAIL_SUFFIXES = (*_ALLOWED_EMAIL_DOMAINS, ".test", ".invalid", ".example")
+
+#: Israeli phone shapes. The leak recorded in `test_no_source_file_...`'s docstring
+#: was a local-format mobile number, which the `+`-prefix filter in the benchmark
+#: scan above deliberately cannot see.
+_PHONE_IL_INTERNATIONAL = re.compile(r"\+972[\s-]?\d[\d\s-]{6,}")
+_PHONE_IL_LOCAL = re.compile(r"\b05\d[-\s]?\d{7}\b")
+
+
+def _root_markdown_files() -> list[pathlib.Path]:
+    """Non-recursive on purpose.
+
+    Subdirectories — `.git`, `node_modules`, build output, `docs/` with its
+    deliberate author byline — are excluded structurally rather than by filter,
+    and an *untracked* root document is caught before a commit can publish it.
+    """
+    return sorted(REPO_ROOT.glob("*.md"))
+
+
+def test_no_root_markdown_document_carries_personal_contact_data() -> None:
+    """Root-level Markdown is covered by no other scan, and that is where the most
+    recent near-leak sat: a handoff draft staged two real Gmail addresses — one of
+    them a third party's — while the source-tree gate filtered on code suffixes and
+    the benchmark gate never left `backend/benchmark`. These files are the public
+    front door of the repository; they get the strictest scan, not none.
+    """
+    files = _root_markdown_files()
+    assert len(files) >= 3, (
+        f"expected at least README.md, CLAUDE.md and HANDOFF.md; scanned {len(files)}. "
+        "A scan matching nothing is not a gate."
+    )
+
+    offences: list[str] = []
+    for path in files:
+        for lineno, line in enumerate(path.read_text(errors="ignore").splitlines(), start=1):
+            # Same deliberate skip as the source-tree scan above: a connection
+            # string carries `user:pass@host` and matches the email pattern
+            # without being one.
+            if "://" not in line:
+                for address in _EMAIL.findall(line):
+                    domain = address.rsplit("@", 1)[-1].lower().rstrip(".,;:'\")")
+                    if domain.endswith(_ALLOWED_DOC_EMAIL_SUFFIXES):
+                        continue
+                    if address.startswith("@") or "/" in address:
+                        continue
+                    offences.append(f"{path.name}:{lineno} — {address}")
+            for pattern in (_PHONE_IL_INTERNATIONAL, _PHONE_IL_LOCAL):
+                for hit in pattern.findall(line):
+                    digits = re.sub(r"\D", "", hit)
+                    # The established placeholder convention is an all-zero
+                    # subscriber part: `050-0000000`, `+972 50 000 0000`.
+                    if set(digits[-7:]) == {"0"}:
+                        continue
+                    offences.append(f"{path.name}:{lineno} — {hit.strip()}")
+
+    assert not offences, (
+        "personal contact data in root-level Markdown:\n  "
+        + "\n  ".join(offences)
+        + "\nScrub it or use a reserved example value."
+    )

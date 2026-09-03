@@ -304,6 +304,9 @@ times replacing a guess.
   use, one keystroke from permanent publication. **Before any `git add -A`, run `git check-ignore -v`
   on the sensitive paths.** The only documents ever committed are the synthetic fixtures in
   `backend/tests/fixtures/`, whose subject is fictional precisely so they can be.
+- **`design/` is intentionally untracked and gitignored.** It holds the Claude Design reference
+  files, including a fictional CV, and must not be staged or committed. `.gitignore` covers it —
+  verify with `git check-ignore -v design/`.
 - **`infrastructure/jobs/fetch.py` is the only place a user-supplied URL is requested**, which
   makes it the one place SSRF is possible: `169.254.169.254`, `backend:8000` and the database are
   each one request away. The guard resolves the hostname and refuses any non-global address,
@@ -553,6 +556,9 @@ The `PGHOST`/`PGPORT` override is **not optional** — see the `psql` gotcha bel
 
 **Operating rules:**
 
+- **Merging a PR deploys it.** Railway auto-deploys `backend` and `frontend` from `main`;
+  deployments appear within seconds of the merge. There is no separate "deploy" step to gate, so a
+  readiness check belongs **before the merge** — run after it, the deployment is already in flight.
 - **Read which version is live from the commit, never the deployment id.** A rollback creates a
   **new** id carrying the **old** commit.
 - **`railway deployment redeploy` is not a rollback.** It redeploys the *latest* deployment, so
