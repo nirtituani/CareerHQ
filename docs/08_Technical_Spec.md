@@ -2,10 +2,10 @@
 
 > **Technical Specification**
 
-**Version:** 1.0
+**Version:** 1.1
 **Status:** Active
 **Author:** Nir Tituani
-**Last Updated:** August 2026
+**Last Updated:** September 2026
 **Reviewers:** —
 
 ---
@@ -35,18 +35,18 @@ truth for their own areas; this document owns the narrative and links down for d
 
 ## 1.2 Status at a glance
 
-**Slices 001–008 are complete and the system is deployed.** Slice 009 (Career Advisor) is
-planned and droppable. Everything in this document carries an explicit status marker so that
-planned work is never mistaken for shipped work.
+**All ten slices (001–010) are complete, merged and deployed; the system runs from `main`.**
+Everything in this document carries an explicit status marker so that planned work is never
+mistaken for shipped work.
 
 | | |
 |---|---|
 | **Live at** | **https://frontend-production-02ac.up.railway.app** |
-| **Built and verified** | Slices 001–008 — platform, deployment, data foundation, match analysis, resume tailoring, retrieval/export/submission, evaluation, company research. **527 / 527 tasks** across the eight slices |
-| **Not built** | Nothing planned remains unbuilt: Slice 009 is implemented on branch `009-career-advisor` (unmerged). Slice 008's **Layer 2** role research remains without a route or UI |
-| **Next** | Merge and deploy of Slice 009, pending review |
-| **Evidence** | **1,232 backend tests at 87.52% coverage** (gate 80%), **207 frontend component tests** across 14 files, 6 Playwright smoke tests, CI green on `main` |
-| **Verified how** | Locally: full quickstart from a fresh clone on wiped volumes. **On the deployed system**: a real Google sign-in taking the database from `0\|0` to `1\|1`; a real CV imported and confirmed non-fixture; migration `0005` applied with constraints C2 and C3 present and no `rejected` column anywhere; a real job posting read end to end through the deployed extraction path — see [`specs/002-deployment/observations.md`](../specs/002-deployment/observations.md) |
+| **Built and verified** | Slices 001–010 — platform, deployment, data foundation, match analysis, resume tailoring, retrieval/export/submission, evaluation, company research (role-aware, behind a `ResearchProvider` seam), career advisor. Theme-faithful export shipped after 010 as export infrastructure (no slice of its own; migrations `0022`–`0023`) |
+| **Not built** | Slice 008's **Layer 2** role research remains without a route or UI — superseded by 010. Interview Coach and the Application Workflow Agent stay deferred (§2.6) |
+| **Next** | Nothing scheduled — every planned slice has shipped; what remains is the deferred stretch scope in §2.6 |
+| **Evidence** | **1,506 backend tests at 89.84% coverage** (gate 80%), **313 frontend component tests** across 19 files, 6 Playwright smoke tests, CI green on `main`. Migration head: `0023` |
+| **Verified how** | Locally: full quickstart from a fresh clone on wiped volumes. **On the deployed system**: a real Google sign-in taking the database from `0\|0` to `1\|1`; a real CV imported and confirmed non-fixture; migration `0005` — the head at that slice-002 verification; the head today is `0023` — applied with constraints C2 and C3 present and no `rejected` column anywhere; a real job posting read end to end through the deployed extraction path — see [`specs/002-deployment/observations.md`](../specs/002-deployment/observations.md) |
 
 ---
 
@@ -191,13 +191,14 @@ map plus honest status.
 |---|---|---|---|
 | Platform foundation — containers, auth, CI | No | 001 | ✅ **Built and verified** |
 | Deployment — public HTTPS, continuous deploy | No | 002 | ✅ **Built and verified** |
-| Application Management Core | No — deliberately CRUD | 003 | ✅ **Built** (JobTracker import outstanding) |
+| Application Management Core | No — deliberately CRUD | 003 | ✅ **Built and verified** — including the production JobTracker import run |
 | Professional Profile + CV import | No | 003 | ✅ **Built and verified** |
 | **Match analysis** — score a job against the profile | No — one structured call | 004 | ✅ **Built and verified** |
 | **Resume Optimizer** — the flagship | Yes | 005 (workflow), 006 (RAG, PDF) | ✅ **Built and deployed** |
+| Resume theme fidelity — imported design reproduced on export | No — deterministic extraction | — (export infrastructure; migrations `0022`–`0023`) | ✅ **Built and verified** — the theme persists with the profile, bundled fonts keep rendering reproducible, regression tests protect it |
 | **Reviewer / evaluation layer** | Yes | 005 (the loop), 007 (the metrics) | ✅ **Built** — self-critique in 005, metrics and LLM-as-judge in 007 |
 | Company Research | Yes — web search over plain HTTPS (008); a research provider behind a seam (010) | 008, 010 | ✅ **Built** — 008's Layer 1 deployed; 010 makes research role-aware and keeps 008's pipeline as its fallback (merged as PR #22 and deployed) |
-| Career Advisor | Yes | 009 | 🔨 **Built on branch `009-career-advisor`, unmerged.** An agent-managed career memory: deterministic evidence pack, LLM reasoning over prior memories, create/confirm/supersede/retire with lineage, grounding gate discarding unverifiable claims pre-persistence |
+| Career Advisor | Yes | 009 | ✅ **Built and deployed.** An agent-managed career memory: deterministic evidence pack, LLM reasoning over prior memories, create/confirm/supersede/retire with lineage, grounding gate discarding unverifiable claims pre-persistence. Advisor V2 added evidence-grounded guidance and grounded technology signals |
 | Interview Coach | Yes | — | 💤 Deferred (stretch) |
 | Application Workflow Agent | Yes | — | 💤 Deferred (stretch) |
 | Resume Builder | No | — | 🚫 Future (§2.5) |
@@ -718,7 +719,7 @@ identified gaps demonstrably narrow over time.
 | 006 | Document & Retrieval | RAG over resume guidelines, PDF export, submit-and-lock | 005 | ✅ **Complete** — 57/57, deployed. **SC-008 (006) missed at 3.22%** against a ≤2% threshold; the target was not adjusted |
 | 007 | Evaluation & Benchmark | Benchmark set, metrics, LLM-as-judge, regression runs | 006 | ✅ **Complete** — 50/50. Paid benchmark pass run at **$4.925403** of a $10 ceiling |
 | 008 | Company Research | Search → fetch → synthesise, citation-preserving snapshots | 003 | ✅ **Complete** and merged. Web search over **plain HTTPS, not MCP** — argued in `tavily_search.py`. Its **primary path is superseded by 010**, which keeps this pipeline as the configured fallback; Layer 2 (role research) never had a route, and 010's migration `0020` reshaped its table |
-| 009 | Career Advisor | Agent-managed career memory over history | 003, 004 | 🔨 **Built on branch `009-career-advisor`**; 45/46 tasks (deploy pending review). Verified live: 3 real runs, lifecycle supersession, dismissal held against a real model |
+| 009 | Career Advisor | Agent-managed career memory over history | 003, 004 | ✅ **Complete** — merged and deployed. Verified live: 3 real runs, lifecycle supersession, dismissal held against a real model. Advisor V2 (evidence-grounded guidance, grounded technology signals) followed on `main` |
 | 010 | Role-Aware Research | ResearchProvider seam, application-scoped and role-aware, sections-first UI | 008 | ✅ **Complete** — 40/40 tasks, merged as PR #22 and deployed. SC-001 measured on 5 real applications (4 correct, 1 honest-uncertain, 0 wrong) |
 
 **Slices 001–007 are the core** and together satisfy every project requirement. 008 and 009
@@ -753,11 +754,11 @@ twice.
 |---|---|---|
 | Specifications | `docs/00`–`docs/08`, `specs/` | ✅ |
 | Plan with milestones | [docs/05](05_Implementation_Plan.md), §6.1 | ✅ |
-| Agent with backend and frontend | Slice 005 — FastAPI + Next.js, the Tailor tab | ✅ built, not yet deployed |
-| Agent manages memory | Profile, application history, submitted versions; slice 009 reasons over all of it | 📋 |
+| Agent with backend and frontend | Slice 005 — FastAPI + Next.js, the Tailor tab | ✅ deployed |
+| Agent manages memory | Profile, application history, submitted versions; slice 009 reasons over all of it | ✅ — slice 009 deployed |
 | Tools / MCPs | Retrieval, PDF export (006); web search + research provider (008/010, plain HTTPS rather than MCP — argued in `tavily_search.py`) | ✅ |
-| Agentic workflow matched to the problem | Self-critique + human approval (005); RAG (006) | ✅ built, not yet deployed |
-| Evaluation, benchmark, metrics | Slice 007, §5.2 | 📋 **graded, and deferred twice** |
+| Agentic workflow matched to the problem | Self-critique + human approval (005); RAG (006) | ✅ deployed |
+| Evaluation, benchmark, metrics | Slice 007, §5.2 | ✅ — complete; paid benchmark pass run |
 | Deployed using Docker | Slice 002, then continuously | ✅ |
 | Team roles | Solo; SDD keeps specification, evaluation, and engineering separated as artifacts | ✅ |
 

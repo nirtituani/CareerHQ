@@ -2,10 +2,10 @@
 
 > **Capabilities**
 
-**Version:** 1.0
+**Version:** 1.1
 **Status:** Active
 **Author:** Nir Tituani
-**Last Updated:** August 2026
+**Last Updated:** September 2026
 
 ---
 
@@ -60,11 +60,12 @@ system; design documents do not count.
 | Reviewer / self-critique | ✅ **Implemented** | 005 — the in-workflow loop |
 | RAG over resume guidelines | ✅ **Implemented** | 006 |
 | PDF export, submit-and-lock | ✅ **Implemented** | 006 |
+| Theme-faithful export | ✅ **Implemented** | Export infrastructure, no slice of its own — an imported CV's visual design is extracted deterministically at import, persisted (migrations `0022`–`0023`), and reproduced on export; bundled fonts keep rendering reproducible, regression tests protect it |
 | Evaluation harness, metrics, LLM-as-judge | ✅ **Implemented** | 007 — paid benchmark pass run |
 | Company Research — company-scoped (008) | ✅ **Implemented** | 008 — retained as the configured fallback under 010 |
-| Company Research — role-aware (010) | 🔨 **Built, not deployed** | 010 — the active architecture: application-scoped research behind a `ResearchProvider` port, driven by the job description |
+| Company Research — role-aware (010) | ✅ **Implemented** — merged and deployed | 010 — the active architecture: application-scoped research behind a `ResearchProvider` port, driven by the job description |
 | Company Research — 008's Layer 2 (role) | 🚫 **Superseded by 010** | Its use case and schema survive as dead code; its `role_research_snapshots` table was reshaped by migration `0020` into the application-scoped store 010 uses |
-| Career Advisor | 🔨 **Built** — on branch `009-career-advisor`, unmerged | 009 |
+| Career Advisor | ✅ **Implemented** — merged and deployed; Advisor V2 added evidence-grounded guidance and grounded technology signals | 009 |
 | Interview Coach | 💤 **Deferred** — stretch goal | — |
 | Application Workflow Agent | 💤 **Deferred** — stretch goal | — |
 | Resume Builder / Designer | 🚫 **Non-goal** — scoped out (ADR-013) | — |
@@ -208,6 +209,9 @@ prioritization** — actionable memories carry an agent-assigned priority with i
 and the surface orders by it; a distinct roadmap artifact is **explicitly deferred** until
 enough analysed postings exist to rank by frequency and impact honestly (spec 009,
 clarification Q1).
+
+**Advisor V2**, on `main` since slice 009 merged, tightens the grounding further: each card's
+guidance is evidence-grounded, and technology signals are grounded in the postings they came from.
 
 ---
 

@@ -14,8 +14,7 @@ Built with FastAPI, Next.js, PostgreSQL with pgvector, and LangGraph.
 
 **Live at https://frontend-production-02ac.up.railway.app**
 
-**Slices 001–008 are complete and merged**; the deployed system runs from `main`. Slice 009
-(Career Advisor) is planned and droppable.
+**All ten slices (001–010) are complete, merged and deployed**; the system runs from `main`.
 
 Working today:
 
@@ -36,10 +35,17 @@ Working today:
   the Reviewer finds ungrounded is discarded before it can reach an approve button
 - **Export and submit** — render to PDF, then lock. A submitted version is immutable, and
   submission re-reads and re-hashes the stored bytes rather than trusting the recorded checksum
+- **Theme-faithful export** — an imported CV's visual design is extracted deterministically at
+  import, persisted alongside the profile, and reproduced when a tailored resume is exported;
+  bundled fonts keep the render reproducible, and regression tests protect the fidelity
 - **Company research** — role-aware research for one application, driven by the job description
   rather than the CV. A research provider returns a cited brief whose sources are shown as
   provider-attributed; the retained built-in pipeline searches, fetches and synthesises here
   instead, and its stored excerpts are verified verbatim against the pages it retrieved itself
+- **Career advisor** — agent-managed career memory over the whole application history:
+  falsifiable claims with frozen evidence, denominators and lineage, which later runs confirm,
+  supersede or retire; guidance is evidence-grounded, and a claim the grounding gate cannot
+  verify is discarded before it is ever stored
 
 Depth lives in [`docs/07_Capabilities.md`](docs/07_Capabilities.md) (what each capability does),
 [`docs/08_Technical_Spec.md`](docs/08_Technical_Spec.md) (the whole system in one document) and
@@ -164,7 +170,8 @@ rather than in the source, because this repository is public.
 
 ## Running the checks
 
-These are exactly what CI runs. If they pass locally, they pass there.
+CI runs all of these except `npm run e2e` — Playwright exercises the full stack, so it is a
+local per-slice verification step rather than a CI job. If the rest pass locally, they pass there.
 
 **Backend** (from `backend/`):
 
@@ -234,25 +241,28 @@ service's **root directory** — not from the repository root.
 
 ### Deploying
 
-Merge to `main`. That is the whole procedure. CI runs the same gates listed above, and Railway's
-**Wait for CI** setting holds the deployment until they pass — so a failing gate leaves the
-public site untouched rather than rolling back after the fact.
+Merge to `main`. That is the whole procedure — and it deploys **immediately**: Railway creates
+deployments on both services within seconds of the merge, so the gates above have to pass
+*before* the merge, not after it. Treat the merge as the gate.
 
-**That setting is not on by default** — enable it on *both* services under Settings → Deploy. And
-it waits on every GitHub check suite reporting on the commit, not only this repository's CI, so a
-third-party check that never completes leaves a merge permanently undeployed while Actions looks
-entirely green.
+Railway does offer a **Wait for CI** setting that can hold deployments until checks pass, but
+the observed behaviour on this project is auto-deploy on merge, so do not rely on it. If enabling
+it, know that it waits on every GitHub check suite reporting on the commit, not only this
+repository's CI — a third-party check that never completes leaves a merge permanently undeployed
+while Actions looks entirely green.
 
 Database migrations and corpus ingestion both run as a pre-deploy step:
 
 ```toml
-preDeployCommand = "alembic upgrade head && python -m careerhq.ingest"
+preDeployCommand = '/bin/sh -c "alembic upgrade head && python -m careerhq.ingest"'
 ```
 
 If either fails, the deployment does not proceed and the previous version keeps serving.
 
-**The `&&` is the ordering, not a separator**: `knowledge_chunks` has to exist before ingestion
-writes to it. **Pre-deploy, not startup**, so the model is loaded once per deploy rather than once
+**The `/bin/sh -c` wrapper is load-bearing**: Railway runs this field without a shell, so a bare
+`&&` is not an ordering operator there — only the first command runs, and that once shipped an
+empty corpus behind a deployment reporting SUCCESS. With the wrapper, the `&&` is the ordering:
+`knowledge_chunks` has to exist before ingestion writes to it. **Pre-deploy, not startup**, so the model is loaded once per deploy rather than once
 per replica — and so two replicas booting together cannot race the corpus's unique constraint.
 Re-running an unchanged corpus creates nothing and embeds nothing, and the embedding weights are
 baked into the image, so the step makes no network call.

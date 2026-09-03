@@ -2,10 +2,10 @@
 
 > **Implementation Plan**
 
-**Version:** 2.0
+**Version:** 2.1
 **Status:** Active
 **Author:** Nir Tituani
-**Last Updated:** August 2026
+**Last Updated:** September 2026
 
 ---
 
@@ -89,12 +89,12 @@ is written; it is finished when it can be demonstrated against a deployed enviro
 | 006 | Document & Retrieval | RAG over resume guidelines, PDF export, submit-and-lock | 005 | **Complete** — 57/57, deployed |
 | 007 | Evaluation & Benchmark | Benchmark set, metrics, LLM-as-judge, regression runs, results view | 006 | **Complete** — 50/50, paid benchmark pass run. **Graded** |
 | 008 | Company Research | Search → fetch → synthesise over web search (plain HTTPS, not MCP), citation-preserving snapshots | 003 | **Complete** and merged; **primary path superseded by 010**, retained as its fallback. Its unwired Layer 2 table was reshaped by 010's migration `0020` |
-| 009 | Career Advisor | Agent-managed career memory: evidence-backed claims created, confirmed, superseded, retired across runs; deterministic evidence pack, grounding gate, `/advisor` surface | 003, 004 | **Built** on branch `009-career-advisor`; not merged/deployed |
+| 009 | Career Advisor | Agent-managed career memory: evidence-backed claims created, confirmed, superseded, retired across runs; deterministic evidence pack, grounding gate, `/advisor` surface | 003, 004 | **Complete** — merged and deployed; Advisor V2 (evidence-grounded guidance, grounded technology signals) followed on `main` |
 | 010 | Role-Aware Research | Application-scoped research via a ResearchProvider seam (Tavily Research first), sections-first UI | 008 | **Complete** — merged as PR #22 and deployed |
 
 Slices 001–007 are the **core**: together they satisfy every project requirement. Slices 008 and
-009 add the most product value per unit of effort and should follow immediately, but the project
-is defensible without them.
+009 added the most product value per unit of effort and followed immediately, but the project
+was defensible without them.
 
 ---
 
@@ -421,16 +421,15 @@ A slice is complete when **all** of the following hold:
 
 # 10. Current Status
 
-**Last completed slice**: 001 — Platform Foundation
+**All ten slices are complete, merged and deployed**; `main` is the authoritative branch and the
+deployed system runs from it. Migration head is `0023`. The current suite: **1,506 backend tests
+at 89.84% coverage** (gate 80%) and **313 frontend component tests** across 19 files, with CI
+green on `main`.
 
-All 69 tasks done and all three user stories verified, including a real Google sign-in taking the
-database from `0|0` to `1|1` and a second sign-in leaving it at `1|1` while advancing only
-`last_login_at`. Merged to `main`; CI green on the merge commit. 55 backend tests at 89% coverage,
-3 component tests, 6 Playwright smoke tests.
-
-**Active slice**: 002 — Deployment
-**Stage**: Live, finishing — 37 of 52 tasks. User Stories 1 and 2 verified against the running
-system; User Story 3 (continuous deployment) and documentation remain.
+One capability shipped outside the slice cycle, recorded as a deviation rather than a
+recommendation: **theme-faithful export** — an imported CV's visual design extracted
+deterministically at import, persisted by migrations `0022`–`0023`, and reproduced on export —
+was specified, planned and implemented conversationally, so there is no `specs/011-*` for it.
 
 **Deployed at https://frontend-production-02ac.up.railway.app** — public HTTPS, real Google
 sign-in working end to end, readiness reporting deployed dependencies truthfully.
